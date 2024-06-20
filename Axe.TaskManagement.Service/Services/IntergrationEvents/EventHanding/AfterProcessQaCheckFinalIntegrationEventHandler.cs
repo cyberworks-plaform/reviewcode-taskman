@@ -1,0 +1,786 @@
+﻿using Axe.TaskManagement.Data.Repositories.Interfaces;
+using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Implementations;
+using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
+using Axe.Utility.Definitions;
+using Axe.Utility.Dtos;
+using Axe.Utility.EntityExtensions;
+using Axe.Utility.Enums;
+using Axe.Utility.Helpers;
+using Axe.Utility.MessageTemplate;
+using Ce.Common.Lib.Caching.Interfaces;
+using Ce.Constant.Lib.Dtos;
+using Ce.Constant.Lib.Enums;
+using Ce.EventBus.Lib;
+using Ce.EventBus.Lib.Abstractions;
+using Ce.Workflow.Client.Services.Interfaces;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using Serilog;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+
+namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
+{
+    public class AfterProcessQaCheckFinalIntegrationEventHandler : IIntegrationEventHandler<AfterProcessQaCheckFinalEvent>
+    {
+        private readonly IJobRepository _repository;
+        private readonly ITaskRepository _taskRepository;
+        private readonly IEventBus _eventBus;
+        private readonly IWorkflowClientService _workflowClientService;
+        private readonly IDocClientService _docClientService;
+        private readonly IJobService _jobService;
+        private readonly IUserProjectClientService _userProjectClientService;
+        private readonly ITransactionClientService _transactionClientService;
+        private readonly IProjectStatisticClientService _projectStatisticClientService;
+        private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
+        private readonly IConfiguration _configuration;
+
+        private readonly ICachingHelper _cachingHelper;
+        private readonly bool _useCache;
+
+        public AfterProcessQaCheckFinalIntegrationEventHandler(
+            IJobRepository repository,
+            ITaskRepository taskRepository,
+            IEventBus eventBus,
+            IWorkflowClientService workflowClientService,
+            IDocClientService docClientService,
+            IJobService jobService,
+            IUserProjectClientService userProjectClientService,
+            ITransactionClientService transactionClientService,
+            IProjectStatisticClientService projectStatisticClientService,
+            IServiceProvider provider,
+            IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
+            IConfiguration configuration)
+        {
+            _repository = repository;
+            _taskRepository = taskRepository;
+            _eventBus = eventBus;
+            _workflowClientService = workflowClientService;
+            _docClientService = docClientService;
+            _jobService = jobService;
+            _userProjectClientService = userProjectClientService;
+            _transactionClientService = transactionClientService;
+            _projectStatisticClientService = projectStatisticClientService;
+            _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
+            _configuration = configuration;
+            _cachingHelper = provider.GetService<ICachingHelper>();
+            _useCache = _cachingHelper != null;
+        }
+
+        public async Task Handle(AfterProcessQaCheckFinalEvent @event)
+        {
+            if (@event != null && @event.Job != null)
+            {
+                Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessQaCheckFinalEvent)} with JobCode: {@event.Job.Code}");
+
+                await ProcessAfterProcessQaCheckFinal(@event);
+
+                Log.Logger.Information($"Acked {nameof(AfterProcessQaCheckFinalEvent)} with JobCode: {@event.Job.Code}");
+            }
+            else
+            {
+                Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: @event is null!");
+            }
+        }
+
+        private async Task ProcessAfterProcessQaCheckFinal(AfterProcessQaCheckFinalEvent evt)
+        {
+            string accessToken = evt.AccessToken;
+            var job = evt.Job;
+            var userInstanceId = job.UserInstanceId.GetValueOrDefault();
+            var jobEnds = new List<JobDto>();
+
+            if (string.IsNullOrEmpty(job.Value))
+            {
+                Log.Error("ProcessQaCheckFinal value of job is null!");
+                return;
+            }
+
+            var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+            if (docItems == null || docItems.Count <= 0)
+            {
+                Log.Error("ProcessQaCheckFinal value of job can not be parse!");
+                return;
+            }
+
+            var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+            var wfsInfoes = wfInfoes.Item1;
+            var wfSchemaInfoes = wfInfoes.Item2;
+
+            if (wfsInfoes == null || wfsInfoes.Count <= 0)
+            {
+                Log.Error("ProcessCheckFinal can not get wfsInfoes!");
+                return;
+            }
+
+            var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
+            var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
+            bool isConvergenceNextStep = isParallelStep;
+
+            // 1. Cập nhật thanh toán tiền cho worker & hệ thống// Cập nhật thanh toán tiền cho worker bước HIỆN TẠI (SegmentLabeling)
+            var clientInstanceId = await GetClientInstanceIdByProject(job.ProjectInstanceId.GetValueOrDefault(), accessToken);
+            if (clientInstanceId != Guid.Empty)
+            {
+                var itemTransactionAdds = new List<ItemTransactionAddDto>
+                {
+                    new ItemTransactionAddDto
+                    {
+                        SourceUserInstanceId = clientInstanceId,
+                        DestinationUserInstanceId = userInstanceId,
+                        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
+                        ChangeProvisionalAmount = 0,
+                        JobCode = job.Code,
+                        ProjectInstanceId = job.ProjectInstanceId,
+                        WorkflowInstanceId = job.WorkflowInstanceId,
+                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                        ActionCode = job.ActionCode,
+                        Message =
+                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                        Description = string.Format(
+                            DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob,
+                            clientInstanceId, userInstanceId,
+                            job.Code)
+                    }
+                };
+                var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
+                if (job.ClientTollRatio > 0)
+                {
+                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    {
+                        SourceUserInstanceId = clientInstanceId,
+                        ChangeAmount = job.Price * job.ClientTollRatio / 100,
+                        JobCode = job.Code,
+                        ProjectInstanceId = job.ProjectInstanceId,
+                        WorkflowInstanceId = job.WorkflowInstanceId,
+                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                        ActionCode = job.ActionCode,
+                        Message =
+                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                        Description =
+                            string.Format(
+                                DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                                clientInstanceId, job.Code)
+                    });
+                }
+                if (job.WorkerTollRatio > 0)
+                {
+                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    {
+                        SourceUserInstanceId = userInstanceId,
+                        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
+                        JobCode = job.Code,
+                        ProjectInstanceId = job.ProjectInstanceId,
+                        WorkflowInstanceId = job.WorkflowInstanceId,
+                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                        ActionCode = job.ActionCode,
+                        Message =
+                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                        Description = string.Format(
+                            DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                            userInstanceId, job.Code)
+                    });
+                }
+
+                var transactionAddMulti = new TransactionAddMultiDto
+                {
+                    CorrelationMessage = string.Format(MsgTransactionTemplate.MsgJobInfoes, "Xác nhận QA",
+                        job.Code),
+                    CorrelationDescription = $"Hoàn thành các công việc {job.Code}",
+                    ItemTransactionAdds = itemTransactionAdds,
+                    ItemTransactionToSysWalletAdds = itemTransactionToSysWalletAdds
+                };
+                await _transactionClientService.AddMultiTransactionAsync(transactionAddMulti, accessToken);
+            }
+            else
+            {
+                Log.Logger.Error($"Can not get ClientInstanceId from ProjectInstanceId: {job.ProjectInstanceId}!");
+            }
+
+            Log.Logger.Information($"ProcessQaCheckFinal: {job.Code} with DocInstanceId: {job.DocInstanceId} success!");
+
+            // 2. Cập nhật thống kê, report
+            // 2.1. TaskStepProgress: Update value
+            var updatedTaskStepProgress = new TaskStepProgress
+            {
+                Id = crrWfsInfo.Id,
+                InstanceId = crrWfsInfo.InstanceId,
+                Name = crrWfsInfo.Name,
+                ActionCode = crrWfsInfo.ActionCode,
+                WaitingJob = 0,
+                ProcessingJob = -1,
+                CompleteJob = 1,
+                TotalJob = 0,
+                Status = (short)EnumTaskStepProgress.Status.Complete
+            };
+            var taskResult = await _taskRepository.UpdateProgressValue(job.TaskId, updatedTaskStepProgress);
+
+            if (taskResult != null)
+            {
+                Log.Logger.Information($"TaskStepProgress: +1 CompleteJob {job.ActionCode} in TaskInstanceId: {job.TaskInstanceId} with DocInstanceId: {job.DocInstanceId}");
+            }
+            else
+            {
+                Log.Logger.Error($"TaskStepProgress: +1 CompleteJob {job.ActionCode} in TaskInstanceId: {job.TaskInstanceId} with DocInstanceId: {job.DocInstanceId} failure!");
+            }
+
+            // 2.2. ProjectStatistic: Update
+            var changeProjectFileProgress = new ProjectFileProgress();
+            var changeProjectStepProgress = new List<ProjectStepProgress>();
+            var changeProjectUser = new ProjectUser
+            {
+                UserWorkflowSteps = new List<UserWorkflowStep>
+                {
+                    new UserWorkflowStep
+                    {
+                        InstanceId = crrWfsInfo.InstanceId,
+                        Name = crrWfsInfo.Name,
+                        ActionCode = crrWfsInfo.ActionCode,
+                        AmountUser = 1,
+                        UserInstanceIds = new List<Guid> { userInstanceId }
+                    }
+                }
+            };
+            // Nếu ko tồn tại job Waiting hoặc Processing ở các bước TRƯỚC và bước HIỆN TẠI thì mới chuyển trạng thái
+
+            Log.Information($"ProcessQACheckFinal change step: DocInstanceId => {job.DocInstanceId}; ActionCode => {job.ActionCode}; WorkflowStepInstanceId => {job.WorkflowStepInstanceId}");
+            changeProjectStepProgress.Add(new ProjectStepProgress
+            {
+                InstanceId = crrWfsInfo.InstanceId,
+                Name = crrWfsInfo.Name,
+                ActionCode = crrWfsInfo.ActionCode,
+                ProcessingFile = -1,
+                CompleteFile = 1,
+                TotalFile = 0,
+                ProcessingDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() },
+                CompleteDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() }
+            });
+
+            var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+            {
+                ProjectTypeInstanceId = job.ProjectTypeInstanceId,
+                ProjectInstanceId = job.ProjectInstanceId.GetValueOrDefault(),
+                WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                ActionCode = job.ActionCode,
+                DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                StatisticDate = Int32.Parse(job.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
+                ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
+                ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
+                ChangeUserStatistic = JsonConvert.SerializeObject(changeProjectUser),
+                TenantId = job.TenantId
+            };
+            await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+            Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {job.ActionCode} with DocInstanceId: {job.DocInstanceId}");
+
+            // 3. Cập nhật giá trị DocFieldValue & Doc
+            var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
+            docItems.ForEach(x =>
+            {
+                itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                {
+                    InstanceId = x.DocFieldValueInstanceId.GetValueOrDefault(),
+                    //Value = x.Value,
+                    Value = job.OldValue,   // Trường hợp QACheckFinal thì lưu giá trị OldValue
+                    CoordinateArea = x.CoordinateArea,
+                    ActionCode = job.ActionCode
+                });
+            });
+
+            if (itemDocFieldValueUpdateValues.Any())
+            {
+                var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
+                {
+                    ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
+                };
+                // Outbox
+                var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                {
+                    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                });
+                var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                if (isAck)
+                {
+                    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                }
+                else
+                {
+                    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                }
+            }
+
+            // 4. Trigger bước tiếp theo
+            // Tổng hợp dữ liệu itemInputParams
+            var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+            var jObjConfigStep = JObject.Parse(crrWfsInfo.ConfigStep);
+            var jTokenConditionType = jObjConfigStep.GetValue(ConfigStepPropertyConstants.ConditionType);
+            var jTokenConfigStepConditions = jObjConfigStep.GetValue(ConfigStepPropertyConstants.ConfigStepConditions);
+
+            if (nextWfsInfoes != null && nextWfsInfoes.Any())
+            {
+                bool isTriggerNextStep = false;
+                bool isQAPass = job.QaStatus;
+                List<InputParam> inputParamsForQARollback = null;
+                List<InputParam> inputParamsForQAPass = null;
+
+                if (jTokenConditionType != null && jTokenConfigStepConditions != null)
+                {
+                    bool isConditionTypeResult = Int16.TryParse(jTokenConditionType.ToString(), out var conditionType);
+                    if (isConditionTypeResult)
+                    {
+                        switch (conditionType)
+                        {
+                            case (short)EnumWorkflowStep.ConditionType.Default: // Điều kiện Đúng/Sai
+                                var configStepConditionDefaults =
+                                    JsonConvert.DeserializeObject<List<ConfigStepConditionDefault>>(
+                                        jTokenConfigStepConditions.ToString());
+                                if (configStepConditionDefaults != null && configStepConditionDefaults.Any())
+                                {
+                                    var selectedConfigStepConditionDefault = configStepConditionDefaults.FirstOrDefault(x => x.Value == job.QaStatus);
+                                    if (selectedConfigStepConditionDefault != null)
+                                    {
+                                        nextWfsInfoes = nextWfsInfoes.Where(x => x.InstanceId == selectedConfigStepConditionDefault.WorkflowStepInstanceId).ToList();
+
+                                        // Sau bước QACheckFinal thì luôn luôn chỉ có 1 bước
+                                        var nextWfsInfo = nextWfsInfoes.FirstOrDefault(x =>
+                                            x.InstanceId == selectedConfigStepConditionDefault.WorkflowStepInstanceId);
+
+                                        /*
+                                         * 1. Trường hợp job.QaStatus = true: Kiểm tra Tổng số jobs QA Complete (vòng hiện tại) = Tổng số jobs QA (vòng hiện tại) hay chưa?
+                                         * 1.1. Nếu bằng => NextStep sang bước TIẾP THEO (Tổng hợp dữ liệu)
+                                         * 1.2. Nếu chưa bằng thì không làm gì cả
+                                         * 2. Trường hợp job.QaStatus = false: Kiểm tra Tổng số jobs QA Complete và QaStatus = false (vòng hiện tại) >= Ngưỡng trả lại (Số Phiếu trong Lô * PercentWrongQaCheck * 100%)
+                                         * 2.1. Nếu lớn hơn hoặc bằng => Quay về bước TRƯỚC (CheckFinal): Tạo jobs bước TRƯỚC (CheckFinal) với số lượng BatchSize & tăng NumOfRound, các jobs QA còn lại chuyển trạng thái Ignore + cập nhật ReasonIgnore
+                                         * 2.2. Nếu nhỏ hơn: Kiểm tra xem Tổng số jobs QA Complete (vòng hiện tại) = Tổng số jobs QA (vòng hiện tại) hay chưa?
+                                         * 2.2.1. Nếu bằng NextStep sang bước TIẾP THEO (Tổng hợp dữ liệu)
+                                         * 2.2.2. Nếu chưa bằng thì không làm gì cả
+                                         */
+
+                                        // Lấy danh sách jobs bước HIỆN TẠI (QACheckFinal) vòng hiện tại
+                                        var allJobsInBatchAndRound = await _repository.GetAllJobByWfs(crrWfsInfo.ActionCode, crrWfsInfo.InstanceId, null, job.DocPath, job.BatchJobInstanceId, job.NumOfRound);
+
+                                        // Lấy danh sách jobs Complete bước TRƯỚC (CheckFinal)
+                                        var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
+                                        var preWfsInfo = prevWfsInfoes.FirstOrDefault();
+                                        var completePrevJobs = await _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
+                                                preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
+                                                job.BatchJobInstanceId, job.NumOfRound);
+
+                                        //int numOfFileInBatch = completePrevJobs.Count;
+                                        var configQa = WorkflowHelper.GetConfigQa(crrWfsInfo.ConfigStep);
+
+                                        var batchQASize = configQa.Item1; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
+                                        var batchQASampling = configQa.Item2; // % lấy mẫu trong lô 
+                                        var batchQAFalseThreshold = configQa.Item3; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
+
+                                        bool isProcessQAInBatchMode = true; // kiểm tra xem xử lý QA theo lô hay theo file đơn lẻ
+                                        isProcessQAInBatchMode = (batchQASize == 0) || (batchQASize > 1) ? true : false;
+
+                                        //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
+                                        if (string.IsNullOrEmpty(job.DocPath))
+                                        {
+                                            isProcessQAInBatchMode = false;
+                                        }
+
+
+                                        //xử lý QA theo single file
+                                        if (isProcessQAInBatchMode == false)
+                                        {
+                                            isQAPass = job.QaStatus;
+                                            isTriggerNextStep = true;
+
+                                        }
+                                        else //xử lý QA theo Batch file
+                                        {
+                                            //kiểm tra xem Phiếu hiện tại đã chuyển sang round mới hay chưa
+                                            var hasNewRound = _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
+                                                preWfsInfo?.InstanceId, null, job.DocPath, job.BatchJobInstanceId, (short)(job.NumOfRound + 1))
+                                                .Result.Any();
+
+                                            if (hasNewRound)
+                                            {
+                                                isTriggerNextStep = false;
+                                                //không làm gì, chỉ cần log
+                                                Log.Logger.Information($"Get QA Job result after this batch has been rollback -  DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
+                                            }
+                                            // 1. Trường hợp job.QaStatus = true
+                                            else if (job.QaStatus == true)
+                                            {
+                                                // 1.1. Kiểm tra Tổng số jobs QA Complete (vòng hiện tại) = Tổng số jobs QA (vòng hiện tại) hay chưa? Nếu bằng => NextStep sang bước TIẾP THEO (Tổng hợp dữ liệu)
+                                                if (allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
+                                                {
+                                                    // QA Pass => tạo lô dữ liệu để Pass qua cho bước tổng hợp 
+                                                    isQAPass = true;
+
+                                                    inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo);
+                                                    inputParamsForQAPass.ForEach(x =>
+                                                        {
+                                                            x.Note = string.Empty;
+                                                            x.QaStatus = isQAPass;
+                                                        });
+                                                    isTriggerNextStep = true;
+                                                }
+                                            }
+                                            else if (job.QaStatus == false)
+                                            {
+                                                // 2. Trường hợp job.QaStatus = false
+
+                                                var pathStatusRs = await _docClientService.GetStatusPath(job.ProjectInstanceId.GetValueOrDefault(), job.SyncTypeInstanceId.GetValueOrDefault(), job.DocPath, accessToken);
+
+
+                                                batchQASize = completePrevJobs.Count();
+
+                                                int numOfWrongQaCheck = Convert.ToInt32(Math.Round((decimal)batchQASize * (decimal)batchQAFalseThreshold / (decimal)100, MidpointRounding.ToEven));    // Số Phiếu trong Lô * PercentWrongQaCheck * 100%
+
+
+                                                if (numOfWrongQaCheck <= 0)
+                                                {
+                                                    numOfWrongQaCheck = 1;
+                                                }
+                                                var completeQAFailJobs = allJobsInBatchAndRound.Where(x => x.Status == (short)EnumJob.Status.Complete && !x.QaStatus).ToList();
+
+
+                                                // Trả lại cả LÔ: nếu Total_QA_Fail >= numOfWrongQaCheck và hủy bỏ các job QA đang chờ xử lý
+                                                if (completeQAFailJobs.Count >= numOfWrongQaCheck)
+                                                {
+                                                    // QA Fail =>
+                                                    isQAPass = false;
+
+                                                    // 2.1. Quay về bước TRƯỚC (CheckFinal): Tạo jobs bước TRƯỚC (CheckFinal) với số lượng BatchSize & tăng NumOfRound
+
+                                                    // Lấy danh sách jobs CheckFinal Complete vòng hiện tại
+                                                    inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo);
+
+                                                    //gắn note = QA_job.note và tăng Round
+                                                    inputParamsForQARollback = AsignNoteAndRound(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
+
+                                                    // 2.1. Các jobs QA chưa complete còn lại chuyển trạng thái Ignore + cập nhật ReasonIgnore
+                                                    var ignoreQaJobs = await _repository.GetAllJobByWfs(crrWfsInfo.ActionCode, crrWfsInfo.InstanceId, null, job.DocPath, job.BatchJobInstanceId, job.NumOfRound);
+                                                    ignoreQaJobs = ignoreQaJobs.Where(x => x.Status != (short)EnumJob.Status.Complete).ToList();
+                                                    if (ignoreQaJobs != null && ignoreQaJobs.Any())
+                                                    {
+                                                        ignoreQaJobs.ForEach(x =>
+                                                        {
+                                                            x.Status = (short)EnumJob.Status.Ignore;
+                                                            x.ReasonIgnore = "Lô phiếu đến giới hạn số lượng không Pass QA, quay lại bước trước";
+                                                        });
+                                                        await _repository.UpdateMultiAsync(ignoreQaJobs);
+
+                                                        //gửi update trạng thái cho Job Distribution Service để đồng bộ
+                                                        await _jobService.PublishLogJobEvent(ignoreQaJobs, accessToken);
+                                                    }
+
+                                                    isTriggerNextStep = true;
+                                                }
+                                                else // chưa đến ngưỡng trả lại 
+                                                {
+                                                    // 2.2. Kiểm tra Tổng số jobs QA Complete (vòng hiện tại) = Tổng số jobs QA (vòng hiện tại) hay chưa? Nếu bằng => NextStep sang bước TIẾP THEO (Tổng hợp dữ liệu)
+                                                    if (allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
+                                                    {
+                                                        // QA Pass => tạo lô dữ liệu để Pass qua cho bước tổng hợp 
+                                                        isQAPass = true;
+                                                        //lấy bước theo nhánh true
+                                                        var stepCondition_pass_case = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
+                                                        nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                                                        var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
+                                                        inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
+                                                        inputParamsForQAPass.ForEach(x =>
+                                                        {
+                                                            x.Note = string.Empty;
+                                                            x.QaStatus = isQAPass;
+                                                        });
+                                                        isTriggerNextStep = true;
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                break;
+                            case (short)EnumWorkflowStep.ConditionType.FileExt: // Điều kiện theo định dạng file
+                                break;
+                            case (short)EnumWorkflowStep.ConditionType.DigitizedTemplate: // Điều kiện theo mẫu
+                                break;
+                        }
+                    }
+                }
+
+                if (isTriggerNextStep)
+                {
+
+                    var parallelJobInstanceId = Guid.NewGuid();
+
+                    //đằng sau QA step -> Chỉ đến CheckFinal (nếu False) hoặc SyntheticData (nếu True)
+
+                    //Lựa chọn các nhánh cần tạo job tùy theo điều kiện isQAPass
+                    var configStepConditionDefaults = JsonConvert.DeserializeObject<List<ConfigStepConditionDefault>>(jTokenConfigStepConditions.ToString());
+                    var stepCondition = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
+                    nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                    nextWfsInfoes = nextWfsInfoes.Where(x => x.InstanceId == stepCondition.WorkflowStepInstanceId).ToList();
+
+                    foreach (var nextWfsInfo in nextWfsInfoes)
+                    {
+                        int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
+                        bool isDivergenceStep = numOfResourceInJob > 1;
+
+                        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
+                            ConfigStepPropertyConstants.IsPaidStep);
+                        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                        bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+
+                        bool isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
+
+                        decimal price = 0;
+                        string value = null;
+
+                        value = JsonConvert.SerializeObject(docItems);
+                        price = isPaid
+                            ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                job.DigitizedTemplateInstanceId)
+                            : 0;
+
+                        var output = new InputParam
+                        {
+                            FileInstanceId = job.FileInstanceId,
+                            ActionCode = nextWfsInfo.ActionCode,
+                            //ActionCodes = null,
+                            DocInstanceId = job.DocInstanceId,
+                            DocName = job.DocName,
+                            DocCreatedDate = job.DocCreatedDate,
+                            DocPath = job.DocPath,
+                            TaskId = job.TaskId,
+                            TaskInstanceId = job.TaskInstanceId,
+                            ProjectTypeInstanceId = job.ProjectTypeInstanceId,
+                            ProjectInstanceId = job.ProjectInstanceId,
+                            SyncTypeInstanceId = job.SyncTypeInstanceId,
+                            DigitizedTemplateInstanceId = job.DigitizedTemplateInstanceId,
+                            DigitizedTemplateCode = job.DigitizedTemplateCode,
+                            WorkflowInstanceId = job.WorkflowInstanceId,
+                            WorkflowStepInstanceId = nextWfsInfo.InstanceId,
+                            //WorkflowStepInstanceIds = null,
+                            WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
+                            WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                            Value = value,
+                            Price = price,
+                            ClientTollRatio = job.ClientTollRatio,
+                            WorkerTollRatio = job.WorkerTollRatio,
+                            IsDivergenceStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File,
+                            ParallelJobInstanceId =
+                                nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
+                                    ? parallelJobInstanceId
+                                    : null,
+                            IsConvergenceNextStep =
+                                nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                                isConvergenceNextStep,
+                            Note = job.Note,
+                            NumOfRound = job.QaStatus ? job.NumOfRound : (short)(job.NumOfRound + 1),
+                            BatchName = job.BatchName,
+                            BatchJobInstanceId = job.BatchJobInstanceId,
+                            QaStatus = job.QaStatus,
+                            TenantId = job.TenantId,
+                        };
+
+                        if (isQAPass == false)
+                        {
+                            output.InputParams = inputParamsForQARollback;
+                        }
+                        else if (isQAPass == true)
+                        {
+                            output.InputParams = inputParamsForQAPass;
+                        }
+
+                        var taskEvt = new TaskEvent
+                        {
+                            Input = JsonConvert.SerializeObject(output),     // output của bước trước là input của bước sau
+                            AccessToken = accessToken
+                        };
+
+                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+
+                        Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
+                    }
+
+                }
+            }
+
+
+
+        }
+
+        private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo)
+        {
+            var result = listJob.Select(j => new InputParam
+            {
+                FileInstanceId = j.FileInstanceId,
+                ActionCode = nextWfsInfo.ActionCode,
+                //ActionCodes = null,
+                DocInstanceId = j.DocInstanceId,
+                DocName = j.DocName,
+                DocCreatedDate = j.DocCreatedDate,
+                DocPath = j.DocPath,
+                TaskId = j.TaskId.ToString(),
+                TaskInstanceId = j.TaskInstanceId,
+                ProjectTypeInstanceId = j.ProjectTypeInstanceId,
+                ProjectInstanceId = j.ProjectInstanceId,
+                SyncTypeInstanceId = j.SyncTypeInstanceId,
+                DigitizedTemplateInstanceId = j.DigitizedTemplateInstanceId,
+                DigitizedTemplateCode = j.DigitizedTemplateCode,
+                WorkflowInstanceId = j.WorkflowInstanceId,
+                WorkflowStepInstanceId = nextWfsInfo.InstanceId,//j.WorkflowStepInstanceId,
+                //WorkflowStepInstanceIds = null,
+                WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
+                WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                Value = j.Value,
+                Price = j.Price,
+                ClientTollRatio = j.ClientTollRatio,
+                WorkerTollRatio = j.WorkerTollRatio,
+                IsDivergenceStep = false,
+                ParallelJobInstanceId = j.ParallelJobInstanceId,
+                IsConvergenceNextStep = nextWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File,
+                NumOfRound = (short)(j.NumOfRound),
+                BatchName = j.BatchName,
+                BatchJobInstanceId = j.BatchJobInstanceId,
+                Note = j.Note,
+                TenantId = j.TenantId,
+            }).ToList();
+
+            return result;
+        }
+        private List<InputParam> AsignNoteAndRound(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool isQAPass)
+        {
+            foreach (var jobNextStepItem in jobsForNextStep)
+            {
+                var qaItem = qaJobs.SingleOrDefault(x => x.DocInstanceId == jobNextStepItem.DocInstanceId);
+                if (qaItem != null)
+                {
+                    jobNextStepItem.Note = qaItem.Note;
+                }
+
+                if (string.IsNullOrEmpty(jobNextStepItem.Note))
+                {
+                    jobNextStepItem.Note = "Dữ liệu thuộc lô bị QA trả lại";
+                }
+
+                if (isQAPass == false)
+                {
+                    jobNextStepItem.NumOfRound += 1;
+                }
+            }
+
+            return jobsForNextStep;
+        }
+        private async Task TriggerNextStep(TaskEvent evt, string nextWfsActionCode)
+        {
+            bool isNextStepHeavyJob = WorkflowHelper.IsHeavyJob(nextWfsActionCode);
+            // Outbox
+            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            {
+                ExchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower(),
+                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                Data = JsonConvert.SerializeObject(evt)
+            });
+            var isAck = _eventBus.Publish(evt, isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower());
+            if (isAck)
+            {
+                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+            }
+            else
+            {
+                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+            }
+        }
+
+        private async Task<bool> TriggerNextStepHappened(Guid docInstanceId, Guid workflowStepInstanceId, Guid? docTypeFieldInstanceId = null, Guid? docFieldValueInstanceId = null)
+        {
+            if (_useCache)
+            {
+                var strDocTypeFieldInstanceId = docTypeFieldInstanceId == null
+                    ? "null"
+                    : docTypeFieldInstanceId.ToString();
+                var strDocFieldValueInstanceId = docFieldValueInstanceId == null
+                    ? "null"
+                    : docFieldValueInstanceId.ToString();
+
+                string cacheKey = $"{docInstanceId}_{workflowStepInstanceId}_{strDocTypeFieldInstanceId}_{strDocFieldValueInstanceId}";
+                var triggerNextStepHappened = await _cachingHelper.TryGetFromCacheAsync<string>(cacheKey);  // Lưu số lần trigger
+                if (!string.IsNullOrEmpty(triggerNextStepHappened))
+                {
+                    return true;
+                }
+                else
+                {
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, 1, 60);
+                    return false;
+                }
+            }
+            else
+            {
+                // TODO: DB
+            }
+
+            return false;
+        }
+
+        private async Task<Guid> GetClientInstanceIdByProject(Guid projectInstanceId, string accessToken = null)
+        {
+            var clientInstanceIdsResult =
+                await _userProjectClientService.GetPrimaryUserInstanceIdByProject(projectInstanceId, accessToken);
+            if (clientInstanceIdsResult != null && clientInstanceIdsResult.Success)
+            {
+                return clientInstanceIdsResult.Data;
+            }
+
+            return Guid.Empty;
+        }
+
+        private async Task<Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>> GetWfInfoes(Guid workflowInstanceId, string accessToken = null)
+        {
+            var wfResult = await _workflowClientService.GetByInstanceIdAsync(workflowInstanceId, accessToken);
+            if (wfResult.Success && wfResult.Data != null)
+            {
+                var wf = wfResult.Data;
+
+                var allWfStepInfoes = new List<WorkflowStepInfo>();
+                foreach (var wfs in wf.LstWorkflowStepDto)
+                {
+                    allWfStepInfoes.Add(new WorkflowStepInfo
+                    {
+                        Id = wfs.Id,
+                        InstanceId = wfs.InstanceId,
+                        Name = wfs.Name,
+                        ActionCode = wfs.ActionCode,
+                        ConfigPrice = wfs.ConfigPrice,
+                        ConfigStep = wfs.ConfigStep,
+                        ServiceCode = wfs.ServiceCode,
+                        ApiEndpoint = wfs.ApiEndpoint,
+                        HttpMethodType = wfs.HttpMethodType,
+                        IsAuto = wfs.IsAuto,
+                        ViewUrl = wfs.ViewUrl,
+                        Attribute = wfs.Attribute
+                    });
+                }
+
+                // Loại bỏ những bước bị ngưng xử lý
+                var wfsInfoes = WorkflowHelper.GetAvailableSteps(allWfStepInfoes);
+
+                var wfSchemaInfoes = wf.LstWorkflowSchemaConditionDto.Select(x => new WorkflowSchemaConditionInfo
+                {
+                    WorkflowStepFrom = x.WorkflowStepFrom,
+                    WorkflowStepTo = x.WorkflowStepTo
+                }).ToList();
+                return new Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>(wfsInfoes, wfSchemaInfoes);
+            }
+
+            return null;
+        }
+    }
+}

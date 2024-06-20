@@ -1,0 +1,54 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30621.155
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Axe.TaskManagement.Api", "Axe.TaskManagement.Api\Axe.TaskManagement.Api.csproj", "{CDCA5CA9-C3F5-4B27-AC0C-C8418499BB46}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Axe.TaskManagement.Service", "Axe.TaskManagement.Service\Axe.TaskManagement.Service.csproj", "{BE033DAD-5AD5-4800-A650-EA80E59AB1CC}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Axe.TaskManagement.Data", "Axe.TaskManagement.Data\Axe.TaskManagement.Data.csproj", "{86CE6A0A-68B4-4FCA-9136-72B78E805820}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Axe.TaskManagement.Model", "Axe.TaskManagement.Model\Axe.TaskManagement.Model.csproj", "{3EFB0E63-5FA7-4251-9AD9-6C4D01EF8E2C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Mock", "Mock", "{6EB1B5D9-1AAD-4381-8DD8-B35060547911}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Axe.TaskManagement.MockApi", "Axe.TaskManagement.MockApi\Axe.TaskManagement.MockApi.csproj", "{64389ACB-EEAB-4DB9-A661-429BB24FD8C5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{CDCA5CA9-C3F5-4B27-AC0C-C8418499BB46}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CDCA5CA9-C3F5-4B27-AC0C-C8418499BB46}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CDCA5CA9-C3F5-4B27-AC0C-C8418499BB46}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CDCA5CA9-C3F5-4B27-AC0C-C8418499BB46}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BE033DAD-5AD5-4800-A650-EA80E59AB1CC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BE033DAD-5AD5-4800-A650-EA80E59AB1CC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BE033DAD-5AD5-4800-A650-EA80E59AB1CC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BE033DAD-5AD5-4800-A650-EA80E59AB1CC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{86CE6A0A-68B4-4FCA-9136-72B78E805820}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{86CE6A0A-68B4-4FCA-9136-72B78E805820}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{86CE6A0A-68B4-4FCA-9136-72B78E805820}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{86CE6A0A-68B4-4FCA-9136-72B78E805820}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3EFB0E63-5FA7-4251-9AD9-6C4D01EF8E2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3EFB0E63-5FA7-4251-9AD9-6C4D01EF8E2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3EFB0E63-5FA7-4251-9AD9-6C4D01EF8E2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3EFB0E63-5FA7-4251-9AD9-6C4D01EF8E2C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{64389ACB-EEAB-4DB9-A661-429BB24FD8C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{64389ACB-EEAB-4DB9-A661-429BB24FD8C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{64389ACB-EEAB-4DB9-A661-429BB24FD8C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{64389ACB-EEAB-4DB9-A661-429BB24FD8C5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{64389ACB-EEAB-4DB9-A661-429BB24FD8C5} = {6EB1B5D9-1AAD-4381-8DD8-B35060547911}
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {114DF206-AE29-470D-8B0D-20B98F1EB5BB}
+	EndGlobalSection
+EndGlobal
