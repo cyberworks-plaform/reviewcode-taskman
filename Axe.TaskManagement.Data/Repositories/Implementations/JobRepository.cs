@@ -410,6 +410,13 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return await data.ToListAsync();
         }
 
+        public async Task<List<Job>> GetJobsByDocInstanceId(Guid docInstanceId)
+        {
+            var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
+            var jobs = DbSet.Find(filter);
+            return await jobs.ToListAsync();
+        }
+
         public async Task<long> DeleteMultiByDocAsync(Guid docInstanceId)
         {
             var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);

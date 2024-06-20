@@ -2940,12 +2940,44 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<long>> DeleteMultiByDocAsync(Guid docid)
+        public async Task<GenericResponse<long>> DeleteMultiByDocAsync(Guid docInstanceId)
         {
             GenericResponse<long> response;
-            var result = await _repository.DeleteMultiByDocAsync(docid);
+            var jobsForDelete = await _repository.GetJobsByDocInstanceId(docInstanceId);
+            var result = await _repository.DeleteMultiByDocAsync(docInstanceId);
+
+            //sync data to Job Distribution by publish LogJobEvent
+            jobsForDelete.ForEach(x => x.Status = (short)EnumJob.Status.Ignore);
+
+            await PublishJobEvent(jobsForDelete);
+
             response = GenericResponse<long>.ResultWithData(result);
             return response;
+        }
+
+        private async Task PublishJobEvent(List<Job> jobs)
+        {
+            var logJobEvt = new LogJobEvent
+            {
+                LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
+            };
+            // Outbox
+            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            {
+                ExchangeName = nameof(LogJobEvent).ToLower(),
+                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                Data = JsonConvert.SerializeObject(logJobEvt)
+            });
+            var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+            if (isAck)
+            {
+                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+            }
+            else
+            {
+                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+            }
         }
 
         #region Get List JobDto with different arguments

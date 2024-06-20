@@ -77,5 +77,6 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<JobByDocDoneEntity>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);
         Task<List<JobOfFileEntity>> GetSummaryJobOfFile(Guid? docInstanceId);
         Task<Job> UpdateAndLockRecordAsync(Job entity);
+        Task<List<Job>> GetJobsByDocInstanceId(Guid docInstanceId);
     }
 }
