@@ -6,6 +6,9 @@ namespace Axe.TaskManagement.Data.EntityExtensions
 {
     public class TotalDocPathJob
     {
+        public Guid BatchJobInstanceId { get; set; }
+        public string BatchName { get; set; }
+        public int NumOfRound { get; set; }
         public string Path { get; set; }
         public int Total { get; set; }
         public short Status { get; set; }
@@ -20,6 +23,7 @@ namespace Axe.TaskManagement.Data.EntityExtensions
     {
         public long PathId { get; set; }
         public string PathRelation { get; set; }
+        public string SyncMetaValuePath { get; set; }
         public List<TotalDocPathJob> data { get; set; }
     }
 

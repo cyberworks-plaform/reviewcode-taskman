@@ -4033,6 +4033,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     result.Add(new SummaryTotalDocPathJob
                     {
                         PathId = 0,
+                        SyncMetaValuePath = "",
                         PathRelation = item,
                         data = data
                     });
