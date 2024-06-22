@@ -2,6 +2,7 @@
 using MongoDB.Bson.Serialization.Attributes;
 using System;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 
 namespace Axe.TaskManagement.Service.Dtos
 {
@@ -14,6 +15,18 @@ namespace Axe.TaskManagement.Service.Dtos
 
         [BsonElement("instance_id")]
         public Guid InstanceId { get; set; }
+
+        [Description("InstanceId mẫu số hóa")]
+        [BsonElement("digitized_template_instance_id")]
+        public Guid? DigitizedTemplateInstanceId { get; set; }
+
+        [Description("InstanceId tài liệu")]
+        [BsonElement("doc_instance_id")]
+        public Guid? DocInstanceId { get; set; }
+
+        [Description("Đường dẫn tài liệu")]
+        [BsonElement("doc_path")]
+        public string DocPath { get; set; }   // Đường dẫn tài liệu
 
         [Description("InstanceId trường dữ liệu")]
         [BsonElement("doc_type_field_instance_id")]
