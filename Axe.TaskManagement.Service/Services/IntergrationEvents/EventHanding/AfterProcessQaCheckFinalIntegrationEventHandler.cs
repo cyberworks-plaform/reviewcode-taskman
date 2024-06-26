@@ -391,28 +391,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         }
 
 
-                                        //xử lý QA theo single file
+                                        //xử lý QA theo single file hoặc là QA pass thì cho File đó qua luôn
                                         if (isProcessQAInBatchMode == false)
                                         {
                                             isQAPass = job.QaStatus;
                                             isTriggerNextStep = true;
 
                                         }
-                                        else //xử lý QA theo Batch file
+                                        else //xử lý QA theo Batch file và QAStatus=false;
                                         {
-                                            //kiểm tra xem Phiếu hiện tại đã chuyển sang round mới hay chưa
-                                            var hasNewRound = _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
-                                                preWfsInfo?.InstanceId, null, job.DocPath, job.BatchJobInstanceId, (short)(job.NumOfRound + 1))
-                                                .Result.Any();
-
-                                            if (hasNewRound)
-                                            {
-                                                isTriggerNextStep = false;
-                                                //không làm gì, chỉ cần log
-                                                Log.Logger.Information($"Get QA Job result after this batch has been rollback -  DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
-                                            }
                                             // 1. Trường hợp job.QaStatus = true
-                                            else if (job.QaStatus == true)
+                                            if (job.QaStatus == true)
                                             {
                                                 // 1.1. Kiểm tra Tổng số jobs QA Complete (vòng hiện tại) = Tổng số jobs QA (vòng hiện tại) hay chưa? Nếu bằng => NextStep sang bước TIẾP THEO (Tổng hợp dữ liệu)
                                                 if (allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
@@ -428,6 +417,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                         });
                                                     isTriggerNextStep = true;
                                                 }
+                                                else // nếu lô QA chưa hoàn thành thì chỉ trigger next step cho 1 phiếu đã pass QA
+                                                {
+                                                    isQAPass = true;
+                                                    inputParamsForQAPass = null;
+                                                    isTriggerNextStep = true;
+                                                }    
                                             }
                                             else if (job.QaStatus == false)
                                             {
@@ -435,7 +430,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                                                 var pathStatusRs = await _docClientService.GetStatusPath(job.ProjectInstanceId.GetValueOrDefault(), job.SyncTypeInstanceId.GetValueOrDefault(), job.DocPath, accessToken);
 
-
+                                                
                                                 batchQASize = completePrevJobs.Count();
 
                                                 int numOfWrongQaCheck = Convert.ToInt32(Math.Round((decimal)batchQASize * (decimal)batchQAFalseThreshold / (decimal)100, MidpointRounding.ToEven));    // Số Phiếu trong Lô * PercentWrongQaCheck * 100%
@@ -457,6 +452,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     // 2.1. Quay về bước TRƯỚC (CheckFinal): Tạo jobs bước TRƯỚC (CheckFinal) với số lượng BatchSize & tăng NumOfRound
 
                                                     // Lấy danh sách jobs CheckFinal Complete vòng hiện tại
+                                                    //Rule QA: phiếu nào pass thì cho đi tiếp, false thì rollback theo lô => cần phải trừ đi các phiếu đã passQA
+                                                    var completeQAPassJobs = allJobsInBatchAndRound.Where(x => x.Status == (short)EnumJob.Status.Complete && x.QaStatus == true).ToList();
+                                                    completePrevJobs = completePrevJobs.Where(x => !completeQAPassJobs.Any(y => y.DocInstanceId == x.DocInstanceId)).ToList();
+                                                    
                                                     inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo);
 
                                                     //gắn note = QA_job.note và tăng Round
@@ -470,7 +469,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                         ignoreQaJobs.ForEach(x =>
                                                         {
                                                             x.Status = (short)EnumJob.Status.Ignore;
-                                                            x.ReasonIgnore = "Lô phiếu đến giới hạn số lượng không Pass QA, quay lại bước trước";
+                                                            x.ReasonIgnore = "Job QA không cần thực hiện thêm do lô phiếu đã bị trả lại";
                                                         });
                                                         await _repository.UpdateMultiAsync(ignoreQaJobs);
 
