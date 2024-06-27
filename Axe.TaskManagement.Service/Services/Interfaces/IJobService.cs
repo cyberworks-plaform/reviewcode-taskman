@@ -26,6 +26,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<JobDto>>> GetListJobByDocInstanceIds(List<Guid> docInstanceIds);
 
         Task<GenericResponse<JobDto>> GetProcessingJobCheckFinalByFileInstanceId(Guid fileInstanceId);
+        Task<GenericResponse<JobDto>> GetProcessingJobQACheckFinalByFileInstanceId(Guid fileInstanceId);
 
         Task<GenericResponse<List<JobDto>>> GetListJob(string actionCode = null, string accessToken = null);
 

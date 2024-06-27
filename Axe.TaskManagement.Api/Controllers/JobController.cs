@@ -83,6 +83,13 @@ namespace Axe.TaskManagement.Api.Controllers
             return ResponseResult(await _service.GetProcessingJobCheckFinalByFileInstanceId(fileInstanceId));
         }
 
+        [HttpPost]
+        [Route("get-qa-check-final-by-file-instance-id")]
+        public async Task<IActionResult> GetListJobQACheckFinalByFileInstanceId(Guid fileInstanceId)
+        {
+            return ResponseResult(await _service.GetProcessingJobQACheckFinalByFileInstanceId(fileInstanceId));
+        }
+
         [HttpGet]
         [Route("get-list-job")]
         public async Task<IActionResult> GetListJob(string actionCode = null)
