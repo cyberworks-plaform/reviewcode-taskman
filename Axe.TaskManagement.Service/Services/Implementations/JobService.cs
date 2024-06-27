@@ -4120,9 +4120,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="inputType"></param>
         /// <param name="docTypeFieldInstanceId"></param>
         /// <param name="parallelInstanceIds"></param>
+        /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
@@ -4146,7 +4147,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var filter4 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);// Lấy các job đang đợi phân công
 
                     var filter = filter1 & filter2 & filter3;
-
+                    
                     if (projectTypeInstanceId != Guid.Empty)
                     {
                         filter = filter & Builders<Job>.Filter.Eq(x => x.ProjectTypeInstanceId, projectTypeInstanceId);
@@ -4161,6 +4162,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         filter = filter & Builders<Job>.Filter.Eq(x => x.DocTypeFieldInstanceId, docTypeFieldInstanceId);
                     }
 
+                    //uu tiên lấy theo docPath nếu có
+                    if(!string.IsNullOrEmpty(docPath))
+                    {
+                        filter &= Builders<Job>.Filter.Eq(x => x.DocPath, docPath);
+                    }
+                      
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
