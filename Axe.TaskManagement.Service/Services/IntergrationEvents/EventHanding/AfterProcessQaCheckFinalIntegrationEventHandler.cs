@@ -418,7 +418,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     // Lấy danh sách jobs CheckFinal Complete vòng hiện tại
                                                     var completeQAPassJobs = allJobsInBatchAndRound.Where(x => x.Status == (short)EnumJob.Status.Complete && x.QaStatus == true).ToList();
 
-                                                    //loại bỏ đi những phiếu đã pass QA
+                                                    //Todo: loại bỏ đi những phiếu đã pass QA và ĐÃ được tạo job tiếp theo
                                                     completePrevJobs = completePrevJobs.Where(x => !completeQAPassJobs.Any(y => y.DocInstanceId == x.DocInstanceId)).ToList();
 
                                                     //lấy bước theo nhánh false
@@ -649,6 +649,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 BatchJobInstanceId = j.BatchJobInstanceId,
                 Note = j.Note,
                 TenantId = j.TenantId,
+                LastModifiedBy = j.LastModifiedBy
             }).ToList();
 
             return result;
