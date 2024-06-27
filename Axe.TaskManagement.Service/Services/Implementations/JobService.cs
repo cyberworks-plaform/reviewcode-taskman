@@ -1944,6 +1944,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<JobDto>> GetProcessingJobQACheckFinalByFileInstanceId(Guid fileInstanceId)
+        {
+            GenericResponse<JobDto> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.FileInstanceId, fileInstanceId) & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+                var data = await _repos.FindFirstAsync(filter);
+                var dataDto = _mapper.Map<Job, JobDto>(data);
+                response = GenericResponse<JobDto>.ResultWithData(dataDto);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<JobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
         /// <summary>
         /// Lấy danh sách các job đang xử lý dở dang bởi worker ID
         /// </summary>
@@ -3240,6 +3257,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, false);
                                     }
                                     break;
+                                case ActionCodeConstants.QACheckFinal:
+                                    if (stateValue == 0)
+                                    {
+                                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, true);
+                                    }
+                                    if (stateValue > 0)
+                                    {
+                                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, false);
+                                    }
+                                    break;
                                 default:
                                     break;
                             }
@@ -3354,6 +3381,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         break;
                     case ActionCodeConstants.DataCheck:
                     case ActionCodeConstants.CheckFinal:
+                        var filterCount1 = lastFilter & Builders<Job>.Filter.Eq(_ => _.HasChange, true);
+                        countAbnormalJob = unchecked((int)(await _repos.CountAsync(filterCount1)));
+                        break;
+                    case ActionCodeConstants.QACheckFinal:
                         var filterCount2 = lastFilter & Builders<Job>.Filter.Eq(_ => _.HasChange, true);
                         countAbnormalJob = unchecked((int)(await _repos.CountAsync(filterCount2)));
                         break;
