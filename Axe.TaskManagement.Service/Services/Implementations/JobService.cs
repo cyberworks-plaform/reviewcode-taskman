@@ -4095,7 +4095,67 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         }
         #endregion
 
-        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstPathId)
+        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstSyncMetaRelationPath, string accessToken = null)
+        {
+            GenericResponse<List<SummaryTotalDocPathJob>> response;
+            var result = new List<SummaryTotalDocPathJob>();
+            try
+            {
+                var lstSyncMetaRelation =  await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
+                var syncMetaRelations = lstSyncMetaRelation.Data;
+                var lstSyncMetaRelationIdArr = !string.IsNullOrEmpty(lstSyncMetaRelationPath) ? JsonConvert.DeserializeObject<List<string>>(lstSyncMetaRelationPath) : new List<string>();
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                var lstData = await _repository.GetSummaryFolder(filter);
+                var lstDocInstanceId = lstData.Select(x => x.DocInstanceId).ToList();
+                var lstDocDataResponse = await _docClientService.GetListDocByDocInstanceIds(lstDocInstanceId, accessToken);
+                var lstDocData = lstDocDataResponse.Data;
+                foreach (var data in lstData)
+                {
+                    var docData = lstDocData.FirstOrDefault(x => x.InstanceId == data.DocInstanceId);
+                    if (docData != null)
+                    {
+                        data.RelationPath = docData.SyncMetaRelationPath;
+                    }
+                }
+                foreach (var item in lstSyncMetaRelationIdArr)
+                {
+                    var syncMetaRelation = syncMetaRelations.FirstOrDefault(x => x.Id == long.Parse(item));
+                    //var syncMetaRelationResponse = await _docClientService.GetSyncMetaRelationByIdAsync(long.Parse(item), accessToken);
+                    //var syncMetaRelation = syncMetaRelationResponse.Data;
+                    var data = lstData.Where(x => x.RelationPath != null && x.RelationPath.Contains(item)).ToList();
+                    if (data == null) continue;
+                    if (syncMetaRelation != null)
+                    {
+                        result.Add(new SummaryTotalDocPathJob
+                        {
+                            PathId = 0,
+                            SyncMetaValuePath = "",
+                            SyncMetaRelationPath = item,
+                            PathRelation = syncMetaRelation.Path,
+                            data = data
+                        });
+                    }
+                    else
+                    {
+                        result.Add(new SummaryTotalDocPathJob
+                        {
+                            PathId = 0,
+                            SyncMetaValuePath = "",
+                            SyncMetaRelationPath = item,
+                            PathRelation = "",
+                            data = data
+                        });
+                    }
+                }
+                response = GenericResponse<List<SummaryTotalDocPathJob>>.ResultWithData(result);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<List<SummaryTotalDocPathJob>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder_old(Guid projectInstanceId, string lstPathId)
         {
             GenericResponse<List<SummaryTotalDocPathJob>> response;
             var result = new List<SummaryTotalDocPathJob>();
@@ -4123,7 +4183,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
         public async Task<GenericResponse<List<TotalDocPathJob>>> GetSummaryDoc(Guid projectInstanceId, string path, string docInstanceIds)
         {
             GenericResponse<List<TotalDocPathJob>> response;

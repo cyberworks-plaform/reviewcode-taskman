@@ -23,5 +23,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<DocLockStatusDto>>> CheckLockDocs(string instanceIds, string accessToken = null);
 
         Task<GenericResponse<PathStatusDto>> GetStatusPath(Guid projectInstanceId, Guid syncTypeInstanceId, string path, string accessToken = null);
+        Task<GenericResponse<List<SyncMetaRelationDto>>> GetAllSyncMetaRelationAsync(string accessToken = null);
+        Task<GenericResponse<List<DocDto>>> GetListDocByDocInstanceIds(List<Guid> lstInstanceIds, string accessToken = null);
     }
 }
