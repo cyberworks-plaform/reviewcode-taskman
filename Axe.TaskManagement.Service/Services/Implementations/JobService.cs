@@ -1612,7 +1612,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null ||
                     string.IsNullOrEmpty(inputParam.Value))
                 {
-                    return GenericResponse<string>.ResultWithError((int) HttpStatusCode.BadRequest, null,
+                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null,
                         "Bad request!");
                 }
 
@@ -3375,6 +3375,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<double>> GetFalsePercent(string accessToken)
+        {
+            GenericResponse<double> response;
+            try
+            {
+                var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+
+                if (_userPrincipalService == null)
+                {
+                    return GenericResponse<double>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Not Authorize");
+                }
+
+                //var lastFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
+                var lastFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
+
+                var result = await _repository.GetFalsePercentAsync(lastFilter);
+
+                response = GenericResponse<double>.ResultWithData(result);
+            }
+            catch (Exception ex)
+            {
+
+                response = GenericResponse<double>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return response;
+        }
+
         public async Task<GenericResponse<HistoryJobDto>> GetHistoryJobByStep(PagingRequest request,
             string projectInstanceId, string sActionCodes)
         {
@@ -4122,7 +4150,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
@@ -4146,7 +4174,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var filter4 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);// Lấy các job đang đợi phân công
 
                     var filter = filter1 & filter2 & filter3;
-                    
+
                     if (projectTypeInstanceId != Guid.Empty)
                     {
                         filter = filter & Builders<Job>.Filter.Eq(x => x.ProjectTypeInstanceId, projectTypeInstanceId);
@@ -4162,11 +4190,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //uu tiên lấy theo docPath nếu có
-                    if(!string.IsNullOrEmpty(docPath))
+                    if (!string.IsNullOrEmpty(docPath))
                     {
                         filter &= Builders<Job>.Filter.Eq(x => x.DocPath, docPath);
                     }
-                      
+
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
