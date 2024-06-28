@@ -568,129 +568,132 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var f = filter.Render(documentSerializer, serializerRegistry).ToBsonDocument();
 
             var bson = new BsonDocument[] {
-        new BsonDocument("$match", f),
-        new BsonDocument("$project",
-            new BsonDocument {
-                { "doc_instance_id", 1 },
-                { "doc_path", 1 },
-                { "status", 1 },
-                { "action_code", 1 },
-                { "work_flow_step_instance_id", 1 },
-                { "doc_type_field_sort_order", 1 },
-                //{ "sync_type_instance_id", 1 },
-                //{ "batch_job_instance_id", 1 },
-                { "batch_name", 1 },
-                { "num_of_round", 1 },
-                { "isNL", new BsonDocument("$cond",
-                    new BsonArray {
-                        new BsonDocument("$eq", new BsonArray { "$action_code", "DataEntry" }),
-                        1,
-                        0
-                    })
-                },
-                { "isOCR", new BsonDocument("$cond",
-                    new BsonArray {
-                        new BsonDocument("$eq", new BsonArray { "$action_code", "OCR" }),
-                        1,
-                        0
-                    })
-                },
-                { "isDoubleSort", new BsonDocument("$cond",
-                    new BsonArray {
-                        new BsonDocument("$and", new BsonArray {
-                            new BsonDocument("$eq", new BsonArray { "$doc_type_field_sort_order", 1 }),
-                            new BsonDocument("$eq", new BsonArray { "$action_code", "DataEntry" })
-                        }),
-                        1,
-                        0
-                    })
-                }
-            }),
-        new BsonDocument("$group",
-            new BsonDocument {
-                { "_id", "$doc_instance_id" },
-                { "totalNL", new BsonDocument("$sum", "$isNL") },
-                { "totalOCR", new BsonDocument("$sum", "$isOCR") },
-                { "totalDoubleSort", new BsonDocument("$sum", "$isDoubleSort") },
-                { "z", new BsonDocument("$push",
-                    new BsonDocument {
-                        { "doc_path", "$doc_path" },
-                        { "status", "$status" },
+            new BsonDocument("$match", f),
+            new BsonDocument("$project",
+                new BsonDocument {
+                    { "doc_instance_id", 1 },
+                    { "doc_path", 1 },
+                    { "status", 1 },
+                    { "action_code", 1 },
+                    { "work_flow_step_instance_id", 1 },
+                    { "doc_type_field_sort_order", 1 },
+                    //{ "sync_type_instance_id", 1 },
+                    { "batch_job_instance_id", 1 },
+                    { "batch_name", 1 },
+                    { "num_of_round", 1 },
+                    { "isNL", new BsonDocument("$cond",
+                        new BsonArray {
+                            new BsonDocument("$eq", new BsonArray { "$action_code", "DataEntry" }),
+                            1,
+                            0
+                        })
+                    },
+                    { "isOCR", new BsonDocument("$cond",
+                        new BsonArray {
+                            new BsonDocument("$eq", new BsonArray { "$action_code", "OCR" }),
+                            1,
+                            0
+                        })
+                    },
+                    { "isDoubleSort", new BsonDocument("$cond",
+                        new BsonArray {
+                            new BsonDocument("$and", new BsonArray {
+                                new BsonDocument("$eq", new BsonArray { "$doc_type_field_sort_order", 1 }),
+                                new BsonDocument("$eq", new BsonArray { "$action_code", "DataEntry" })
+                            }),
+                            1,
+                            0
+                        })
+                    }
+                }),
+            new BsonDocument("$group",
+                new BsonDocument {
+                    { "_id", "$batch_job_instance_id" },
+                    { "totalNL", new BsonDocument("$sum", "$isNL") },
+                    { "totalOCR", new BsonDocument("$sum", "$isOCR") },
+                    { "totalDoubleSort", new BsonDocument("$sum", "$isDoubleSort") },
+                    { "z", new BsonDocument("$push",
+                        new BsonDocument {
+                            { "doc_path", "$doc_path" },
+                            { "status", "$status" },
+                            { "action_code", "$action_code" },
+                            { "doc_instance_id", "$doc_instance_id" },
+                            { "work_flow_step_instance_id", "$work_flow_step_instance_id" },
+                            //{ "sync_type_instance_id", "$sync_type_instance_id" },
+                            //{ "batch_job_instance_id", "$batch_job_instance_id" },
+                            { "batch_name", "$batch_name" },
+                            { "num_of_round", "$num_of_round" }
+                        })
+                    }
+                }),
+            new BsonDocument("$unwind", "$z"),
+            new BsonDocument("$project",
+                new BsonDocument {
+                    { "batch_job_instance_id", 1 },
+                    { "totalNL", new BsonDocument("$cond",
+                        new BsonArray {
+                            new BsonDocument("$eq", new BsonArray { "$totalDoubleSort", 0 }),
+                            0,
+                            new BsonDocument("$divide", new BsonArray { "$totalNL", "$totalDoubleSort" })
+                        })
+                    },
+                    { "totalOCR", 1 },
+                    { "totalDoubleSort", 1 },
+                    //{ "batch_job_instance_id", "$z.batch_job_instance_id" },
+                    { "batch_name", "$z.batch_name" },
+                    { "num_of_round", "$z.num_of_round" },
+                    { "doc_path", "$z.doc_path" },
+                    { "action_code", "$z.action_code" },
+                    { "doc_instance_id", "$z.doc_instance_id" },
+                    { "work_flow_step_instance_id", "$z.work_flow_step_instance_id" },
+                    //{ "sync_type_instance_id", "$z.sync_type_instance_id" },
+                    { "status", "$z.status" }
+                }),
+            new BsonDocument("$group",
+                new BsonDocument {
+                    { "_id", new BsonDocument {
                         { "action_code", "$action_code" },
                         { "work_flow_step_instance_id", "$work_flow_step_instance_id" },
                         //{ "sync_type_instance_id", "$sync_type_instance_id" },
-                        //{ "batch_job_instance_id", "$batch_job_instance_id" },
-                        { "batch_name", "$batch_name" },
-                        { "num_of_round", "$num_of_round" }
-                    })
-                }
-            }),
-        new BsonDocument("$unwind", "$z"),
-        new BsonDocument("$project",
-            new BsonDocument {
-                { "doc_instance_id", 1 },
-                { "totalNL", new BsonDocument("$cond",
-                    new BsonArray {
-                        new BsonDocument("$eq", new BsonArray { "$totalDoubleSort", 0 }),
-                        0,
-                        new BsonDocument("$divide", new BsonArray { "$totalNL", "$totalDoubleSort" })
-                    })
-                },
-                { "totalOCR", 1 },
-                { "totalDoubleSort", 1 },
-                //{ "batch_job_instance_id", "$z.batch_job_instance_id" },
-                { "batch_name", "$z.batch_name" },
-                { "num_of_round", "$z.num_of_round" },
-                { "doc_path", "$z.doc_path" },
-                { "action_code", "$z.action_code" },
-                { "work_flow_step_instance_id", "$z.work_flow_step_instance_id" },
-                //{ "sync_type_instance_id", "$z.sync_type_instance_id" },
-                { "status", "$z.status" }
-            }),
-        new BsonDocument("$group",
-            new BsonDocument {
-                { "_id", new BsonDocument {
-                    { "action_code", "$action_code" },
-                    { "work_flow_step_instance_id", "$work_flow_step_instance_id" },
-                    //{ "sync_type_instance_id", "$sync_type_instance_id" },
-                    { "doc_instance_id", "$doc_instance_id" },
-                    { "doc_path", "$doc_path" },
-                    { "status", "$status" }
-                }},
-                { "totalNL", new BsonDocument("$first", "$totalNL") },
-                { "totalOCR", new BsonDocument("$first", "$totalOCR") },
-                { "action_code", new BsonDocument("$first", "$action_code") },
-                { "work_flow_step_instance_id", new BsonDocument("$first", "$work_flow_step_instance_id") },
-                { "doc_instance_id", new BsonDocument("$first", "$doc_instance_id") },
-                { "doc_path", new BsonDocument("$first", "$doc_path") },
-                { "status", new BsonDocument("$first", "$status") },
-                { "total", new BsonDocument("$sum", 1) },
-                //{ "batch_job_instance_id", new BsonDocument("$first", "$batch_job_instance_id") },
-                //{ "sync_type_instance_id", new BsonDocument("$first", "$sync_type_instance_id") },
-                { "batch_name", new BsonDocument("$first", "$batch_name") },
-                { "num_of_round", new BsonDocument("$first", "$num_of_round") }
-            }),
-        new BsonDocument("$project",
-            new BsonDocument {
-                { "action_code", 1 },
-                { "work_flow_step_instance_id", 1 },
-                { "doc_instance_id", 1 },
-                { "doc_path", 1 },
-                { "status", 1 },
-                { "totalNL", 1 },
-                { "totalOCR", 1 },
-                { "total", 1 },
-                //{ "sync_type_instance_id", 1 },
-                //{ "batch_job_instance_id", 1 },
-                { "batch_name", 1 },
-                { "num_of_round", 1 }
-            })
-    };
+                        { "doc_instance_id", "$doc_instance_id" },
+                        { "doc_path", "$doc_path" },
+                        { "status", "$status" }
+                    }},
+                    { "totalNL", new BsonDocument("$first", "$totalNL") },
+                    { "totalOCR", new BsonDocument("$first", "$totalOCR") },
+                    { "action_code", new BsonDocument("$first", "$action_code") },
+                    { "work_flow_step_instance_id", new BsonDocument("$first", "$work_flow_step_instance_id") },
+                    { "doc_instance_id", new BsonDocument("$first", "$doc_instance_id") },
+                    { "doc_path", new BsonDocument("$first", "$doc_path") },
+                    { "status", new BsonDocument("$first", "$status") },
+                    { "total", new BsonDocument("$sum", 1) },
+                    //{ "batch_job_instance_id", new BsonDocument("$first", "$batch_job_instance_id") },
+                    //{ "sync_type_instance_id", new BsonDocument("$first", "$sync_type_instance_id") },
+                    { "batch_name", new BsonDocument("$first", "$batch_name") },
+                    { "num_of_round", new BsonDocument("$first", "$num_of_round") }
+                }),
+            new BsonDocument("$project",
+                new BsonDocument {
+                    { "action_code", 1 },
+                    { "work_flow_step_instance_id", 1 },
+                    { "doc_instance_id", 1 },
+                    { "doc_path", 1 },
+                    { "status", 1 },
+                    { "totalNL", 1 },
+                    { "totalOCR", 1 },
+                    { "total", 1 },
+                    //{ "sync_type_instance_id", 1 },
+                    { "batch_job_instance_id", 1 },
+                    { "batch_name", 1 },
+                    { "num_of_round", 1 }
+                })
+        };
 
             var result = await DbSet.Aggregate<BsonDocument>(bson).ToListAsync();
             var response = result.Select(x => new TotalDocPathJob
             {
                 ActionCode = x["action_code"].ToString(),
+                DocInstanceId = x["doc_instance_id"].AsGuid,
                 WorkflowStepInstanceId = x["work_flow_step_instance_id"].AsGuid,
                 //SyncTypeInstanceId = x["sync_type_instance_id"].AsGuid,
                 Path = x["doc_path"].ToString(),

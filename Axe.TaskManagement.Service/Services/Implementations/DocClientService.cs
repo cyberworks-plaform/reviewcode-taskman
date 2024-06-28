@@ -17,11 +17,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
     {
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly string _serviceUri;
+        private readonly IBaseHttpClientFactory _clientSyncMetaRelationFatory;
+        private readonly string _serviceSyncMetaUri;
 
-        public DocClientService(IBaseHttpClientFactory clientFatory)
+        public DocClientService(IBaseHttpClientFactory clientFatory, IBaseHttpClientFactory clientSyncMetaRelationFatory)
         {
             _clientFatory = clientFatory;
+            _clientSyncMetaRelationFatory = clientSyncMetaRelationFatory;
             _serviceUri = $"{ApiDomain.AxeCoreEndpoint}/doc";
+            _serviceSyncMetaUri = $"{ApiDomain.AxeCoreEndpoint}/sync-meta-relation";
         }
 
         public async Task<GenericResponse<int>> ChangeStatus(Guid instanceId, short newStatus = (short)EnumDoc.Status.Processing, string accessToken = null)
@@ -164,6 +168,74 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 response = GenericResponse<PathStatusDto>.ResultWithError((int)HttpStatusCode.BadRequest,ex.Data.ToString(),ex.Message);
                 Log.Error(ex, ex.Message);
+            }
+            return response;
+        }
+        public async Task<GenericResponse<List<SyncMetaRelationDto>>> GetAllSyncMetaRelationAsync(string accessToken = null)
+        {
+            GenericResponse<List<SyncMetaRelationDto>> response;
+            try
+            {
+                var client = _clientSyncMetaRelationFatory.Create();
+                var apiEndpoint = "get-all"; ;
+                response = await client.GetAsync<GenericResponse<List<SyncMetaRelationDto>>>(_serviceSyncMetaUri, apiEndpoint, null, null, accessToken);
+                if (response != null && !response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                    throw new Exception("Không có kết nối");
+                }
+
+                return response;
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<List<SyncMetaRelationDto>>.ResultWithError((int)HttpStatusCode.BadRequest, "Có lỗi đã xảy ra", "Có lỗi đã xảy ra");
+                Log.Error(ex, ex.Message);
+            }
+
+            return response;
+        }
+        public async Task<GenericResponse<SyncMetaRelationDto>> GetSyncMetaRelationByIdAsync(long Id, string accessToken = null)
+        {
+            GenericResponse<SyncMetaRelationDto> response;
+            try
+            {
+                var client = _clientSyncMetaRelationFatory.Create();
+                var apiEndpoint = $"/{Id}"; ;
+                response = await client.GetAsync<GenericResponse<SyncMetaRelationDto>>(_serviceSyncMetaUri, apiEndpoint, null, null, accessToken);
+                if (response != null && !response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                    throw new Exception("Không có kết nối");
+                }
+
+                return response;
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<SyncMetaRelationDto>.ResultWithError((int)HttpStatusCode.BadRequest, "Có lỗi đã xảy ra", "Có lỗi đã xảy ra");
+                Log.Error(ex, ex.Message);
+            }
+
+            return response;
+        }
+        public async Task<GenericResponse<List<DocDto>>> GetListDocByDocInstanceIds(List<Guid> lstInstanceIds, string accessToken = null)
+        {
+            GenericResponse<List<DocDto>> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                //var encodedInstanceIds = WebUtility.UrlEncode(lstInstanceIds);
+                var apiEndpoint = $"get-list-doc-by-docInstanceIds";
+                response = await client.PostAsync<GenericResponse<List<DocDto>>>(_serviceUri, apiEndpoint, lstInstanceIds, null, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<List<DocDto>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
             return response;
         }

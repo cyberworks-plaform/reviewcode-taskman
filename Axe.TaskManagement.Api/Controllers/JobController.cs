@@ -460,7 +460,7 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-summary-folder")]
         public async Task<IActionResult> GetSummaryFolder(Guid projectInstanceId, [FromBody]IdsDto lstPathId)
         {
-            return ResponseResult(await _service.GetSummaryFolder(projectInstanceId, lstPathId.Ids));
+            return ResponseResult(await _service.GetSummaryFolder(projectInstanceId, lstPathId.Ids, GetBearerToken()));
         }
 
         [HttpPost]
