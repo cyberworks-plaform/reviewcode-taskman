@@ -1499,16 +1499,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
                     return response;
                 }
-                if(job.Status==(short)EnumJob.Status.Ignore)
+                if (job.Status == (short)EnumJob.Status.Ignore)
                 {
                     response = GenericResponse<int>.ResultWithData(-1, "Công việc này đã bị hủy bỏ trước khi bạn hoàn thành");
                     return response;
                 }
-                else if(job.Status != (short)EnumJob.Status.Processing)
+                else if (job.Status != (short)EnumJob.Status.Processing)
                 {
                     response = GenericResponse<int>.ResultWithData(-1, "Công việc đã thay đổi trước khi bạn hoàn thành xử lý");
                     return response;
-                }    
+                }
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
@@ -3418,22 +3418,30 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         public async Task<GenericResponse<double>> GetFalsePercent(string accessToken)
         {
+            if (_userPrincipalService == null)
+            {
+                return GenericResponse<double>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Not Authorize");
+            }
+
             GenericResponse<double> response;
+            var userInstanceId = _userPrincipalService.UserInstanceId.GetValueOrDefault();
             try
             {
-                var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+                string cacheKey = $"$@${userInstanceId}$@$FalsePercent";
+                var minutesExpired = 1;
 
-                if (_userPrincipalService == null)
+                var result = _cachingHelper.TryGetFromCache<double?>(cacheKey);
+                if (result == null)
                 {
-                    return GenericResponse<double>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Not Authorize");
+                    var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+
+                    var lastFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
+
+                    result = await _repository.GetFalsePercentAsync(lastFilter);
+
+                    await _cachingHelper.TrySetCacheAsync<double>(cacheKey, result.GetValueOrDefault(), minutesExpired * 60);
                 }
-
-                //var lastFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
-                var lastFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
-
-                var result = await _repository.GetFalsePercentAsync(lastFilter);
-
-                response = GenericResponse<double>.ResultWithData(result);
+                response = GenericResponse<double>.ResultWithData(result.GetValueOrDefault());
             }
             catch (Exception ex)
             {
@@ -4192,7 +4200,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId,int numOfRound, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
