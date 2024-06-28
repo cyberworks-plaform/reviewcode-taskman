@@ -26,6 +26,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<JobDto>>> GetListJobByDocInstanceIds(List<Guid> docInstanceIds);
 
         Task<GenericResponse<JobDto>> GetProcessingJobCheckFinalByFileInstanceId(Guid fileInstanceId);
+        Task<GenericResponse<JobDto>> GetProcessingJobQACheckFinalByFileInstanceId(Guid fileInstanceId);
 
         Task<GenericResponse<List<JobDto>>> GetListJob(string actionCode = null, string accessToken = null);
 
@@ -128,7 +129,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<ProjectCountExtensionDto>>> GetCountJobInProject(List<Guid?> projectInstanceIds, string strActionCode, string accessToken);
 
         Task<GenericResponse<bool>> LockJobByPath(Guid projectInstanceId, string pathRelationId, string accessToken = null);
-        Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int metaId, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath, string accessToken = null);
+        Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int metaId, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId,int numOfRound, string accessToken = null);
         Task<GenericResponse<bool>> UnLockJobByPath(Guid projectInstanceId, string pathRelationId, string accessToken = null);
         Task<GenericResponse<List<CountJobEntity>>> GetCountAllJobByStatus();
         Task<GenericResponse<List<CountJobEntity>>> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate);

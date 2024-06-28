@@ -83,6 +83,13 @@ namespace Axe.TaskManagement.Api.Controllers
             return ResponseResult(await _service.GetProcessingJobCheckFinalByFileInstanceId(fileInstanceId));
         }
 
+        [HttpPost]
+        [Route("get-qa-check-final-by-file-instance-id")]
+        public async Task<IActionResult> GetListJobQACheckFinalByFileInstanceId(Guid fileInstanceId)
+        {
+            return ResponseResult(await _service.GetProcessingJobQACheckFinalByFileInstanceId(fileInstanceId));
+        }
+
         [HttpGet]
         [Route("get-list-job")]
         public async Task<IActionResult> GetListJob(string actionCode = null)
@@ -495,9 +502,9 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-jobs-by-user")]
         [HttpPost]
 
-        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath)
+        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
         {
-            return ResponseResult(await _service.GetListJobForUser(project, actionCode, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath, GetBearerToken()));
+            return ResponseResult(await _service.GetListJobForUser(project, actionCode, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
         }
         #endregion
 

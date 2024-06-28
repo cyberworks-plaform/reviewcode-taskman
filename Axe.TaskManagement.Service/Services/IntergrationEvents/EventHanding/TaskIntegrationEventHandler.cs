@@ -1613,7 +1613,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             BatchJobInstanceId = subInputParams.BatchJobInstanceId,
                             QaStatus = subInputParams.QaStatus,
                             TenantId = subInputParams.TenantId,
-                            Status = (short)EnumJob.Status.Waiting
+                            Status = (short)EnumJob.Status.Waiting,
+                            LastModifiedBy = subInputParams.LastModifiedBy,
                         });
                     }
                 }
@@ -1668,7 +1669,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         BatchJobInstanceId = inputParam.BatchJobInstanceId,
                         QaStatus = inputParam.QaStatus,
                         TenantId = inputParam.TenantId,
-                        Status = (short)EnumJob.Status.Waiting
+                        Status = (short)EnumJob.Status.Waiting,
+                        LastModifiedBy = inputParam.LastModifiedBy,
                     });
                 }
             }

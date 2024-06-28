@@ -79,6 +79,19 @@ namespace Axe.TaskManagement.Service.Dtos
         [Description("Parallel instanceId")]
         [BsonElement("parallel_job_instance_id")]
         public Guid? ParallelJobInstanceId { get; set; }
+
+        [Description("Vòng thực hiện thứ bao nhiêu")]
+        [BsonElement("num_of_round")]
+        public short NumOfRound { get; set; }
+
+        [Description("Batch name")]
+        [MaxLength(128)]
+        [BsonElement("batch_name")]
+        public string BatchName { get; set; }   // Gom nhóm các jobs cùng thuộc 1 lô (QA check)
+
+        [Description("Batch instanceId")]
+        [BsonElement("batch_job_instance_id")]
+        public Guid? BatchJobInstanceId { get; set; }   // Gom nhóm các jobs cùng thuộc 1 lô (QA check)
         #endregion
     }
 }

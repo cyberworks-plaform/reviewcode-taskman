@@ -1489,16 +1489,26 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var filter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId); // lấy theo người dùng
                 var filter2 = Builders<Job>.Filter.Eq(x => x.Id, id); // lấy theo id
-                var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing); // Lấy các job đang được xử lý
+                //var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing); // Lấy các job đang được xử lý
                 var filter4 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)); // ActionCode
 
-                var job = await _repos.FindFirstAsync(filter & filter2 & filter3 & filter4);
+                var job = await _repos.FindFirstAsync(filter & filter2 & filter4);
 
                 if (job == null)
                 {
                     response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
                     return response;
                 }
+                if(job.Status==(short)EnumJob.Status.Ignore)
+                {
+                    response = GenericResponse<int>.ResultWithData(-1, "Công việc này đã bị hủy bỏ trước khi bạn hoàn thành");
+                    return response;
+                }
+                else if(job.Status != (short)EnumJob.Status.Processing)
+                {
+                    response = GenericResponse<int>.ResultWithData(-1, "Công việc đã thay đổi trước khi bạn hoàn thành xử lý");
+                    return response;
+                }    
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
@@ -1933,6 +1943,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             try
             {
                 var filter = Builders<Job>.Filter.Eq(x => x.FileInstanceId, fileInstanceId) & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+                var data = await _repos.FindFirstAsync(filter);
+                var dataDto = _mapper.Map<Job, JobDto>(data);
+                response = GenericResponse<JobDto>.ResultWithData(dataDto);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<JobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<JobDto>> GetProcessingJobQACheckFinalByFileInstanceId(Guid fileInstanceId)
+        {
+            GenericResponse<JobDto> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.FileInstanceId, fileInstanceId) & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
                 var data = await _repos.FindFirstAsync(filter);
                 var dataDto = _mapper.Map<Job, JobDto>(data);
                 response = GenericResponse<JobDto>.ResultWithData(dataDto);
@@ -3240,6 +3267,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, false);
                                     }
                                     break;
+                                case ActionCodeConstants.QACheckFinal:
+                                    if (stateValue == 0)
+                                    {
+                                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, true);
+                                    }
+                                    if (stateValue > 0)
+                                    {
+                                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.HasChange, false);
+                                    }
+                                    break;
                                 default:
                                     break;
                             }
@@ -3354,6 +3391,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         break;
                     case ActionCodeConstants.DataCheck:
                     case ActionCodeConstants.CheckFinal:
+                        var filterCount1 = lastFilter & Builders<Job>.Filter.Eq(_ => _.HasChange, true);
+                        countAbnormalJob = unchecked((int)(await _repos.CountAsync(filterCount1)));
+                        break;
+                    case ActionCodeConstants.QACheckFinal:
                         var filterCount2 = lastFilter & Builders<Job>.Filter.Eq(_ => _.HasChange, true);
                         countAbnormalJob = unchecked((int)(await _repos.CountAsync(filterCount2)));
                         break;
@@ -4061,6 +4102,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     result.Add(new SummaryTotalDocPathJob
                     {
                         PathId = 0,
+                        SyncMetaValuePath = "",
                         PathRelation = item,
                         data = data
                     });
@@ -4150,7 +4192,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId,int numOfRound, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
@@ -4193,6 +4235,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (!string.IsNullOrEmpty(docPath))
                     {
                         filter &= Builders<Job>.Filter.Eq(x => x.DocPath, docPath);
+                    }
+
+                    //ưu tiên lấy theo lô
+                    if (batchInstanceId != Guid.Empty)
+                    {
+                        filter &= Builders<Job>.Filter.Eq(x => x.BatchJobInstanceId, batchInstanceId);
+                        filter &= Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
                     }
 
                     var jobDtos = new List<JobDto>();
