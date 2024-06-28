@@ -375,6 +375,13 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpPost]
+        [Route("get-false-percent")]
+        public async Task<IActionResult> GetFalsePercent(string actionCode)
+        {
+            return ResponseResult(await _service.GetFalsePercent(GetBearerToken()));
+        }
+
+        [HttpPost]
         [Route("get-history-job-by-step")]
         public async Task<IActionResult> GetPagingProject([FromBody] PagingRequest request, string projectInstanceId, string sActionCodes)
         {
