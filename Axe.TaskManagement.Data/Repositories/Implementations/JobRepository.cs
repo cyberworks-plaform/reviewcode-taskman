@@ -1526,6 +1526,19 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             };
         }
 
+        public async Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter)
+        {
+            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            if (totalfilter == 0) return 0;
+
+            //long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete)  & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
+            //var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
+            //var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
+            //var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
+            return Math.Round(totalWrong * 100.0 / totalfilter, 2);
+        }
+
         public async Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V2(FilterDefinition<Job> filter)
         {
             var serializerRegistry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
@@ -2431,8 +2444,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
               .Set(j => j.DueDate, entity.DueDate)
               .Set(j => j.Status, entity.Status)
               .Set(j => j.LastModificationDate, entity.LastModificationDate)
-              .Set(j => j.Value , entity.Value)
-              .Set(j => j.OldValue , entity.OldValue),
+              .Set(j => j.Value, entity.Value)
+              .Set(j => j.OldValue, entity.OldValue),
 
               options: new FindOneAndUpdateOptions<Job>
               {
