@@ -1987,7 +1987,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);// Lấy các job đang được xử lý
 
                 var data = await _repos.FindAsync(filter & filter2 & filter3);
-                //var lstJob = data.ToList();
+                
+                data = await AddDocTypeFieldExtraSetting(data, actionCode, accessToken);
+
                 var dataDto = _mapper.Map<List<Job>, List<JobDto>>(data);
 
                 if (data.Exists(x => x.DueDate < DateTime.UtcNow))
@@ -1997,6 +1999,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     response = GenericResponse<List<JobDto>>.ResultWithData(new List<JobDto>());
                     return response;
                 }
+                
                 response = GenericResponse<List<JobDto>>.ResultWithData(dataDto);
             }
             catch (Exception ex)
@@ -4101,7 +4104,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             var result = new List<SummaryTotalDocPathJob>();
             try
             {
-                var lstSyncMetaRelation =  await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
+                var lstSyncMetaRelation = await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
                 var syncMetaRelations = lstSyncMetaRelation.Data;
                 var lstSyncMetaRelationIdArr = !string.IsNullOrEmpty(lstSyncMetaRelationPath) ? JsonConvert.DeserializeObject<List<string>>(lstSyncMetaRelationPath) : new List<string>();
                 var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
@@ -4119,7 +4122,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 foreach (var item in lstSyncMetaRelationIdArr)
                 {
-                    var syncMetaRelation = syncMetaRelations.FirstOrDefault(x => x.Id == long.Parse(item));
+                    var id = item.Replace("/", "").Trim();
+                    var syncMetaRelation = syncMetaRelations.FirstOrDefault(x => x.Id == long.Parse(id));
                     //var syncMetaRelationResponse = await _docClientService.GetSyncMetaRelationByIdAsync(long.Parse(item), accessToken);
                     //var syncMetaRelation = syncMetaRelationResponse.Data;
                     var data = lstData.Where(x => x.RelationPath != null && x.RelationPath.Contains(item)).ToList();
@@ -4130,7 +4134,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             PathId = 0,
                             SyncMetaValuePath = "",
-                            SyncMetaRelationPath = item,
+                            SyncMetaRelationPath = id,
                             PathRelation = syncMetaRelation.Path,
                             data = data
                         });
@@ -4141,7 +4145,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             PathId = 0,
                             SyncMetaValuePath = "",
-                            SyncMetaRelationPath = item,
+                            SyncMetaRelationPath = id,
                             PathRelation = "",
                             data = data
                         });
@@ -4364,6 +4368,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         //bổ sung các metadata còn thiếu nếu cần thiết cho các actionCode cụ thể
                         jobs = await AddMissedMetaDataField(jobs, actionCode, accessToken);
 
+                        //bổ sung thêm các cấu hình trường thông tin
+                        jobs = await AddDocTypeFieldExtraSetting(jobs, actionCode, accessToken);
                         if (jobs.Any())
                         {
 
@@ -5530,6 +5536,70 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 job.Value = job.OldValue;
             }
 
+            return updatedJobs;
+        }
+
+        /// <summary>
+        /// Bổ sung thông tin ShowInput cho từng item
+        /// </summary>
+        /// <param name="jobs"></param>
+        /// <param name="actionCode"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
+        private async Task<List<Job>> AddDocTypeFieldExtraSetting(List<Job> jobs, string actionCode, string accessToken)
+        {
+            var updatedJobs = jobs;
+
+            var isValidActionCode = false;
+            //lọc ra các action code
+            if (actionCode == ActionCodeConstants.CheckFinal || actionCode == ActionCodeConstants.QACheckFinal)
+            {
+                isValidActionCode = true;
+            }
+
+            if (!isValidActionCode || !jobs.Any())
+            {
+                return updatedJobs;
+            }
+
+            //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
+            foreach (var job in updatedJobs)
+            {
+                //lấy danh sách các DocTypeField theo DocInstanceId
+                if (string.IsNullOrEmpty(job.Value))
+                {
+                    job.Value = JsonConvert.SerializeObject(new List<DocItem>());
+                }
+
+                if (string.IsNullOrEmpty(job.OldValue))
+                {
+                    job.OldValue = JsonConvert.SerializeObject(new List<DocItem>());
+                }
+                var jobValue = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                var jobOldValue = JsonConvert.DeserializeObject<List<DocItem>>(job.OldValue);
+
+                var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
+                var listDocItem = listDocItemRes.Data;
+            
+                if (jobValue != null)
+                {
+                    foreach (var item in jobValue)
+                    {
+                        item.ShowForInput = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId).ShowForInput;
+                    }
+                    job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
+                }
+                
+                if (jobOldValue != null)
+                {
+                    foreach (var item in jobOldValue)
+                    {
+                        item.ShowForInput = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId).ShowForInput;
+                    }
+                    job.OldValue = JsonConvert.SerializeObject(jobOldValue); //update lại value của job
+                }
+
+            }
             return updatedJobs;
         }
     }
