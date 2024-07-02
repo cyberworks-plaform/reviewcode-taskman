@@ -285,8 +285,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
                 {
                     InstanceId = x.DocFieldValueInstanceId.GetValueOrDefault(),
-                    //Value = x.Value,
-                    Value = job.OldValue,   // Trường hợp QACheckFinal thì lưu giá trị OldValue
+                    Value = x.Value,
                     CoordinateArea = x.CoordinateArea,
                     ActionCode = job.ActionCode
                 });
@@ -397,7 +396,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         else //xử lý QA theo Batch file và QAStatus=false;
                                         {
                                             // 1. Kiểm tra điều kiện rollback khi QA False hoặc toàn bộ đã hoàn thành
-                                            if (job.QaStatus==false || allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
+                                            if (job.QaStatus == false || allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
                                             {
 
                                                 batchQASize = completePrevJobs.Count();
@@ -432,6 +431,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     //gắn note = QA_job.note và tăng Round
                                                     inputParamsForQARollback = AsignNoteAndRound(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
 
+
                                                     // Hủy bỏ các jobQA chờ xử lý Các jobs QA chưa complete còn lại chuyển trạng thái Ignore + cập nhật ReasonIgnore
                                                     var ignoreQaJobs = allJobsInBatchAndRound.Where(x => x.Status != (short)EnumJob.Status.Complete).ToList();
                                                     if (ignoreQaJobs != null && ignoreQaJobs.Any())
@@ -458,6 +458,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
 
                                                     inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
+                                                    inputParamsForQAPass = AsignNoteAndRound(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
                                                     inputParamsForQAPass.ForEach(x =>
                                                     {
                                                         x.Note = string.Empty;
@@ -497,7 +498,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     var parallelJobInstanceId = Guid.NewGuid();
 
                     //đằng sau QA step -> Chỉ đến CheckFinal (nếu False) hoặc SyntheticData (nếu True)
-                   
+
                     //Lựa chọn các nhánh cần tạo job tùy theo điều kiện isQAPass
                     var configStepConditionDefaults = JsonConvert.DeserializeObject<List<ConfigStepConditionDefault>>(jTokenConfigStepConditions.ToString());
                     var stepCondition = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
@@ -505,7 +506,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     nextWfsInfoes = nextWfsInfoes.Where(x => x.InstanceId == stepCondition.WorkflowStepInstanceId).ToList();
 
                     WorkflowStepInfo nextWfsInfo = null;
-                   
+
                     //xử lý đặc biệt: trigger đơn lẻ cho file Pass QA
                     if (job.QaStatus == true && isQAPass == false)
                     {
@@ -514,7 +515,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         nextWfsInfoes = nextWfsInfoes.Where(x => x.InstanceId == stepCondition.WorkflowStepInstanceId).ToList();
                         nextWfsInfo = nextWfsInfoes.FirstOrDefault();
 
-                       await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, null, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
+                        await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, null, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
                     }
 
                     //xý lý case thông thường trigger theo điều kiện isQAPass
@@ -533,14 +534,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         inputParams = inputParamsForQAPass;
                     }
 
-                  await  ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, inputParams, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
+                    await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, inputParams, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
 
                 }
             }
 
         }
 
-        private async Task ProcessTriggerNextStep(JobDto job,List<DocItem> docItems,Guid parallelJobInstanceId,bool isConvergenceNextStep,List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo,List<WorkflowStepInfo> wfsInfoes,List<WorkflowSchemaConditionInfo>wfSchemaInfoes,string accessToken)
+        private async Task ProcessTriggerNextStep(JobDto job, List<DocItem> docItems, Guid parallelJobInstanceId, bool isConvergenceNextStep, List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string accessToken)
         {
             int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
             bool isDivergenceStep = numOfResourceInJob > 1;
@@ -581,6 +582,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
                 WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
                 Value = value,
+                OldValue = value,
                 Price = price,
                 ClientTollRatio = job.ClientTollRatio,
                 WorkerTollRatio = job.WorkerTollRatio,
@@ -593,7 +595,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
                     isConvergenceNextStep,
                 Note = job.Note,
-                NumOfRound =  job.NumOfRound,
+                NumOfRound = job.NumOfRound,
                 BatchName = job.BatchName,
                 BatchJobInstanceId = job.BatchJobInstanceId,
                 QaStatus = job.QaStatus,
@@ -638,6 +640,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
                 WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
                 Value = j.Value,
+                OldValue = j.Value,
                 Price = j.Price,
                 ClientTollRatio = j.ClientTollRatio,
                 WorkerTollRatio = j.WorkerTollRatio,
@@ -654,6 +657,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return result;
         }
+
+        /// <summary>
+        /// Gắn lại giá trị Value / Note / Round từ QA Job cho CheckFinal hoăc SyntheticData Job
+        /// </summary>
+        /// <param name="jobsForNextStep"></param>
+        /// <param name="qaJobs"></param>
+        /// <param name="isQAPass"></param>
+        /// <returns></returns>
         private List<InputParam> AsignNoteAndRound(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool isQAPass)
         {
             foreach (var jobNextStepItem in jobsForNextStep)
@@ -662,9 +673,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 if (qaItem != null)
                 {
                     jobNextStepItem.Note = qaItem.Note;
+                    jobNextStepItem.Value = qaItem.Value;
+                    jobNextStepItem.OldValue = qaItem.Value;
                 }
 
-                if (string.IsNullOrEmpty(jobNextStepItem.Note))
+                if (string.IsNullOrEmpty(jobNextStepItem.Note) && isQAPass == false)
                 {
                     jobNextStepItem.Note = "Dữ liệu thuộc lô bị QA trả lại";
                 }
@@ -677,6 +690,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return jobsForNextStep;
         }
+
+
         private async Task TriggerNextStep(TaskEvent evt, string nextWfsActionCode)
         {
             bool isNextStepHeavyJob = WorkflowHelper.IsHeavyJob(nextWfsActionCode);

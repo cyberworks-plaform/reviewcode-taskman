@@ -1475,6 +1475,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         #region ProcessQaCheckFinal
 
+        /// <summary>
+        /// Logic: Cho phép QA sửa dữ liệu nếu đánh dấu phiếu PASS / Nếu đánh dấu FALSE thì giữ nguyên dữ liệu của cũ
+        /// </summary>
+        /// <param name="result"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         public async Task<GenericResponse<int>> ProcessQaCheckFinal(JobResult result, string accessToken = null)
         {
             // 2. Process
@@ -1518,12 +1524,37 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
 
+                if (result.QAStatus == true)
+                {
+                    var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+
+                    if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
+                    {
+                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                    }
+
+                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
+                    if (!isValidCheckFinalValue)
+                    {
+                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                    }
+
+                    var docItems = new List<DocItem>(dbDocItems);
+                    docItems.ForEach(x =>
+                    {
+                        var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
+                        job.HasChange = x.Value != resultValue;
+                        x.Value = resultValue;
+                    });
+                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    job.Value = updatedValue;
+                }
+
                 job.LastModificationDate = DateTime.UtcNow;
                 job.LastModifiedBy = _userPrincipalService.UserInstanceId;
-                if (!string.IsNullOrEmpty(result.Value) && bool.TryParse(result.Value, out var qaStatus))
-                {
-                    job.QaStatus = qaStatus;
-                }
+
+                job.QaStatus = result.QAStatus;
 
                 if (!string.IsNullOrEmpty(result.Comment))
                 {
@@ -1987,7 +2018,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);// Lấy các job đang được xử lý
 
                 var data = await _repos.FindAsync(filter & filter2 & filter3);
-                
+
                 data = await AddDocTypeFieldExtraSetting(data, actionCode, accessToken);
 
                 var dataDto = _mapper.Map<List<Job>, List<JobDto>>(data);
@@ -1999,7 +2030,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     response = GenericResponse<List<JobDto>>.ResultWithData(new List<JobDto>());
                     return response;
                 }
-                
+
                 response = GenericResponse<List<JobDto>>.ResultWithData(dataDto);
             }
             catch (Exception ex)
@@ -5580,7 +5611,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
                 var listDocItem = listDocItemRes.Data;
-            
+
                 if (jobValue != null)
                 {
                     foreach (var item in jobValue)
@@ -5589,7 +5620,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
                     job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
                 }
-                
+
                 if (jobOldValue != null)
                 {
                     foreach (var item in jobOldValue)
