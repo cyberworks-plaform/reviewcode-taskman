@@ -368,7 +368,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         }
 
         public async Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
-            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1)
+            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1,Guid? docInstanceId=null)
         {
             var filter = Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
             if (workflowStepInstanceId != null)
@@ -396,6 +396,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 filter = filter & Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
             }
 
+            if(docInstanceId!=null)
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
+            }    
+
             var data = DbSet.Find(filter);
             return await data.ToListAsync();
         }
@@ -416,6 +421,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var jobs = DbSet.Find(filter);
             return await jobs.ToListAsync();
         }
+
 
         public async Task<long> DeleteMultiByDocAsync(Guid docInstanceId)
         {
