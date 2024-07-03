@@ -373,15 +373,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         //int numOfFileInBatch = completePrevJobs.Count;
                                         var configQa = WorkflowHelper.GetConfigQa(crrWfsInfo.ConfigStep);
 
-                                        var batchQASize = configQa.Item1; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
-                                        var batchQASampling = configQa.Item2; // % lấy mẫu trong lô 
-                                        var batchQAFalseThreshold = configQa.Item3; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
+                                        var batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
+                                        var batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
+                                        var batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
                                         bool isProcessQAInBatchMode = true; // kiểm tra xem xử lý QA theo lô hay theo file đơn lẻ
-                                        isProcessQAInBatchMode = (batchQASize == 0) || (batchQASize > 1) ? true : false;
+                                        isProcessQAInBatchMode = configQa.Item1;
 
                                         //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
-                                        if (string.IsNullOrEmpty(job.DocPath))
+                                        if (string.IsNullOrEmpty(job.DocPath) || job.BatchJobInstanceId.GetValueOrDefault()==Guid.Empty)
                                         {
                                             isProcessQAInBatchMode = false;
                                         }

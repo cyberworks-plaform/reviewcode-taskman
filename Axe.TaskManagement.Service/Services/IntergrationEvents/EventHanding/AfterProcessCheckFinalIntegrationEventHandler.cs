@@ -462,15 +462,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                         var configQa = WorkflowHelper.GetConfigQa(nextWfsInfo.ConfigStep);
 
-                        var batchQASize = configQa.Item1; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
-                        var batchQASampling = configQa.Item2; // % lấy mẫu trong lô 
-                        var batchQAFalseThreshold = configQa.Item3; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
+                        var batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
+                        var batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
+                        var batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
+                        isProcessQAInBatchMode = configQa.Item1;
 
                         if (isNextStepQa)
                         {
-
-                            isProcessQAInBatchMode = (batchQASize == 0) || (batchQASize > 1) ? true : false;
-
                             //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
                             if (string.IsNullOrEmpty(job.DocPath))
                             {
