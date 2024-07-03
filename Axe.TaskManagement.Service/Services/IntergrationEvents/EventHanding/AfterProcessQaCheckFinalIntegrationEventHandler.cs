@@ -323,13 +323,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             var jTokenConditionType = jObjConfigStep.GetValue(ConfigStepPropertyConstants.ConditionType);
             var jTokenConfigStepConditions = jObjConfigStep.GetValue(ConfigStepPropertyConstants.ConfigStepConditions);
 
+            bool isProcessQAInBatchMode = true; // kiểm tra xem xử lý QA theo lô hay theo file đơn lẻ
+            List<InputParam> inputParamsForQARollback = null;
+            List<InputParam> inputParamsForQAPass = null;
+
             if (nextWfsInfoes != null && nextWfsInfoes.Any())
             {
                 bool isTriggerNextStep = false;
                 bool isQAPass = job.QaStatus;
-                List<InputParam> inputParamsForQARollback = null;
-                List<InputParam> inputParamsForQAPass = null;
-
+            
                 if (jTokenConditionType != null && jTokenConfigStepConditions != null)
                 {
                     bool isConditionTypeResult = Int16.TryParse(jTokenConditionType.ToString(), out var conditionType);
@@ -377,7 +379,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         var batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
                                         var batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
-                                        bool isProcessQAInBatchMode = true; // kiểm tra xem xử lý QA theo lô hay theo file đơn lẻ
+                                        
                                         isProcessQAInBatchMode = configQa.Item1;
 
                                         //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
@@ -390,7 +392,34 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         if (isProcessQAInBatchMode == false)
                                         {
                                             isQAPass = job.QaStatus;
+
+                                            //lấy bước theo nhánh false
+                                            var stepCondition_by_case = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
+                                            nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                                            var nextWfsInfo_case = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_by_case.WorkflowStepInstanceId);
+
+                                            completePrevJobs = await _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
+                                                preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
+                                                null, job.NumOfRound,job.DocInstanceId);
+
+                                            if (isQAPass == false) //rollback step (CheckFinal) cho phiếu hiện tại
+                                            {
+                                                inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
+                                                inputParamsForQARollback = AsignNote_Round_Value(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
+                                            }
+                                            else // forward step (SyntheticData cho phiếu hiện tại
+                                            {
+                                                inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
+                                                inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
+                                                inputParamsForQAPass.ForEach(x =>
+                                                {
+                                                    x.Note = string.Empty;
+                                                    x.QaStatus = isQAPass;
+                                                });
+                                            }
+
                                             isTriggerNextStep = true;
+
 
                                         }
                                         else //xử lý QA theo Batch file và QAStatus=false;
@@ -429,7 +458,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_false);
 
                                                     //gắn note = QA_job.note và tăng Round
-                                                    inputParamsForQARollback = AsignNoteAndRound(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
+                                                    inputParamsForQARollback = AsignNote_Round_Value(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
 
 
                                                     // Hủy bỏ các jobQA chờ xử lý Các jobs QA chưa complete còn lại chuyển trạng thái Ignore + cập nhật ReasonIgnore
@@ -458,7 +487,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
 
                                                     inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
-                                                    inputParamsForQAPass = AsignNoteAndRound(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
+                                                    inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
                                                     inputParamsForQAPass.ForEach(x =>
                                                     {
                                                         x.Note = string.Empty;
@@ -595,13 +624,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
                     isConvergenceNextStep,
                 Note = job.Note,
-                NumOfRound = job.NumOfRound,
+                NumOfRound = job.QaStatus==false? (short)(job.NumOfRound+1):job.NumOfRound,
                 BatchName = job.BatchName,
                 BatchJobInstanceId = job.BatchJobInstanceId,
                 QaStatus = job.QaStatus,
                 TenantId = job.TenantId,
             };
-
+            
             output.InputParams = inputParams;
 
             var taskEvt = new TaskEvent
@@ -665,7 +694,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         /// <param name="qaJobs"></param>
         /// <param name="isQAPass"></param>
         /// <returns></returns>
-        private List<InputParam> AsignNoteAndRound(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool isQAPass)
+        private List<InputParam> AsignNote_Round_Value(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool isQAPass)
         {
             foreach (var jobNextStepItem in jobsForNextStep)
             {
