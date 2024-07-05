@@ -17,7 +17,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
 {
     /// <summary>
     /// Outbox publisher
-    /// In your singleton service, the IHostedService, inject an IServiceScopeFactory into it and use that to create a scope and get a new DbContext from it.
+    /// Trong singleton service (IHostedService), không thể DI scoped service (DbContext hoặc IOutboxIntegrationEventRepository) => Inject IServiceScopeFactory vào singleton service và sử dụng nó để tạo 1 scoped service
     /// </summary>
     public class OutboxPublisher : BackgroundService
     {

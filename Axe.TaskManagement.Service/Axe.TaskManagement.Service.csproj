@@ -5,8 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CyberEye.Client.All" Version="1.3.43" />
-    <PackageReference Include="CyberEye.Interaction.Lib" Version="1.3.43" />
+    <PackageReference Include="CyberEye.Client.All" Version="1.3.45" />
+    <PackageReference Include="CyberEye.Interaction.Lib" Version="1.3.45" />
   </ItemGroup>
 
   <ItemGroup>

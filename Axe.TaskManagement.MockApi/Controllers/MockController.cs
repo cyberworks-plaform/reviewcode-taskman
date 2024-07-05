@@ -271,7 +271,7 @@ namespace Axe.TaskManagement.MockApi.Controllers
 
                     var client = _clientFactory.CreateClient();
                     client.DefaultRequestHeaders.Add("Authorization",$"Bearer {accessToken}");
-                    var response = await client.GetFromJsonAsync<GenericResponse<SyncMetaRelationDto>>($"{url}/{relationId}");
+                    var response = await client.GetFromJsonAsync<GenericResponse<Axe.TaskManagement.MockApi.Dto.SyncMetaRelationDto>>($"{url}/{relationId}");
 
                     if (response == null  || !response.Success)
                     {
