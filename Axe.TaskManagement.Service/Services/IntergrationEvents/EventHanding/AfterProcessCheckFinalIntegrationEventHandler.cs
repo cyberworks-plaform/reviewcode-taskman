@@ -34,6 +34,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
+        private readonly IMoneyService _moneyService;
         private readonly IDocClientService _docClientService;
         private readonly IBatchClientService _batchClientService;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
@@ -50,6 +51,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
+            IMoneyService moneyService,
             IDocClientService docClientService,
             IBatchClientService batchClientService,
             IServiceProvider provider,
@@ -63,6 +65,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
+            _moneyService = moneyService;
             _docClientService = docClientService;
             _batchClientService = batchClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
@@ -119,70 +122,108 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
 
-            // 1. Cập nhật thanh toán tiền cho worker & hệ thống// Cập nhật thanh toán tiền cho worker bước HIỆN TẠI (SegmentLabeling)
+            // 1. Cập nhật thanh toán tiền cho worker & hệ thống// Cập nhật thanh toán tiền cho worker bước HIỆN TẠI (CheckFinal) => Old
+            // 1. Cập nhật tiền TẠM TÍNH cho worker => New
             var clientInstanceId = await GetClientInstanceIdByProject(job.ProjectInstanceId.GetValueOrDefault(), accessToken);
             if (clientInstanceId != Guid.Empty)
             {
+                #region Bussiness Old
+
+                //var itemTransactionAdds = new List<ItemTransactionAddDto>
+                //{
+                //    new ItemTransactionAddDto
+                //    {
+                //        SourceUserInstanceId = clientInstanceId,
+                //        DestinationUserInstanceId = userInstanceId,
+                //        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
+                //        ChangeProvisionalAmount = 0,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description = string.Format(
+                //            DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob,
+                //            clientInstanceId, userInstanceId,
+                //            job.Code)
+                //    }
+                //};
+                //var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
+                //if (job.ClientTollRatio > 0)
+                //{
+                //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                //    {
+                //        SourceUserInstanceId = clientInstanceId,
+                //        ChangeAmount = job.Price * job.ClientTollRatio / 100,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description =
+                //            string.Format(
+                //                DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                //                clientInstanceId, job.Code)
+                //    });
+                //}
+                //if (job.WorkerTollRatio > 0)
+                //{
+                //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                //    {
+                //        SourceUserInstanceId = userInstanceId,
+                //        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description = string.Format(
+                //            DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                //            userInstanceId, job.Code)
+                //    });
+                //}
+
+                //var transactionAddMulti = new TransactionAddMultiDto
+                //{
+                //    CorrelationMessage = string.Format(MsgTransactionTemplate.MsgJobInfoes, "Xác nhận",
+                //        job.Code),
+                //    CorrelationDescription = $"Hoàn thành các công việc {job.Code}",
+                //    ItemTransactionAdds = itemTransactionAdds,
+                //    ItemTransactionToSysWalletAdds = itemTransactionToSysWalletAdds
+                //};
+
+                #endregion
+
+                #region Bussiness New
+
                 var itemTransactionAdds = new List<ItemTransactionAddDto>
                 {
                     new ItemTransactionAddDto
                     {
                         SourceUserInstanceId = clientInstanceId,
                         DestinationUserInstanceId = userInstanceId,
-                        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
-                        ChangeProvisionalAmount = 0,
+                        ChangeAmount = 0,
+                        ChangeProvisionalAmount = job.Price,
                         JobCode = job.Code,
                         ProjectInstanceId = job.ProjectInstanceId,
                         WorkflowInstanceId = job.WorkflowInstanceId,
                         WorkflowStepInstanceId = job.WorkflowStepInstanceId,
                         ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                        Message = $"Tạm tính {string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code)}",
                         Description = string.Format(
-                            DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob,
-                            clientInstanceId, userInstanceId,
+                            DescriptionTransactionTemplateV2.DescriptionIncreaseProvisionalMoneyForCompleteJob,
+                            userInstanceId,
+                            crrWfsInfo.Name,
                             job.Code)
                     }
                 };
                 var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
-                if (job.ClientTollRatio > 0)
-                {
-                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                    {
-                        SourceUserInstanceId = clientInstanceId,
-                        ChangeAmount = job.Price * job.ClientTollRatio / 100,
-                        JobCode = job.Code,
-                        ProjectInstanceId = job.ProjectInstanceId,
-                        WorkflowInstanceId = job.WorkflowInstanceId,
-                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                        ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
-                        Description =
-                            string.Format(
-                                DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                clientInstanceId, job.Code)
-                    });
-                }
-                if (job.WorkerTollRatio > 0)
-                {
-                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                    {
-                        SourceUserInstanceId = userInstanceId,
-                        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
-                        JobCode = job.Code,
-                        ProjectInstanceId = job.ProjectInstanceId,
-                        WorkflowInstanceId = job.WorkflowInstanceId,
-                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                        ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
-                        Description = string.Format(
-                            DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
-                            userInstanceId, job.Code)
-                    });
-                }
-
                 var transactionAddMulti = new TransactionAddMultiDto
                 {
                     CorrelationMessage = string.Format(MsgTransactionTemplate.MsgJobInfoes, "Xác nhận",
@@ -191,6 +232,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     ItemTransactionAdds = itemTransactionAdds,
                     ItemTransactionToSysWalletAdds = itemTransactionToSysWalletAdds
                 };
+
+                #endregion
+
                 await _transactionClientService.AddMultiTransactionAsync(transactionAddMulti, accessToken);
             }
             else
@@ -376,6 +420,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 itemInput.IsConvergenceNextStep = isConvergenceNextStep;
 
                                 // Tổng hợp price cho các bước TIẾP THEO
+                                
+
                                 if (isMultipleNextStep)
                                 {
                                     itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
@@ -383,7 +429,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         InstanceId = x.InstanceId,
                                         ActionCode = x.ActionCode,
                                         Price = isPaid
-                                            ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                                 job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                             : 0
                                     }).ToList();
@@ -391,7 +437,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 else
                                 {
                                     itemInput.Price = isPaid
-                                        ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                        ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                             job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                         : 0;
                                 }
@@ -401,7 +447,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         {
                             value = JsonConvert.SerializeObject(docItems);
                             price = isPaid
-                                ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                     job.DigitizedTemplateInstanceId)
                                 : 0;
                         }
@@ -447,10 +493,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             ItemInputParams = itemInputParams
                         };
 
-                        if(output.BatchJobInstanceId==null)
+                        if (output.BatchJobInstanceId == null)
                         {
                             output.BatchJobInstanceId = Guid.Empty; //quan trọng: gắn = empty để phân biệt File đã hoàn thành và chuyển sang QA
-                        }    
+                        }
                         var taskEvt = new TaskEvent
                         {
                             Input = JsonConvert.SerializeObject(output),     // output của bước trước là input của bước sau
@@ -601,7 +647,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     if (isCreateNewBatch)
                                     {
                                         var listUser = allCompleteJobs.GroupBy(x => x.LastModifiedBy).Select(grp => grp.Key.GetValueOrDefault()).ToList();
-                                        
+
                                         //Tạo lô cho từng user
                                         foreach (var lastUserInstanceId in listUser)
                                         {
@@ -814,6 +860,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             outboxEntityDocFieldValueUpdateStatusCompleteEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
                             await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
                         }
+
+                        await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
                     }
                 }
             }
@@ -864,7 +912,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return result;
         }
-
 
         private async Task TriggerNextStep(TaskEvent evt, string nextWfsActionCode)
         {

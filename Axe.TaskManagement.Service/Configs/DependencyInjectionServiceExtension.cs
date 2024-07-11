@@ -16,6 +16,9 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddScoped<IRecallJobWorkerService, RecallJobWorkerService>();
             services.AddScoped<IQueueLockService, QueueLockService>();
 
+            // Common service
+            services.AddScoped<IMoneyService, MoneyService>();
+
             // Client service
             services.AddSingleton<IProjectTypeClientService, ProjectTypeClientService>();
             services.AddSingleton<IProjectClientService, ProjectClientService>();
