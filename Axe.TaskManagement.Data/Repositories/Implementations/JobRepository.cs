@@ -8,7 +8,6 @@ using Axe.Utility.Helpers;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.MongoDbBase.Interfaces;
 using Ce.Constant.Lib.Dtos;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
@@ -343,8 +342,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<List<Job>> GetJobByWfs(Guid docInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null, short? status = null)
         {
-            var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId) &
-                         Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
+            if (!string.IsNullOrEmpty(actionCode))
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            }
             if (workflowStepInstanceId != null)
             {
                 filter = filter & Builders<Job>.Filter.Eq(x => x.WorkflowStepInstanceId, workflowStepInstanceId);
@@ -1537,11 +1539,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var totalfilter = await DbSet.CountDocumentsAsync(filter);
             if (totalfilter == 0) return 0;
 
-            //long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete)  & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
-            //var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
-            //var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
-            //var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter &
+                                                             Builders<Job>.Filter.Eq(x => x.Status,
+                                                                 (short) EnumJob.Status.Complete) &
+                                                             Builders<Job>.Filter.Eq(x => x.RightStatus,
+                                                                 (int) EnumJob.RightStatus.Wrong));
             return Math.Round(totalWrong * 100.0 / totalfilter, 2);
         }
 

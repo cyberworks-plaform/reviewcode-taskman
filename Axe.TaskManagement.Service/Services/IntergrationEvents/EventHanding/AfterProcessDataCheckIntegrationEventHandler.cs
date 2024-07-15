@@ -1,8 +1,8 @@
 ﻿using AutoMapper;
-using Axe.TaskManagement.Data.Repositories.Implementations;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Implementations;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
@@ -40,6 +40,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
+        private readonly IMoneyService _moneyService;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
         private readonly IConfiguration _configuration;
 
@@ -58,6 +59,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IDocClientService docClientService,
             IServiceProvider provider,
             IDocFieldValueClientService docFieldValueClientService,
+            IMoneyService moneyService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
         {
@@ -71,6 +73,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _projectStatisticClientService = projectStatisticClientService;
             _docClientService = docClientService;
             _docFieldValueClientService = docFieldValueClientService;
+            _moneyService = moneyService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
             _cachingHelper = provider.GetService<ICachingHelper>();
@@ -131,176 +134,207 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
                 var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
 
-                // 1. Cập nhật thanh toán tiền cho worker & hệ thống
+                // 1. Cập nhật thanh toán tiền cho worker & hệ thống => Old
+                // 1.1. Cập nhật tiền TẠM TÍNH cho worker => New
                 if (clientInstanceId != Guid.Empty)
                 {
-                    if (job.ClientTollRatio > 0)
-                    {
-                        itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                        {
-                            SourceUserInstanceId = clientInstanceId,
-                            ChangeAmount = job.Price * job.ClientTollRatio / 100,
-                            JobCode = job.Code,
-                            ProjectInstanceId = job.ProjectInstanceId,
-                            WorkflowInstanceId = job.WorkflowInstanceId,
-                            WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                            ActionCode = job.ActionCode,
-                            Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name,
-                                job.Code),
-                            Description =
-                                string.Format(
-                                    DescriptionTransactionTemplate
-                                        .DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                    clientInstanceId, job.Code)
-                        });
-                    }
-                    if (job.WorkerTollRatio > 0)
-                    {
-                        itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                        {
-                            SourceUserInstanceId = userInstanceId,
-                            ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
-                            JobCode = job.Code,
-                            ProjectInstanceId = job.ProjectInstanceId,
-                            WorkflowInstanceId = job.WorkflowInstanceId,
-                            WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                            ActionCode = job.ActionCode,
-                            Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name,
-                                job.Code),
-                            Description =
-                                string.Format(DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                    userInstanceId, job.Code)
-                        });
-                    }
+                    #region Bussiness Old
+
+                    //if (job.ClientTollRatio > 0)
+                    //{
+                    //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    //    {
+                    //        SourceUserInstanceId = clientInstanceId,
+                    //        ChangeAmount = job.Price * job.ClientTollRatio / 100,
+                    //        JobCode = job.Code,
+                    //        ProjectInstanceId = job.ProjectInstanceId,
+                    //        WorkflowInstanceId = job.WorkflowInstanceId,
+                    //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                    //        ActionCode = job.ActionCode,
+                    //        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name,
+                    //            job.Code),
+                    //        Description =
+                    //            string.Format(
+                    //                DescriptionTransactionTemplate
+                    //                    .DescriptionTranferMoneyToSysWalletForCompleteJob,
+                    //                clientInstanceId, job.Code)
+                    //    });
+                    //}
+                    //if (job.WorkerTollRatio > 0)
+                    //{
+                    //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    //    {
+                    //        SourceUserInstanceId = userInstanceId,
+                    //        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
+                    //        JobCode = job.Code,
+                    //        ProjectInstanceId = job.ProjectInstanceId,
+                    //        WorkflowInstanceId = job.WorkflowInstanceId,
+                    //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                    //        ActionCode = job.ActionCode,
+                    //        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name,
+                    //            job.Code),
+                    //        Description =
+                    //            string.Format(DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                    //                userInstanceId, job.Code)
+                    //    });
+                    //}
+
+                    //var itemTransactionAdd = new ItemTransactionAddDto
+                    //{
+                    //    SourceUserInstanceId = clientInstanceId,
+                    //    DestinationUserInstanceId = userInstanceId,
+                    //    ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
+                    //    ChangeProvisionalAmount = 0,
+                    //    JobCode = job.Code,
+                    //    ProjectInstanceId = job.ProjectInstanceId,
+                    //    WorkflowInstanceId = job.WorkflowInstanceId,
+                    //    WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                    //    ActionCode = job.ActionCode,
+                    //    Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                    //    Description = string.Format(DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob, clientInstanceId, userInstanceId, job.Code)
+                    //};
+                    //itemTransactionAdds.Add(itemTransactionAdd);
+
+                    //completeJobCodes.Add(job.Code);
+
+                    //// Nếu bước TRƯỚC nếu là DataEntry thì cũng tạo Transaction thanh toán tiền cho worker
+                    //var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                    //if (prevWfsInfoes != null && prevWfsInfoes.Any() && prevWfsInfoes.FirstOrDefault(x => x.ActionCode == ActionCodeConstants.DataEntry) != null)
+                    //{
+                    //    var prevWfsInfo = prevWfsInfoes.First(x => x.ActionCode == ActionCodeConstants.DataEntry);
+                    //    var crrJob = _mapper.Map<JobDto, Job>(job);
+                    //    var prevDataEntryJobs = await _repository.GetPrevJobs(crrJob, new List<Guid> { prevWfsInfo.InstanceId });
+                    //    foreach (var prevDataEntryJob in prevDataEntryJobs)
+                    //    {
+                    //        if (!prevDataEntryJob.IsIgnore)
+                    //        {
+                    //            if (job.Value == prevDataEntryJob.Value)
+                    //            {
+                    //                prevDataEntryJob.RightStatus = (short)EnumJob.RightStatus.Correct;
+                    //                lstJobEntryCheckRight.Add(prevDataEntryJob);
+
+                    //                if (prevDataEntryJob.ClientTollRatio > 0)
+                    //                {
+                    //                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    //                    {
+                    //                        SourceUserInstanceId = clientInstanceId,
+                    //                        ChangeAmount =
+                    //                            prevDataEntryJob.Price * prevDataEntryJob.ClientTollRatio / 100,
+                    //                        JobCode = prevDataEntryJob.Code,
+                    //                        ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
+                    //                        WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
+                    //                        WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
+                    //                        ActionCode = prevDataEntryJob.ActionCode,
+                    //                        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes,
+                    //                            prevWfsInfo?.Name,
+                    //                            prevDataEntryJob.Code),
+                    //                        Description =
+                    //                            string.Format(
+                    //                                DescriptionTransactionTemplate
+                    //                                    .DescriptionTranferMoneyToSysWalletForCompleteJob,
+                    //                                clientInstanceId, prevDataEntryJob.Code)
+                    //                    });
+                    //                }
+                    //                if (prevDataEntryJob.WorkerTollRatio > 0)
+                    //                {
+                    //                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                    //                    {
+                    //                        SourceUserInstanceId =
+                    //                            prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
+                    //                        ChangeAmount =
+                    //                            (prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) /
+                    //                             100) * prevDataEntryJob.WorkerTollRatio / 100,
+                    //                        JobCode = prevDataEntryJob.Code,
+                    //                        ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
+                    //                        WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
+                    //                        WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
+                    //                        ActionCode = prevDataEntryJob.ActionCode,
+                    //                        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes,
+                    //                            prevWfsInfo?.Name,
+                    //                            prevDataEntryJob.Code),
+                    //                        Description =
+                    //                            string.Format(
+                    //                                DescriptionTransactionTemplate
+                    //                                    .DescriptionTranferMoneyToSysWalletForCompleteJob,
+                    //                                userInstanceId,
+                    //                                prevDataEntryJob.Code)
+                    //                    });
+                    //                }
+
+                    //                var correctDataEntryItemTransactionAdd = new ItemTransactionAddDto
+                    //                {
+                    //                    SourceUserInstanceId = clientInstanceId,
+                    //                    DestinationUserInstanceId = prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
+                    //                    ChangeAmount = prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100,
+                    //                    ChangeProvisionalAmount = -(prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100),
+                    //                    JobCode = prevDataEntryJob.Code,
+                    //                    ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
+                    //                    WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
+                    //                    WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
+                    //                    ActionCode = prevDataEntryJob.ActionCode,
+                    //                    Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, prevWfsInfo?.Name, prevDataEntryJob.Code),
+                    //                    Description = string.Format(
+                    //                        DescriptionTransactionTemplate.DescriptionTranferMoneyForConfirmedDataEntryJob,
+                    //                        clientInstanceId, prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
+                    //                        job.Code)
+                    //                };
+                    //                itemTransactionAdds.Add(correctDataEntryItemTransactionAdd);
+                    //            }
+                    //            else
+                    //            {
+                    //                prevDataEntryJob.RightStatus = (short)EnumJob.RightStatus.Wrong;
+                    //                lstJobEntryCheckWrong.Add(prevDataEntryJob);
+
+                    //                // Trường hợp worker Nhập liệu sai, worker & hệ thống sẽ ko được nhận tiền thực
+                    //                var wrongDataEntryItemTransactionAdd = new ItemTransactionAddDto
+                    //                {
+                    //                    DestinationUserInstanceId = prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
+                    //                    ChangeAmount = 0,
+                    //                    ChangeProvisionalAmount = -(prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100),
+                    //                    JobCode = prevDataEntryJob.Code,
+                    //                    ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
+                    //                    WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
+                    //                    WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
+                    //                    ActionCode = prevDataEntryJob.ActionCode,
+                    //                    Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, prevWfsInfo?.Name, prevDataEntryJob.Code),
+                    //                    Description = string.Format(
+                    //                        DescriptionTransactionTemplate.DescriptionDecreaseProvisionalMoneyForConfirmDataEntryJobIsWrong,
+                    //                        prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
+                    //                        job.Code)
+                    //                };
+                    //                itemTransactionAdds.Add(wrongDataEntryItemTransactionAdd);
+                    //            }
+                    //        }
+                    //    }
+                    //}
+
+                    #endregion
+
+                    #region Bussiness New
 
                     var itemTransactionAdd = new ItemTransactionAddDto
                     {
                         SourceUserInstanceId = clientInstanceId,
                         DestinationUserInstanceId = userInstanceId,
-                        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
-                        ChangeProvisionalAmount = 0,
+                        ChangeAmount = 0,
+                        ChangeProvisionalAmount = job.Price,
                         JobCode = job.Code,
                         ProjectInstanceId = job.ProjectInstanceId,
                         WorkflowInstanceId = job.WorkflowInstanceId,
                         WorkflowStepInstanceId = job.WorkflowStepInstanceId,
                         ActionCode = job.ActionCode,
-                        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
-                        Description = string.Format(DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob, clientInstanceId, userInstanceId, job.Code)
+                        Message = $"Tạm tính {string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code)}",
+                        Description = string.Format(
+                            DescriptionTransactionTemplateV2.DescriptionIncreaseProvisionalMoneyForCompleteJob,
+                            userInstanceId,
+                            crrWfsInfo.Name,
+                            job.Code)
                     };
                     itemTransactionAdds.Add(itemTransactionAdd);
 
                     completeJobCodes.Add(job.Code);
 
-                    // Nếu bước TRƯỚC nếu là DataEntry thì cũng tạo Transaction thanh toán tiền cho worker
-                    var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
-                    if (prevWfsInfoes != null && prevWfsInfoes.Any() && prevWfsInfoes.FirstOrDefault(x => x.ActionCode == ActionCodeConstants.DataEntry) != null)
-                    {
-                        var prevWfsInfo = prevWfsInfoes.First(x => x.ActionCode == ActionCodeConstants.DataEntry);
-                        var crrJob = _mapper.Map<JobDto, Job>(job);
-                        var prevDataEntryJobs = await _repository.GetPrevJobs(crrJob, new List<Guid> { prevWfsInfo.InstanceId });
-                        foreach (var prevDataEntryJob in prevDataEntryJobs)
-                        {
-                            if (!prevDataEntryJob.IsIgnore)
-                            {
-                                if (job.Value == prevDataEntryJob.Value)
-                                {
-                                    prevDataEntryJob.RightStatus = (short)EnumJob.RightStatus.Correct;
-                                    lstJobEntryCheckRight.Add(prevDataEntryJob);
-
-                                    if (prevDataEntryJob.ClientTollRatio > 0)
-                                    {
-                                        itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                                        {
-                                            SourceUserInstanceId = clientInstanceId,
-                                            ChangeAmount =
-                                                prevDataEntryJob.Price * prevDataEntryJob.ClientTollRatio / 100,
-                                            JobCode = prevDataEntryJob.Code,
-                                            ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
-                                            WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
-                                            WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
-                                            ActionCode = prevDataEntryJob.ActionCode,
-                                            Message = string.Format(MsgTransactionTemplate.MsgJobInfoes,
-                                                prevWfsInfo?.Name,
-                                                prevDataEntryJob.Code),
-                                            Description =
-                                                string.Format(
-                                                    DescriptionTransactionTemplate
-                                                        .DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                                    clientInstanceId, prevDataEntryJob.Code)
-                                        });
-                                    }
-                                    if (prevDataEntryJob.WorkerTollRatio > 0)
-                                    {
-                                        itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                                        {
-                                            SourceUserInstanceId =
-                                                prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
-                                            ChangeAmount =
-                                                (prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) /
-                                                 100) * prevDataEntryJob.WorkerTollRatio / 100,
-                                            JobCode = prevDataEntryJob.Code,
-                                            ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
-                                            WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
-                                            WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
-                                            ActionCode = prevDataEntryJob.ActionCode,
-                                            Message = string.Format(MsgTransactionTemplate.MsgJobInfoes,
-                                                prevWfsInfo?.Name,
-                                                prevDataEntryJob.Code),
-                                            Description =
-                                                string.Format(
-                                                    DescriptionTransactionTemplate
-                                                        .DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                                    userInstanceId,
-                                                    prevDataEntryJob.Code)
-                                        });
-                                    }
-
-                                    var correctDataEntryItemTransactionAdd = new ItemTransactionAddDto
-                                    {
-                                        SourceUserInstanceId = clientInstanceId,
-                                        DestinationUserInstanceId = prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
-                                        ChangeAmount = prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100,
-                                        ChangeProvisionalAmount = -(prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100),
-                                        JobCode = prevDataEntryJob.Code,
-                                        ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
-                                        WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
-                                        WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
-                                        ActionCode = prevDataEntryJob.ActionCode,
-                                        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, prevWfsInfo?.Name, prevDataEntryJob.Code),
-                                        Description = string.Format(
-                                            DescriptionTransactionTemplate.DescriptionTranferMoneyForConfirmedDataEntryJob,
-                                            clientInstanceId, prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
-                                            job.Code)
-                                    };
-                                    itemTransactionAdds.Add(correctDataEntryItemTransactionAdd);
-                                }
-                                else
-                                {
-                                    prevDataEntryJob.RightStatus = (short)EnumJob.RightStatus.Wrong;
-                                    lstJobEntryCheckWrong.Add(prevDataEntryJob);
-
-                                    // Trường hợp worker Nhập liệu sai, worker & hệ thống sẽ ko được nhận tiền thực
-                                    var wrongDataEntryItemTransactionAdd = new ItemTransactionAddDto
-                                    {
-                                        DestinationUserInstanceId = prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
-                                        ChangeAmount = 0,
-                                        ChangeProvisionalAmount = -(prevDataEntryJob.Price * (100 - prevDataEntryJob.ClientTollRatio) / 100),
-                                        JobCode = prevDataEntryJob.Code,
-                                        ProjectInstanceId = prevDataEntryJob.ProjectInstanceId,
-                                        WorkflowInstanceId = prevDataEntryJob.WorkflowInstanceId,
-                                        WorkflowStepInstanceId = prevDataEntryJob.WorkflowStepInstanceId,
-                                        ActionCode = prevDataEntryJob.ActionCode,
-                                        Message = string.Format(MsgTransactionTemplate.MsgJobInfoes, prevWfsInfo?.Name, prevDataEntryJob.Code),
-                                        Description = string.Format(
-                                            DescriptionTransactionTemplate.DescriptionDecreaseProvisionalMoneyForConfirmDataEntryJobIsWrong,
-                                            prevDataEntryJob.UserInstanceId.GetValueOrDefault(),
-                                            job.Code)
-                                    };
-                                    itemTransactionAdds.Add(wrongDataEntryItemTransactionAdd);
-                                }
-                            }
-                        }
-                    }
+                    #endregion
                 }
                 else
                 {
@@ -463,7 +497,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             InstanceId = x.InstanceId,
                                             ActionCode = x.ActionCode,
                                             Price = isPaid
-                                                ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                                ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                                     job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                                 : 0
                                         }).ToList();
@@ -471,7 +505,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     else
                                     {
                                         itemInput.Price = isPaid
-                                            ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                                 job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                             : 0;
                                     }
@@ -480,7 +514,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             else
                             {
                                 price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                         job.DigitizedTemplateInstanceId)
                                     : 0;
 
@@ -766,6 +800,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 foreach (var docInstanceId in docInstanceIds)
                 {
                     var actionCode = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.ActionCode;
+                    var wfInstanceId = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.WorkflowInstanceId;
                     var wfsInstanceId = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.WorkflowStepInstanceId;
                     bool hasJobWaitingOrProcessing =
                         await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode,
@@ -843,6 +878,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             outboxEntityDocFieldValueUpdateStatusCompleteEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
                             await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
                         }
+
+                        var crrWfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
+                        var crrWfsInfoes = crrWfInfoes.Item1;
+                        var crrWfSchemaInfoes = crrWfInfoes.Item2;
+                        await _moneyService.ChargeMoneyForCompleteDoc(crrWfsInfoes, crrWfSchemaInfoes, docItems, docInstanceId, accessToken);
                     }
                 }
             }

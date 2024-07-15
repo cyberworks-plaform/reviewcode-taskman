@@ -196,7 +196,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
 
                                                     // Tổng hợp price cho các bước TIẾP THEO
-                                                    decimal price = isPaid ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                                                    decimal price = isPaid
+                                                        ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
+                                                            inputParam.DigitizedTemplateInstanceId)
+                                                        : 0;
                                                     //Todo: Cân debug đoạn này để cho phép từ bước OCR đến thẳng bước check-final
                                                     // cầm compare với các Handler DataEntry/Ocr khác
                                                     var output = new InputParam
@@ -300,7 +303,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                                                             // Tổng hợp price cho các bước TIẾP THEO
                                                             itemInput.Price = isPaid
-                                                                ? MoneyHelper.GetPriceByConfigPrice(
+                                                                ? MoneyHelper.GetPriceByConfigPriceV2(
                                                                     nextWfsInfo.ConfigPrice,
                                                                     inputParam.DigitizedTemplateInstanceId,
                                                                     itemInput.DocTypeFieldInstanceId)
@@ -314,7 +317,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                                     x.Status == (short)EnumJob.Status.Ignore))
                                                             {
                                                                 price = isPaid
-                                                                    ? MoneyHelper.GetPriceByConfigPrice(
+                                                                    ? MoneyHelper.GetPriceByConfigPriceV2(
                                                                         nextWfsInfo.ConfigPrice,
                                                                         inputParam.DigitizedTemplateInstanceId)
                                                                     : 0;
@@ -472,7 +475,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 x.InstanceId == selectedConfigStepConditionDigitizedTemplate.WorkflowStepInstanceId);
                                             if (nextWfsInfo != null)
                                             {
-                                                decimal priceJob = MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId);  // Giá tiền cho job ở bước tiếp theo
+                                                decimal priceJob = MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId);  // Giá tiền cho job ở bước tiếp theo
 
                                                 var output = new InputParam
                                                 {
@@ -715,21 +718,24 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             // Tổng hợp price cho các bước TIẾP THEO
                                             if (isMultipleNextStep)
                                             {
-                                                itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
-                                                {
-                                                    InstanceId = x.InstanceId,
-                                                    ActionCode = x.ActionCode,
-                                                    Price = isPaid
-                                                        ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
-                                                            inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
-                                                        : 0
-                                                }).ToList();
+                                                itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x =>
+                                                    new WorkflowStepPrice
+                                                    {
+                                                        InstanceId = x.InstanceId,
+                                                        ActionCode = x.ActionCode,
+                                                        Price = isPaid
+                                                            ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
+                                                                inputParam.DigitizedTemplateInstanceId,
+                                                                itemInput.DocTypeFieldInstanceId)
+                                                            : 0
+                                                    }).ToList();
                                             }
                                             else
                                             {
                                                 itemInput.Price = isPaid
-                                                    ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
-                                                        inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
+                                                        inputParam.DigitizedTemplateInstanceId,
+                                                        itemInput.DocTypeFieldInstanceId)
                                                     : 0;
                                             }
                                         }
@@ -737,7 +743,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     else
                                     {
                                         price = isPaid
-                                            ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                                 inputParam.DigitizedTemplateInstanceId)
                                             : 0;
 

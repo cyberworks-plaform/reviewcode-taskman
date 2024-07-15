@@ -1,6 +1,5 @@
 ﻿using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Service.Dtos;
-using Axe.TaskManagement.Service.Services.Implementations;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
@@ -38,6 +37,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
+        private readonly IMoneyService _moneyService;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
         private readonly IConfiguration _configuration;
 
@@ -54,6 +54,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
+            IMoneyService moneyService,
             IServiceProvider provider,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
@@ -67,6 +68,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
+            _moneyService = moneyService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
             _cachingHelper = provider.GetService<ICachingHelper>();
@@ -123,10 +125,86 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
             bool isConvergenceNextStep = isParallelStep;
 
-            // 1. Cập nhật thanh toán tiền cho worker & hệ thống// Cập nhật thanh toán tiền cho worker bước HIỆN TẠI (SegmentLabeling)
+            // 1. Cập nhật thanh toán tiền cho worker & hệ thống// Cập nhật thanh toán tiền cho worker bước HIỆN TẠI (QACheckFinal)
+            // 1. Cập nhật tiền TẠM TÍNH cho worker => New
             var clientInstanceId = await GetClientInstanceIdByProject(job.ProjectInstanceId.GetValueOrDefault(), accessToken);
             if (clientInstanceId != Guid.Empty)
             {
+                #region Bussiness Old
+
+                //var itemTransactionAdds = new List<ItemTransactionAddDto>
+                //{
+                //    new ItemTransactionAddDto
+                //    {
+                //        SourceUserInstanceId = clientInstanceId,
+                //        DestinationUserInstanceId = userInstanceId,
+                //        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
+                //        ChangeProvisionalAmount = 0,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description = string.Format(
+                //            DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob,
+                //            clientInstanceId, userInstanceId,
+                //            job.Code)
+                //    }
+                //};
+                //var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
+                //if (job.ClientTollRatio > 0)
+                //{
+                //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                //    {
+                //        SourceUserInstanceId = clientInstanceId,
+                //        ChangeAmount = job.Price * job.ClientTollRatio / 100,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description =
+                //            string.Format(
+                //                DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                //                clientInstanceId, job.Code)
+                //    });
+                //}
+                //if (job.WorkerTollRatio > 0)
+                //{
+                //    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
+                //    {
+                //        SourceUserInstanceId = userInstanceId,
+                //        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
+                //        JobCode = job.Code,
+                //        ProjectInstanceId = job.ProjectInstanceId,
+                //        WorkflowInstanceId = job.WorkflowInstanceId,
+                //        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
+                //        ActionCode = job.ActionCode,
+                //        Message =
+                //            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                //        Description = string.Format(
+                //            DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
+                //            userInstanceId, job.Code)
+                //    });
+                //}
+
+                //var transactionAddMulti = new TransactionAddMultiDto
+                //{
+                //    CorrelationMessage = string.Format(MsgTransactionTemplate.MsgJobInfoes, "Xác nhận QA",
+                //        job.Code),
+                //    CorrelationDescription = $"Hoàn thành các công việc {job.Code}",
+                //    ItemTransactionAdds = itemTransactionAdds,
+                //    ItemTransactionToSysWalletAdds = itemTransactionToSysWalletAdds
+                //};
+
+                #endregion
+
+                #region Bussiness New
+
                 var itemTransactionAdds = new List<ItemTransactionAddDto>
                 {
                     new ItemTransactionAddDto
@@ -140,53 +218,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         WorkflowInstanceId = job.WorkflowInstanceId,
                         WorkflowStepInstanceId = job.WorkflowStepInstanceId,
                         ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
+                        Message = $"Tạm tính {string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code)}",
                         Description = string.Format(
-                            DescriptionTransactionTemplate.DescriptionTranferMoneyForCompleteJob,
-                            clientInstanceId, userInstanceId,
+                            DescriptionTransactionTemplateV2.DescriptionIncreaseProvisionalMoneyForCompleteJob,
+                            userInstanceId,
+                            crrWfsInfo.Name,
                             job.Code)
                     }
                 };
                 var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
-                if (job.ClientTollRatio > 0)
-                {
-                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                    {
-                        SourceUserInstanceId = clientInstanceId,
-                        ChangeAmount = job.Price * job.ClientTollRatio / 100,
-                        JobCode = job.Code,
-                        ProjectInstanceId = job.ProjectInstanceId,
-                        WorkflowInstanceId = job.WorkflowInstanceId,
-                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                        ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
-                        Description =
-                            string.Format(
-                                DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
-                                clientInstanceId, job.Code)
-                    });
-                }
-                if (job.WorkerTollRatio > 0)
-                {
-                    itemTransactionToSysWalletAdds.Add(new ItemTransactionToSysWalletAddDto
-                    {
-                        SourceUserInstanceId = userInstanceId,
-                        ChangeAmount = (job.Price * (100 - job.ClientTollRatio) / 100) * job.WorkerTollRatio / 100,
-                        JobCode = job.Code,
-                        ProjectInstanceId = job.ProjectInstanceId,
-                        WorkflowInstanceId = job.WorkflowInstanceId,
-                        WorkflowStepInstanceId = job.WorkflowStepInstanceId,
-                        ActionCode = job.ActionCode,
-                        Message =
-                            string.Format(MsgTransactionTemplate.MsgJobInfoes, crrWfsInfo?.Name, job.Code),
-                        Description = string.Format(
-                            DescriptionTransactionTemplate.DescriptionTranferMoneyToSysWalletForCompleteJob,
-                            userInstanceId, job.Code)
-                    });
-                }
-
                 var transactionAddMulti = new TransactionAddMultiDto
                 {
                     CorrelationMessage = string.Format(MsgTransactionTemplate.MsgJobInfoes, "Xác nhận QA",
@@ -195,6 +235,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     ItemTransactionAdds = itemTransactionAdds,
                     ItemTransactionToSysWalletAdds = itemTransactionToSysWalletAdds
                 };
+
+                #endregion
+
+
+
+
                 await _transactionClientService.AddMultiTransactionAsync(transactionAddMulti, accessToken);
             }
             else
@@ -331,7 +377,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             {
                 bool isTriggerNextStep = false;
                 bool isQAPass = job.QaStatus;
-            
+
                 if (jTokenConditionType != null && jTokenConfigStepConditions != null)
                 {
                     bool isConditionTypeResult = Int16.TryParse(jTokenConditionType.ToString(), out var conditionType);
@@ -379,11 +425,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         var batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
                                         var batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
-                                        
+
                                         isProcessQAInBatchMode = configQa.Item1;
 
                                         //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
-                                        if (string.IsNullOrEmpty(job.DocPath) || job.BatchJobInstanceId.GetValueOrDefault()==Guid.Empty)
+                                        if (string.IsNullOrEmpty(job.DocPath) || job.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty)
                                         {
                                             isProcessQAInBatchMode = false;
                                         }
@@ -400,7 +446,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                                             completePrevJobs = await _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
                                                 preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
-                                                null, job.NumOfRound,job.DocInstanceId);
+                                                null, job.NumOfRound, job.DocInstanceId);
 
                                             if (isQAPass == false) //rollback step (CheckFinal) cho phiếu hiện tại
                                             {
@@ -587,7 +633,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             value = JsonConvert.SerializeObject(docItems);
             price = isPaid
-                ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                     job.DigitizedTemplateInstanceId)
                 : 0;
 
@@ -624,13 +670,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
                     isConvergenceNextStep,
                 Note = job.Note,
-                NumOfRound = job.QaStatus==false? (short)(job.NumOfRound+1):job.NumOfRound,
+                NumOfRound = job.QaStatus == false ? (short)(job.NumOfRound + 1) : job.NumOfRound,
                 BatchName = job.BatchName,
                 BatchJobInstanceId = job.BatchJobInstanceId,
                 QaStatus = job.QaStatus,
                 TenantId = job.TenantId,
             };
-            
+
             output.InputParams = inputParams;
 
             var taskEvt = new TaskEvent
@@ -643,6 +689,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
 
+            await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, job.DocInstanceId.GetValueOrDefault(), accessToken);
         }
 
         private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo)
@@ -719,7 +766,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return jobsForNextStep;
         }
-
 
         private async Task TriggerNextStep(TaskEvent evt, string nextWfsActionCode)
         {

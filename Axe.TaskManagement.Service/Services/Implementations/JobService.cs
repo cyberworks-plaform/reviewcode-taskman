@@ -1,6 +1,5 @@
 ﻿using AutoMapper;
 using Axe.TaskManagement.Data.EntityExtensions;
-using Axe.TaskManagement.Data.Repositories.Implementations;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
@@ -11,7 +10,6 @@ using Axe.Utility.Dtos;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
-using Azure.Core;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
@@ -19,12 +17,10 @@ using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
-using Ce.EventBus.Lib;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Newtonsoft.Json;
@@ -55,6 +51,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IProjectTypeClientService _projectTypeClientService;
         private readonly IAppUserClientService _appUserClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
+        private readonly ITransactionClientService _transactionClientService;
+        private readonly IMoneyService _moneyService;
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IExternalProviderServiceConfigClientService _providerConfig;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
@@ -82,6 +80,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
+            IMoneyService moneyService,
             ISequenceJobRepository sequenceJobRepository,
             IBaseHttpClientFactory clientFatory,
             IExternalProviderServiceConfigClientService externalProviderServiceConfigClientService,
@@ -100,6 +99,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _userConfigClientService = userConfigClientService;
             _appUserClientService = appUserClientService;
             _projectStatisticClientService = projectStatisticClientService;
+            _transactionClientService = transactionClientService;
+            _moneyService = moneyService;
             _useCache = _cachingHelper != null;
             _clientFatory = clientFatory;
             _providerConfig = externalProviderServiceConfigClientService;
@@ -679,7 +680,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     InstanceId = x.InstanceId,
                                     ActionCode = x.ActionCode,
                                     Price = isPaid
-                                        ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                        ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                             inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                         : 0
                                 }).ToList();
@@ -687,7 +688,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             else
                             {
                                 itemInput.Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                         inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                     : 0;
                             }
@@ -702,14 +703,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 InstanceId = x.InstanceId,
                                 ActionCode = x.ActionCode,
                                 Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                         inputParam.DigitizedTemplateInstanceId)
                                     : 0
                             }).ToList();
                         }
                         else
                         {
-                            price = isPaid ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                            price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
                         }
                     }
 
@@ -1217,7 +1218,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     InstanceId = x.InstanceId,
                                     ActionCode = x.ActionCode,
                                     Price = isPaid
-                                        ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                        ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                             inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                         : 0
                                 }).ToList();
@@ -1225,7 +1226,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             else
                             {
                                 itemInput.Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                         inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                     : 0;
                             }
@@ -1240,14 +1241,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 InstanceId = x.InstanceId,
                                 ActionCode = x.ActionCode,
                                 Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                         inputParam.DigitizedTemplateInstanceId)
                                     : 0
                             }).ToList();
                         }
                         else
                         {
-                            price = isPaid ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                            price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
                         }
                     }
 
@@ -1814,6 +1815,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     TenantId = inputParam.TenantId
                                 };
                                 await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+                                await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
                         }
                         else

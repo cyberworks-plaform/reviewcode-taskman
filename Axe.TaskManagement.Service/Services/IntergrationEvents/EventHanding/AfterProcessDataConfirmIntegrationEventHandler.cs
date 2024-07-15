@@ -461,7 +461,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             InstanceId = x.InstanceId,
                                             ActionCode = x.ActionCode,
                                             Price = isPaid
-                                                ? MoneyHelper.GetPriceByConfigPrice(x.ConfigPrice,
+                                                ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
                                                     job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                                 : 0
                                         }).ToList();
@@ -469,7 +469,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     else
                                     {
                                         itemInput.Price = isPaid
-                                            ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                                 job.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
                                             : 0;
                                     }
@@ -478,7 +478,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             else
                             {
                                 price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPrice(nextWfsInfo.ConfigPrice,
+                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                         job.DigitizedTemplateInstanceId)
                                     : 0;
 

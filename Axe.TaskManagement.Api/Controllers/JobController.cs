@@ -8,10 +8,8 @@ using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using MongoDB.Bson;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 
 namespace Axe.TaskManagement.Api.Controllers
