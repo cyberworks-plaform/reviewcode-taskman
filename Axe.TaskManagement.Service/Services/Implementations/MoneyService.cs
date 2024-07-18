@@ -69,130 +69,134 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             itemJob.UserInstanceId.GetValueOrDefault(),
                             itemJob.Code)
                     };
-                    if (itemWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
+                    if (!itemJob.IsIgnore)
                     {
-                        var finalValItem = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemJob.DocTypeFieldInstanceId)?.Value;
-                        var isCorrect = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemJob.Value, finalValItem);
-                        if (isCorrect)
+                        if (itemWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
                         {
-                            var preVal = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemJob.DocTypeFieldInstanceId)?.Value;
-                            var isPriceEdit = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preVal, itemJob.Value);
-                            changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId, isPriceEdit);
-                            itemTransactionAdd.ChangeAmount = changeAmount;
-                            rightStatus = (short)EnumJob.RightStatus.Correct;
+                            var finalValItem = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemJob.DocTypeFieldInstanceId)?.Value;
+                            var isCorrect = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemJob.Value, finalValItem);
+                            if (isCorrect)
+                            {
+                                var preVal = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemJob.DocTypeFieldInstanceId)?.Value;
+                                var isPriceEdit = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preVal, itemJob.Value);
+                                changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId, isPriceEdit);
+                                itemTransactionAdd.ChangeAmount = changeAmount;
+                                rightStatus = (short)EnumJob.RightStatus.Correct;
+                            }
+                            else
+                            {
+                                itemTransactionAdd.ChangeAmount = 0;    // changeAmount = 0;
+                                rightStatus = (short)EnumJob.RightStatus.Wrong;
+                            }
+
+                            itemTransactionAdds.Add(itemTransactionAdd);
                         }
                         else
                         {
-                            itemTransactionAdd.ChangeAmount = 0;    // changeAmount = 0;
-                            rightStatus = (short)EnumJob.RightStatus.Wrong;
-                        }
-
-                        itemTransactionAdds.Add(itemTransactionAdd);
-                    }
-                    else
-                    {
-                        var itemVals = JsonConvert.DeserializeObject<List<DocItem>>(itemJob.Value);
-                        if (itemVals != null && itemVals.Any())
-                        {
-                            var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(itemWfsInfo.ConfigPrice);
-                            if (objConfigPrice != null)
+                            var itemVals = JsonConvert.DeserializeObject<List<DocItem>>(itemJob.Value);
+                            if (itemVals != null && itemVals.Any())
                             {
-                                if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByStep)
+                                var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(itemWfsInfo.ConfigPrice);
+                                if (objConfigPrice != null)
                                 {
-                                    var isCorrectTotal = true;
-                                    var isPriceEditTotal = true;
-                                    foreach (var itemVal in itemVals)
+                                    if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByStep)
                                     {
-                                        var finalValField = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                        if (finalValField != null)
+                                        var isCorrectTotal = true;
+                                        var isPriceEditTotal = true;
+                                        foreach (var itemVal in itemVals)
                                         {
-                                            var isCorrectField = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemVal.Value, finalValField.Value);
-                                            if (isCorrectField)
+                                            var finalValField = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                            if (finalValField != null)
                                             {
-                                                var preValField = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                                var isPriceEditField = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preValField?.Value, itemVal.Value);
-                                                if (!isPriceEditField)
+                                                var isCorrectField = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemVal.Value, finalValField.Value);
+                                                if (isCorrectField)
                                                 {
-                                                    isPriceEditTotal = false;
+                                                    var preValField = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                                    var isPriceEditField = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preValField?.Value, itemVal.Value);
+                                                    if (!isPriceEditField)
+                                                    {
+                                                        isPriceEditTotal = false;
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    isCorrectTotal = false;
+                                                    break;
                                                 }
                                             }
-                                            else
+                                        }
+
+                                        if (isCorrectTotal)
+                                        {
+                                            changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, null, isPriceEditTotal);
+                                            rightStatus = (short)EnumJob.RightStatus.Correct;
+                                        }
+                                        else
+                                        {
+                                            changeAmount = 0;
+                                            rightStatus = (short)EnumJob.RightStatus.Wrong;
+                                        }
+                                    }
+                                    else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
+                                    {
+                                        var totalCorrect = 0;
+                                        foreach (var itemVal in itemVals)
+                                        {
+                                            var finalValField = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                            if (finalValField != null)
                                             {
-                                                isCorrectTotal = false;
-                                                break;
+                                                var isCorrectField = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemVal.Value, finalValField.Value);
+                                                if (isCorrectField)
+                                                {
+                                                    var preValField = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                                    var isPriceEditField = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preValField?.Value, itemVal.Value);
+                                                    changeAmount += MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, itemVal.DocTypeFieldInstanceId, isPriceEditField);
+                                                    totalCorrect++;
+                                                }
+                                            }
+                                        }
+
+                                        if (totalCorrect == 0)
+                                        {
+                                            rightStatus = (short)EnumJob.RightStatus.Wrong;
+                                        }
+                                        else if (totalCorrect == itemVals.Count)
+                                        {
+                                            rightStatus = (short)EnumJob.RightStatus.Correct;
+                                        }
+                                        else
+                                        {
+                                            rightStatus = (short)EnumJob.RightStatus.Confirmed;
+                                        }
+                                    }
+
+                                    // CheckFinal bị giảm 50% tổng tiền nếu QA trả lại lần 2
+                                    if (itemJob.ActionCode == ActionCodeConstants.CheckFinal)
+                                    {
+                                        var jobWithMaxNumOfRound = allJobs
+                                            .Where(x => x.ActionCode == itemJob.ActionCode &&
+                                                        x.WorkflowStepInstanceId == itemJob.WorkflowStepInstanceId)
+                                            .OrderByDescending(o => o.NumOfRound).First();
+                                        if (itemJob.NumOfRound < jobWithMaxNumOfRound.NumOfRound)
+                                        {
+                                            changeAmount = 0;   // Các job CheckFinal không có NumOfRound là max thì không được tính tiền
+                                        }
+                                        else
+                                        {
+                                            if (itemJob.NumOfRound >= 2)
+                                            {
+                                                changeAmount = Math.Round(changeAmount / 2, 2);
                                             }
                                         }
                                     }
 
-                                    if (isCorrectTotal)
-                                    {
-                                        changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, null, isPriceEditTotal);
-                                        rightStatus = (short)EnumJob.RightStatus.Correct;
-                                    }
-                                    else
-                                    {
-                                        changeAmount = 0;
-                                        rightStatus = (short)EnumJob.RightStatus.Wrong;
-                                    }
+                                    itemTransactionAdd.ChangeAmount = changeAmount;
+                                    itemTransactionAdds.Add(itemTransactionAdd);
                                 }
-                                else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
-                                {
-                                    var totalCorrect = 0;
-                                    foreach (var itemVal in itemVals)
-                                    {
-                                        var finalValField = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                        if (finalValField != null)
-                                        {
-                                            var isCorrectField = MoneyHelper.IsCorrect(itemWfsInfo.ActionCode, itemVal.Value, finalValField.Value);
-                                            if (isCorrectField)
-                                            {
-                                                var preValField = allJobs.FirstOrDefault(x => x.WorkflowStepInstanceId == prevWfsInfo?.InstanceId && x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                                var isPriceEditField = MoneyHelper.IsPriceEdit(itemWfsInfo.ActionCode, preValField?.Value, itemVal.Value);
-                                                changeAmount += MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice, itemJob.DigitizedTemplateInstanceId, itemVal.DocTypeFieldInstanceId, isPriceEditField);
-                                                totalCorrect++;
-                                            }
-                                        }
-                                    }
-
-                                    if (totalCorrect == 0)
-                                    {
-                                        rightStatus = (short)EnumJob.RightStatus.Wrong;
-                                    }
-                                    else if (totalCorrect == itemVals.Count)
-                                    {
-                                        rightStatus = (short)EnumJob.RightStatus.Correct;
-                                    }
-                                    else
-                                    {
-                                        rightStatus = (short)EnumJob.RightStatus.Confirmed;
-                                    }
-                                }
-
-                                // CheckFinal bị giảm 50% tổng tiền nếu QA trả lại lần 2
-                                if (itemJob.ActionCode == ActionCodeConstants.CheckFinal)
-                                {
-                                    var jobWithMaxNumOfRound = allJobs
-                                        .Where(x => x.ActionCode == itemJob.ActionCode &&
-                                                    x.WorkflowStepInstanceId == itemJob.WorkflowStepInstanceId)
-                                        .OrderByDescending(o => o.NumOfRound).First();
-                                    if (itemJob.NumOfRound < jobWithMaxNumOfRound.NumOfRound)
-                                    {
-                                        changeAmount = 0;   // Các job CheckFinal không có NumOfRound là max thì không được tính tiền
-                                    }
-                                    else
-                                    {
-                                        if (itemJob.NumOfRound >= 2)
-                                        {
-                                            changeAmount = Math.Round(changeAmount / 2, 2);
-                                        }
-                                    }
-                                }
-
-                                itemTransactionAdd.ChangeAmount = changeAmount;
-                                itemTransactionAdds.Add(itemTransactionAdd);
                             }
                         }
                     }
+                    
 
                     // Update RightStatus & Price
                     var tempJob = (Job)itemJob.Clone();

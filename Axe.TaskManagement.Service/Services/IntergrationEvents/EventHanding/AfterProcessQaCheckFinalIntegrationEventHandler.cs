@@ -211,8 +211,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     {
                         SourceUserInstanceId = clientInstanceId,
                         DestinationUserInstanceId = userInstanceId,
-                        ChangeAmount = job.Price * (100 - job.ClientTollRatio) / 100,
-                        ChangeProvisionalAmount = 0,
+                        ChangeAmount = 0,
+                        ChangeProvisionalAmount = job.Price,
                         JobCode = job.Code,
                         ProjectInstanceId = job.ProjectInstanceId,
                         WorkflowInstanceId = job.WorkflowInstanceId,
@@ -237,9 +237,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 };
 
                 #endregion
-
-
-
 
                 await _transactionClientService.AddMultiTransactionAsync(transactionAddMulti, accessToken);
             }
@@ -618,78 +615,79 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         private async Task ProcessTriggerNextStep(JobDto job, List<DocItem> docItems, Guid parallelJobInstanceId, bool isConvergenceNextStep, List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string accessToken)
         {
-            int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
-            bool isDivergenceStep = numOfResourceInJob > 1;
-
-            var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
-                ConfigStepPropertyConstants.IsPaidStep);
-            var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
-            bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
-
-            bool isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
-
-            decimal price = 0;
-            string value = null;
-
-            value = JsonConvert.SerializeObject(docItems);
-            price = isPaid
-                ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
-                    job.DigitizedTemplateInstanceId)
-                : 0;
-
-            var output = new InputParam
+            if (nextWfsInfo.ActionCode != ActionCodeConstants.End)
             {
-                FileInstanceId = job.FileInstanceId,
-                ActionCode = nextWfsInfo.ActionCode,
-                DocInstanceId = job.DocInstanceId,
-                DocName = job.DocName,
-                DocCreatedDate = job.DocCreatedDate,
-                DocPath = job.DocPath,
-                TaskId = job.TaskId,
-                TaskInstanceId = job.TaskInstanceId,
-                ProjectTypeInstanceId = job.ProjectTypeInstanceId,
-                ProjectInstanceId = job.ProjectInstanceId,
-                SyncTypeInstanceId = job.SyncTypeInstanceId,
-                DigitizedTemplateInstanceId = job.DigitizedTemplateInstanceId,
-                DigitizedTemplateCode = job.DigitizedTemplateCode,
-                WorkflowInstanceId = job.WorkflowInstanceId,
-                WorkflowStepInstanceId = nextWfsInfo.InstanceId,
-                WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
-                WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
-                Value = value,
-                OldValue = value,
-                Price = price,
-                ClientTollRatio = job.ClientTollRatio,
-                WorkerTollRatio = job.WorkerTollRatio,
-                IsDivergenceStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File,
-                ParallelJobInstanceId =
-                    nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
-                        ? parallelJobInstanceId
-                        : null,
-                IsConvergenceNextStep =
-                    nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                    isConvergenceNextStep,
-                Note = job.Note,
-                NumOfRound = job.QaStatus == false ? (short)(job.NumOfRound + 1) : job.NumOfRound,
-                BatchName = job.BatchName,
-                BatchJobInstanceId = job.BatchJobInstanceId,
-                QaStatus = job.QaStatus,
-                TenantId = job.TenantId,
-            };
+                var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
+            ConfigStepPropertyConstants.IsPaidStep);
+                var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
 
-            output.InputParams = inputParams;
+                decimal price;
+                string value;
 
-            var taskEvt = new TaskEvent
+                value = JsonConvert.SerializeObject(docItems);
+                price = isPaid
+                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
+                        job.DigitizedTemplateInstanceId)
+                    : 0;
+
+                var output = new InputParam
+                {
+                    FileInstanceId = job.FileInstanceId,
+                    ActionCode = nextWfsInfo.ActionCode,
+                    DocInstanceId = job.DocInstanceId,
+                    DocName = job.DocName,
+                    DocCreatedDate = job.DocCreatedDate,
+                    DocPath = job.DocPath,
+                    TaskId = job.TaskId,
+                    TaskInstanceId = job.TaskInstanceId,
+                    ProjectTypeInstanceId = job.ProjectTypeInstanceId,
+                    ProjectInstanceId = job.ProjectInstanceId,
+                    SyncTypeInstanceId = job.SyncTypeInstanceId,
+                    DigitizedTemplateInstanceId = job.DigitizedTemplateInstanceId,
+                    DigitizedTemplateCode = job.DigitizedTemplateCode,
+                    WorkflowInstanceId = job.WorkflowInstanceId,
+                    WorkflowStepInstanceId = nextWfsInfo.InstanceId,
+                    WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
+                    WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                    Value = value,
+                    OldValue = value,
+                    Price = price,
+                    ClientTollRatio = job.ClientTollRatio,
+                    WorkerTollRatio = job.WorkerTollRatio,
+                    IsDivergenceStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File,
+                    ParallelJobInstanceId =
+                        nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
+                            ? parallelJobInstanceId
+                            : null,
+                    IsConvergenceNextStep =
+                        nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                        isConvergenceNextStep,
+                    Note = job.Note,
+                    NumOfRound = job.QaStatus == false ? (short)(job.NumOfRound + 1) : job.NumOfRound,
+                    BatchName = job.BatchName,
+                    BatchJobInstanceId = job.BatchJobInstanceId,
+                    QaStatus = job.QaStatus,
+                    TenantId = job.TenantId,
+                };
+                inputParams.ForEach(x => x.Price = price);
+
+                output.InputParams = inputParams;
+
+                var taskEvt = new TaskEvent
+                {
+                    Input = JsonConvert.SerializeObject(output),     // output của bước trước là input của bước sau
+                    AccessToken = accessToken
+                };
+
+                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+
+                Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
+            }
+            else
             {
-                Input = JsonConvert.SerializeObject(output),     // output của bước trước là input của bước sau
-                AccessToken = accessToken
-            };
-
-            await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-
-            Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
-
-            await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, job.DocInstanceId.GetValueOrDefault(), accessToken);
+                await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, job.DocInstanceId.GetValueOrDefault(), accessToken);
+            }
         }
 
         private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo)
