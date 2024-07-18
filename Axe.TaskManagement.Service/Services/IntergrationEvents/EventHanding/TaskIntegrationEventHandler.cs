@@ -937,7 +937,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 var prevOfNextWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
                                                 var prevOfNextWfsInstanceIds = prevOfNextWfsInfoes.Select(x => x.InstanceId).ToList();
                                                 var prevOfNextWfsJobs = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), prevOfNextWfsInstanceIds);
-                                                prevOfNextWfsJobs = prevOfNextWfsJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng
+                                                //prevOfNextWfsJobs = prevOfNextWfsJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng => Bussiness New: Don't need filter
 
 
                                                 //var crrJobs = await _jobRepository.GetJobByWfs(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.ActionCode, crrWfsInfo.InstanceId);
@@ -1500,7 +1500,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                                     : 0;
                                                             var prevWfsInstanceIds = prevWfsInfoes.Select(x => x.InstanceId).ToList();
                                                             var prevJobs = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), prevWfsInstanceIds);
-                                                            prevJobs = prevJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng
+                                                            //prevJobs = prevJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng => Bussiness New: Don't need filter
                                                             if (prevJobs.Count == countOfExpectJobs) // Số lượng prevJobs = countOfExpectJobs thì mới next step
                                                             {
                                                                 // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
