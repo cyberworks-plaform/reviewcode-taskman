@@ -112,7 +112,6 @@ namespace Axe.TaskManagement.Service.Dtos
         public bool? IsMultipleSelection { get; set; }      // Cho phép chọn nhiều, trong trường hợp InputType là PrivateCategory, Dư thừa dữ liệu
 
         [Description("Định dạng")]
-        [MaxLength(30)]
         [BsonElement("format")]
         public string Format { get; set; }  // for date field, number field, ex: dd/MM/yyyy, Dư thừa dữ liệu để validate client
 
@@ -277,6 +276,9 @@ namespace Axe.TaskManagement.Service.Dtos
         [BsonElement("old_value")]
         public string OldValue { get; set; } = string.Empty;
 
+        public string InputShortNote { get; set; }
         #endregion
+
+
     }
 }

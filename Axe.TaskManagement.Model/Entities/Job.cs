@@ -111,7 +111,6 @@ namespace Axe.TaskManagement.Model.Entities
         public bool? IsMultipleSelection { get; set; }      // Cho phép chọn nhiều, trong trường hợp InputType là PrivateCategory, Dư thừa dữ liệu
 
         [Description("Định dạng")]
-        [MaxLength(30)]
         [BsonElement("format")]
         public string Format { get; set; }  // for date field, number field, ex: dd/MM/yyyy, Dư thừa dữ liệu để validate client
 
@@ -260,7 +259,7 @@ namespace Axe.TaskManagement.Model.Entities
         [Description("Vòng thực hiện thứ bao nhiêu")]
         [BsonElement("num_of_round")]
         public short NumOfRound { get; set; }
-
+        
         [Description("Batch name")]
         [MaxLength(128)]
         [BsonElement("batch_name")]
@@ -283,6 +282,8 @@ namespace Axe.TaskManagement.Model.Entities
         [BsonElement("status")]
         public short Status { get; set; } = (short)EnumJob.Status.Waiting;   // refer: EnumJob.Status: Chờ phân phối, Đang xử lý, Hoàn thành
 
+        [NotMapped]
+        public string InputShortNote { get; set; }
         #endregion
 
         public object Clone()
