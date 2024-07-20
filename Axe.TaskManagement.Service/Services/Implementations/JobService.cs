@@ -5584,14 +5584,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         {
             var updatedJobs = jobs;
 
-            var isValidActionCode = false;
-            //lọc ra các action code
-            if (actionCode == ActionCodeConstants.CheckFinal || actionCode == ActionCodeConstants.QACheckFinal)
-            {
-                isValidActionCode = true;
-            }
-
-            if (!isValidActionCode || !jobs.Any())
+            if (!jobs.Any())
             {
                 return updatedJobs;
             }
@@ -5599,38 +5592,66 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
             foreach (var job in updatedJobs)
             {
-                //lấy danh sách các DocTypeField theo DocInstanceId
-                if (string.IsNullOrEmpty(job.Value))
+               
+                List<DocItem> listDocItem = null;
+                var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
+                var cacheTime = 5 * 60;
+                listDocItem = _cachingHelper.TryGetFromCache<List<DocItem>>(cacheKey);
+                if (listDocItem == null || listDocItem.Count == 0)
                 {
-                    job.Value = JsonConvert.SerializeObject(new List<DocItem>());
+                    var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
+                    listDocItem = listDocItemRes.Data;
+
+                    //save to cache => do mỗi Job -> Doc -> DigitizedTemplateId => mặc dù lấy DocItem theo DocID nhưng có thể save theo TemplateID
+                    // lưu ý nếu sau này dùng các thuộc tính khác ngoài TemplateID thì phải sửa logic cacheKey
+                    await _cachingHelper.TrySetCacheAsync(cacheKey,listDocItem, cacheTime);
                 }
 
-                if (string.IsNullOrEmpty(job.OldValue))
+                //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
+                if (job.DocTypeFieldInstanceId != null)
                 {
-                    job.OldValue = JsonConvert.SerializeObject(new List<DocItem>());
+                    var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    job.Format = docItem.Format;
+                    job.InputShortNote = docItem.InputShortNote;
                 }
-                var jobValue = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                var jobOldValue = JsonConvert.DeserializeObject<List<DocItem>>(job.OldValue);
-
-                var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
-                var listDocItem = listDocItemRes.Data;
-
-                if (jobValue != null)
+                else // job xử lý nhiều meta ví dụ CheckFinal
                 {
-                    foreach (var item in jobValue)
+                    //lấy danh sách các DocTypeField theo DocInstanceId
+                    if (string.IsNullOrEmpty(job.Value))
                     {
-                        item.ShowForInput = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId).ShowForInput;
+                        job.Value = JsonConvert.SerializeObject(new List<DocItem>());
                     }
-                    job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
-                }
 
-                if (jobOldValue != null)
-                {
-                    foreach (var item in jobOldValue)
+                    if (string.IsNullOrEmpty(job.OldValue))
                     {
-                        item.ShowForInput = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId).ShowForInput;
+                        job.OldValue = JsonConvert.SerializeObject(new List<DocItem>());
                     }
-                    job.OldValue = JsonConvert.SerializeObject(jobOldValue); //update lại value của job
+                    var jobValue = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var jobOldValue = JsonConvert.DeserializeObject<List<DocItem>>(job.OldValue);
+
+                    if (jobValue != null)
+                    {
+                        foreach (var item in jobValue)
+                        {
+                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            item.ShowForInput = docItem.ShowForInput;
+                            item.Format = docItem.Format;
+                            item.InputShortNote = docItem.InputShortNote;
+                        }
+                        job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
+                    }
+
+                    if (jobOldValue != null)
+                    {
+                        foreach (var item in jobOldValue)
+                        {
+                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            item.ShowForInput = docItem.ShowForInput;
+                            item.Format = docItem.Format;
+                            item.InputShortNote = docItem.InputShortNote;
+                        }
+                        job.OldValue = JsonConvert.SerializeObject(jobOldValue); //update lại value của job
+                    }
                 }
 
             }
