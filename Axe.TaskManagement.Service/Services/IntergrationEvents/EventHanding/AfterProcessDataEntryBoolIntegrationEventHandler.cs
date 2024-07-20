@@ -518,7 +518,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 itemInputParams.First().IsConvergenceNextStep = true;
                                                 taskEvt.Input = JsonConvert.SerializeObject(output);
 
-                                                TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
                                                 isTriggerNextStep = true;
                                             }
                                         }
@@ -550,7 +550,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     job.WorkflowStepInstanceId.GetValueOrDefault());
                                             if (!triggerNextStepHappend)
                                             {
-                                                TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
                                                 isTriggerNextStep = true;
                                             }
                                         }
@@ -559,7 +559,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             }
                             else
                             {
-                                TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
                                 isTriggerNextStep = true;
                             }
 

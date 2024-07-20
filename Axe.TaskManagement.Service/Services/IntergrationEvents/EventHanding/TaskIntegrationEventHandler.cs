@@ -1318,21 +1318,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         TotalFile = 0
                                     };
                                     var changeProjectStepProgressAfter = new List<ProjectStepProgress>
-                                {
-                                    new ProjectStepProgress
                                     {
-                                        InstanceId = crrWfsInfo.InstanceId,
-                                        Name = crrWfsInfo.Name,
-                                        ActionCode = crrWfsInfo.ActionCode,
-                                        ProcessingFile = -1,
-                                        CompleteFile = 1,
-                                        TotalFile = 0,
-                                        ProcessingDocInstanceIds = new List<Guid>
-                                            { inputParam.DocInstanceId.GetValueOrDefault() },
-                                        CompleteDocInstanceIds = new List<Guid>
-                                            { inputParam.DocInstanceId.GetValueOrDefault() }
-                                    }
-                                };
+                                        new ProjectStepProgress
+                                        {
+                                            InstanceId = crrWfsInfo.InstanceId,
+                                            Name = crrWfsInfo.Name,
+                                            ActionCode = crrWfsInfo.ActionCode,
+                                            ProcessingFile = -1,
+                                            CompleteFile = 1,
+                                            TotalFile = 0,
+                                            ProcessingDocInstanceIds = new List<Guid>
+                                                {inputParam.DocInstanceId.GetValueOrDefault()},
+                                            CompleteDocInstanceIds = new List<Guid>
+                                                {inputParam.DocInstanceId.GetValueOrDefault()}
+                                        }
+                                    };
                                     var changeProjectStatisticAfter = new ProjectStatisticUpdateProgressDto
                                     {
                                         ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
@@ -1355,8 +1355,68 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
                                     Log.Logger.Information($"Acked {nameof(TaskEvent)} step {inputParam.ActionCode}, WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
 
-                                    // 3. Trigger bước tiếp theo
-                                    
+                                    // 3.1. Cập nhật giá trị DocFieldValue & Doc
+                                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
+                                    if (_isCreateSingleJob)
+                                    {
+                                        var crrJob = jobs.FirstOrDefault();
+                                        if (crrJob != null && !string.IsNullOrEmpty(crrJob.Value))
+                                        {
+                                            var crrDocItems = JsonConvert.DeserializeObject<List<DocItem>>(crrJob.Value);
+                                            foreach (var docItem in crrDocItems)
+                                            {
+                                                itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                                {
+                                                    InstanceId = docItem.DocFieldValueInstanceId.GetValueOrDefault(),
+                                                    Value = docItem.Value,
+                                                    CoordinateArea = docItem.CoordinateArea,
+                                                    ActionCode = crrJob.ActionCode
+                                                });
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        foreach (var job in jobs)
+                                        {
+                                            itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                            {
+                                                InstanceId = job.DocFieldValueInstanceId.GetValueOrDefault(),
+                                                Value = job.Value,
+                                                CoordinateArea = job.CoordinateArea,
+                                                ActionCode = job.ActionCode
+                                            });
+                                        }
+                                    }
+                                    // 3.2. Cập nhật giá trị DocFieldValue & Doc
+                                    if (itemDocFieldValueUpdateValues.Any())
+                                    {
+                                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
+                                        {
+                                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
+                                        };
+                                        // Outbox
+                                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                        {
+                                            ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                                        });
+                                        var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                                        if (isAck)
+                                        {
+                                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                        }
+                                        else
+                                        {
+                                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                        }
+                                    }
+
+
+                                    // 4. Trigger bước tiếp theo
+
                                     if (nextWfsInfoes != null && nextWfsInfoes.All(x => x.ActionCode != ActionCodeConstants.End))
                                     {
                                         
