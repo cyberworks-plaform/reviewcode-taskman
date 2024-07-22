@@ -5592,6 +5592,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
             foreach (var job in updatedJobs)
             {
+                //get PathName
+                job.PathName = await GetPathName(job.DocPath, accessToken);
 
                 List<DocItem> listDocItem = null;
                 var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
@@ -5611,7 +5613,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (job.DocTypeFieldInstanceId != null)
                 {
                     var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
-                    
+
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
                     job.MinLength = docItem?.MinLength ?? 0;
@@ -5644,7 +5646,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         foreach (var item in jobValue)
                         {
                             var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
-                            
+
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
                             item.MaxValue = docItem?.MaxValue;
@@ -5688,5 +5690,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return updatedJobs;
         }
 
+        private async Task<string> GetPathName(string docPath, string accessToken)
+        {
+            var pathName = string.Empty;
+
+            var cacheKey = $"Job_PathName_{docPath}";
+            pathName = _cachingHelper.TryGetFromCache<string>(cacheKey);
+            if (string.IsNullOrEmpty(pathName))
+            {
+                var docRes = await _docClientService.GetPathName(docPath, accessToken);
+                pathName = docRes.Data;
+                await _cachingHelper.TrySetCacheAsync(cacheKey, pathName);
+            }
+            return pathName;
+        }
     }
 }
