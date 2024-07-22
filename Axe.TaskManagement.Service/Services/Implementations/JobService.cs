@@ -5592,7 +5592,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
             foreach (var job in updatedJobs)
             {
-               
+
                 List<DocItem> listDocItem = null;
                 var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
                 var cacheTime = 5 * 60;
@@ -5604,15 +5604,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     //save to cache => do mỗi Job -> Doc -> DigitizedTemplateId => mặc dù lấy DocItem theo DocID nhưng có thể save theo TemplateID
                     // lưu ý nếu sau này dùng các thuộc tính khác ngoài TemplateID thì phải sửa logic cacheKey
-                    await _cachingHelper.TrySetCacheAsync(cacheKey,listDocItem, cacheTime);
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, listDocItem, cacheTime);
                 }
 
                 //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
                 if (job.DocTypeFieldInstanceId != null)
                 {
                     var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
-                    job.Format = docItem.Format;
-                    job.InputShortNote = docItem.InputShortNote;
+                    job.MinValue = docItem?.MinValue;
+                    job.MaxValue = docItem?.MaxValue;
+                    job.MinLength = docItem?.MinLength ?? 0;
+                    job.MaxLength = docItem?.MaxLength ?? 0;
+                    job.Format = docItem?.Format;
+                    job.InputShortNote = docItem?.InputShortNote;
                 }
                 else // job xử lý nhiều meta ví dụ CheckFinal
                 {
@@ -5634,9 +5638,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         foreach (var item in jobValue)
                         {
                             var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
-                            item.ShowForInput = docItem.ShowForInput;
-                            item.Format = docItem.Format;
-                            item.InputShortNote = docItem.InputShortNote;
+                            item.ShowForInput = docItem?.ShowForInput ?? false;
+                            item.MinValue = docItem?.MinValue;
+                            item.MaxValue = docItem?.MaxValue;
+                            item.MinLength = docItem?.MinLength ?? 0;
+                            item.MaxLength = docItem?.MaxLength ?? 0;
+                            item.Format = docItem?.Format;
+                            item.InputShortNote = docItem?.InputShortNote;
                         }
                         job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
                     }
@@ -5646,9 +5654,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         foreach (var item in jobOldValue)
                         {
                             var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
-                            item.ShowForInput = docItem.ShowForInput;
-                            item.Format = docItem.Format;
-                            item.InputShortNote = docItem.InputShortNote;
+                            item.ShowForInput = docItem?.ShowForInput ?? false;
+                            item.MinValue = docItem?.MinValue;
+                            item.MaxValue = docItem?.MaxValue;
+                            item.MinLength = docItem?.MinLength ?? 0;
+                            item.MaxLength = docItem?.MaxLength ?? 0;
+                            item.Format = docItem?.Format;
+                            item.InputShortNote = docItem?.InputShortNote;
                         }
                         job.OldValue = JsonConvert.SerializeObject(jobOldValue); //update lại value của job
                     }
