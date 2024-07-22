@@ -5611,12 +5611,18 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (job.DocTypeFieldInstanceId != null)
                 {
                     var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
                     job.MinLength = docItem?.MinLength ?? 0;
                     job.MaxLength = docItem?.MaxLength ?? 0;
                     job.Format = docItem?.Format;
                     job.InputShortNote = docItem?.InputShortNote;
+                    job.DocTypeFieldCode = docItem?.DocTypeFieldCode;
+                    job.DocTypeFieldName = docItem?.DocTypeFieldName;
+                    job.InputType = docItem?.InputType ?? 0;
+                    job.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
+                    job.IsMultipleSelection = docItem?.IsMultipleSelection;
                 }
                 else // job xử lý nhiều meta ví dụ CheckFinal
                 {
@@ -5638,6 +5644,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         foreach (var item in jobValue)
                         {
                             var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
                             item.MaxValue = docItem?.MaxValue;
@@ -5645,6 +5652,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
+                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
+                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.InputType = docItem?.InputType ?? 0;
+                            item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
+                            item.IsMultipleSelection = docItem?.IsMultipleSelection;
                         }
                         job.Value = JsonConvert.SerializeObject(jobValue); //update lại value của job
                     }
@@ -5654,6 +5666,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         foreach (var item in jobOldValue)
                         {
                             var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
                             item.MaxValue = docItem?.MaxValue;
@@ -5661,6 +5674,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
+                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
+                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.InputType = docItem?.InputType ?? 0;
+                            item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
+                            item.IsMultipleSelection = docItem?.IsMultipleSelection;
                         }
                         job.OldValue = JsonConvert.SerializeObject(jobOldValue); //update lại value của job
                     }
@@ -5669,5 +5687,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return updatedJobs;
         }
+
     }
 }
