@@ -277,6 +277,8 @@ namespace Axe.TaskManagement.Service.Dtos
         public string OldValue { get; set; } = string.Empty;
 
         public string InputShortNote { get; set; }
+
+        public string PathName { get; set; }
         #endregion
 
 

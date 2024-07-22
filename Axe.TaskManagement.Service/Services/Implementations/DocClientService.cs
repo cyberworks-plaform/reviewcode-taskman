@@ -241,5 +241,27 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+
+        public async Task<GenericResponse<string>> GetPathName(string docPath, string accessToken = null)
+        {
+            GenericResponse<string> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-path-name/";
+                var param = new Dictionary<string, string>
+                {
+                    { "path" ,  docPath }
+                };
+                response = await client.GetAsync<GenericResponse<string>>(_serviceUri, apiEndpoint, param, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+
     }
 }

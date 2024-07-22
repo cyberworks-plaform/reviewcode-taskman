@@ -5592,6 +5592,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
             foreach (var job in updatedJobs)
             {
+                //get PathName
+                job.PathName = await GetPathName(job.DocPath,accessToken);
 
                 List<DocItem> listDocItem = null;
                 var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
@@ -5688,5 +5690,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return updatedJobs;
         }
 
+        private async Task<string> GetPathName(string docPath,string accessToken)
+        {
+            var pathName = await _docClientService.GetPathName(docPath, accessToken);
+            return pathName.Data;
+        }
     }
 }

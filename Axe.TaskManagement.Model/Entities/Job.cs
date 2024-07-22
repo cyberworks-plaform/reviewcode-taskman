@@ -284,6 +284,9 @@ namespace Axe.TaskManagement.Model.Entities
 
         [NotMapped]
         public string InputShortNote { get; set; }
+
+        [NotMapped]
+        public string PathName { get; set; }
         #endregion
 
         public object Clone()
