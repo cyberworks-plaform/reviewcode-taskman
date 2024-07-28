@@ -1,9 +1,12 @@
-﻿using Axe.TaskManagement.Model.Entities;
+﻿using Axe.TaskManagement.Data.EntityExtensions;
+using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Ce.Common.Lib.Abstractions;
+using Ce.Common.Lib.Caching.Implementations;
+using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
@@ -19,10 +22,13 @@ namespace Axe.TaskManagement.Api.Controllers
     [Authorize]
     public class JobController : MongoBaseController<IJobService, Job, JobDto>
     {
+        private readonly ICachingHelper _cachingHelper;
+
         #region Initialize
 
-        public JobController(IJobService service) : base(service)
+        public JobController(IJobService service, ICachingHelper cachingHelper) : base(service)
         {
+            _cachingHelper = cachingHelper;
         }
 
         #endregion
@@ -523,21 +529,78 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-count-all-job-by-status")]
         public async Task<IActionResult> GetCountAllJobByStatus()
         {
-            return ResponseResult(await _service.GetCountAllJobByStatus());
+            GenericResponse<List<CountJobEntity>> response;
+            var cacheTimeOut = 60; // 60 second
+            var cacheKey = $"{this.GetType().Name}_get-count-all-job-by-status";
+            //try to get data from cache
+            var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
+
+            // no data in cache
+            if (reportData == null)
+            {
+                var serviceResponse = await _service.GetCountAllJobByStatus();
+                if(serviceResponse.Success)
+                {
+                    reportData = serviceResponse.Data;
+                    //save data to cache
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, reportData,cacheTimeOut);
+                }
+
+            }
+            response = GenericResponse<List<CountJobEntity>>.ResultWithData(reportData);
+            return ResponseResult(response);
         }
 
         [HttpGet]
         [Route("get-summary-job-by-action")]
         public async Task<IActionResult> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate)
         {
-            return ResponseResult(await _service.GetSummaryJobByAction(projectInstanceId, fromDate, toDate));
+            GenericResponse<List<CountJobEntity>> response;
+            var cacheTimeOut = 60; // 60 second
+            var cacheKey = $"{this.GetType().Name}_get-summary-job-by-action_{projectInstanceId}_{fromDate}_{toDate}";
+            //try to get data from cache
+            var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
+
+            // no data in cache
+            if (reportData == null)
+            {
+                var serviceResponse = await _service.GetSummaryJobByAction(projectInstanceId, fromDate, toDate);
+                if (serviceResponse.Success)
+                {
+                    reportData = serviceResponse.Data;
+                    //save data to cache
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, reportData, cacheTimeOut);
+                }
+
+            }
+            response = GenericResponse<List<CountJobEntity>>.ResultWithData(reportData);
+            return ResponseResult(response);
         }
 
         [HttpGet]
         [Route("get-summary-doc-by-action")]
         public async Task<IActionResult> GetSummaryDocByAction(Guid projectInstanceId, Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null)
         {
-            return ResponseResult(await _service.GetSummaryDocByAction(projectInstanceId, wfInstanceId,fromDate, toDate, accessToken));
+            GenericResponse<List<CountJobEntity>> response;
+            var cacheTimeOut = 60; // 60 second
+            var cacheKey = $"{this.GetType().Name}_get-summary-doc-by-action_{projectInstanceId}_{wfInstanceId.GetValueOrDefault()}_{fromDate}_{toDate}";
+            //try to get data from cache
+            var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
+
+            // no data in cache
+            if (reportData == null)
+            {
+                var serviceResponse = await _service.GetSummaryDocByAction(projectInstanceId, wfInstanceId, fromDate, toDate, accessToken);
+                if (serviceResponse.Success)
+                {
+                    reportData = serviceResponse.Data;
+                    //save data to cache
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, reportData, cacheTimeOut);
+                }
+
+            }
+            response = GenericResponse<List<CountJobEntity>>.ResultWithData(reportData);
+            return ResponseResult(response);
         }
 
         [HttpGet]
