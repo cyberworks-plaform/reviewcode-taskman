@@ -145,5 +145,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse> ResyncJobDistribution();
         Task<GenericResponse<int>> ProcessQaCheckFinal(JobResult result, string accessToken = null);
         Task<bool> PublishLogJobEvent(List<Job> jobs, string accessToken);
+        Task<GenericResponse<JobDto>> GetByInstanceId(Guid instanceId);
+        Task<GenericResponse<List<JobDto>>> GetByInstanceIds(List<Guid> instanceIds);
     }
 }

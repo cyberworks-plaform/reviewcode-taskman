@@ -644,5 +644,19 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.ResyncJobDistribution());
         }
+
+        [HttpPost]
+        [Route("get-by-instance-id")]
+        public async Task<IActionResult> GetByInstanceId(Guid instanceId)
+        {
+            return ResponseResult(await _service.GetByInstanceId(instanceId));
+        }
+
+        [HttpPost]
+        [Route("get-by-instance-ids")]
+        public async Task<IActionResult> GetByInstanceIds(List<Guid> instanceIds)
+        {
+            return ResponseResult(await _service.GetByInstanceIds(instanceIds));
+        }
     }
 }

@@ -16,6 +16,13 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
+    "HieuPT": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "HieuPT"
+      }
+    },
     "Huydinh": {
       "commandName": "IISExpress",
       "launchBrowser": true,

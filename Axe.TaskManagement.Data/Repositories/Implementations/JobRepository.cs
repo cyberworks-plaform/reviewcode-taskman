@@ -359,6 +359,26 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var data = DbSet.Find(filter);
             return await data.ToListAsync();
         }
+        public async Task<List<Job>> GetJobByWfsAndField(Guid docInstanceId, List<Guid?> fields, string actionCode = null, Guid? workflowStepInstanceId = null, short? status = null)
+        {
+            var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId) 
+                & (Builders<Job>.Filter.In(x => x.DocTypeFieldInstanceId, fields) | Builders<Job>.Filter.Eq(x => x.DocTypeFieldInstanceId, null));
+            if (!string.IsNullOrEmpty(actionCode))
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            }
+            if (workflowStepInstanceId != null)
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.WorkflowStepInstanceId, workflowStepInstanceId);
+            }
+
+            if (status != null)
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, status);
+            }
+            var data = DbSet.Find(filter);
+            return await data.ToListAsync();
+        }
 
         public async Task<List<Job>> GetJobByWfsInstanceIds(Guid docInstanceId, List<Guid> workflowStepInstanceIds)
         {
@@ -370,7 +390,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         }
 
         public async Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
-            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1,Guid? docInstanceId=null)
+            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null)
         {
             var filter = Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
             if (workflowStepInstanceId != null)
@@ -398,10 +418,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 filter = filter & Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
             }
 
-            if(docInstanceId!=null)
+            if (docInstanceId != null)
             {
                 filter = filter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
-            }    
+            }
 
             var data = DbSet.Find(filter);
             return await data.ToListAsync();
@@ -644,7 +664,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                             0,
                             new BsonDocument("$divide", new BsonArray { "$totalNL", "$totalDoubleSort" })
                         })
-                    }, 
+                    },
                     { "totalOCR", 1 },
                     { "totalDoubleSort", 1 },
                     //{ "batch_job_instance_id", "$z.batch_job_instance_id" },
@@ -1541,9 +1561,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
             var totalWrong = await DbSet.CountDocumentsAsync(filter &
                                                              Builders<Job>.Filter.Eq(x => x.Status,
-                                                                 (short) EnumJob.Status.Complete) &
+                                                                 (short)EnumJob.Status.Complete) &
                                                              Builders<Job>.Filter.Eq(x => x.RightStatus,
-                                                                 (int) EnumJob.RightStatus.Wrong));
+                                                                 (int)EnumJob.RightStatus.Wrong));
             return Math.Round(totalWrong * 100.0 / totalfilter, 2);
         }
 
@@ -2460,6 +2480,19 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                   ReturnDocument = ReturnDocument.After
               });
             return record;
+        }
+
+        public async Task<Job> GetJobByInstanceId(Guid instanceId)
+        {
+            var filter = Builders<Job>.Filter.Eq(x => x.InstanceId, instanceId);
+            var job = DbSet.Find(filter);
+            return await job.SingleOrDefaultAsync();
+        }
+        public async Task<List<Job>> GetJobsByInstanceIds(List<Guid> instanceIds)
+        {
+            var filter = Builders<Job>.Filter.In(x => x.InstanceId, instanceIds);
+            var jobs = DbSet.Find(filter);
+            return await jobs.ToListAsync();
         }
     }
 }

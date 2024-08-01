@@ -13,6 +13,8 @@ namespace Axe.TaskManagement.Data.Configs
             services.AddScoped<IJobRepository, JobRepository>();
             services.AddScoped<ISequenceJobRepository, SequenceJobRepository>();
             services.AddScoped<IQueueLockRepository, QueueLockRepository>();
+            services.AddScoped<IComplainRepository, ComplainRepository>();
+            services.AddScoped<ISequenceComplainRepository, SequenceComplainRepository>();
 
             services.AddScoped<IOutboxIntegrationEventRepository, OutboxIntegrationEventRepository>();
         }
