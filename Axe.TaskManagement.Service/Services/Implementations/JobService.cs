@@ -1349,11 +1349,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
                 }
-                var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
-
-                if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
+                var resultDocItems = new List<DocItem>();
+                if (result.QAStatus == false)
                 {
-                    return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                    resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+
+                    if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
+                    {
+                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                    }
                 }
 
                 var filter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId); // lấy theo người dùng
@@ -1376,91 +1380,113 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
-
-                //Validate Value
-                var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
-                if (!isValidCheckFinalValue)
-                {
-                    return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
-                }
-
-                var docItems = new List<DocItem>(dbDocItems);
                 var now = DateTime.UtcNow;
 
-                docItems.ForEach(x =>
+                if (result.QAStatus == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
                 {
-                    var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
-                    job.HasChange = x.Value != resultValue;
-                    x.Value = resultValue;
-                });
-                var updatedValue = JsonConvert.SerializeObject(docItems);
-                job.LastModificationDate = now;
-                job.LastModifiedBy = _userPrincipalService.UserInstanceId;
-                job.Value = updatedValue;
-                job.RightStatus = (short)EnumJob.RightStatus.Correct;
-                job.Status = (short)EnumJob.Status.Complete;
-
-                var resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
-
-                if (resultUpdateJob != null)
-                {
-                    // Trigger after jobs submit
-                    var evt = new AfterProcessCheckFinalEvent
+                    //Validate Value
+                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
+                    if (!isValidCheckFinalValue)
                     {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
-                        AccessToken = accessToken
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                    }
+
+                    var docItems = new List<DocItem>(dbDocItems);
+
+                    docItems.ForEach(x =>
                     {
-                        ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
+                        var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
+                        job.HasChange = x.Value != resultValue;
+                        x.Value = resultValue;
                     });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
-                    if (isAck)
+                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    job.LastModificationDate = now;
+                    job.LastModifiedBy = _userPrincipalService.UserInstanceId;
+                    job.Value = updatedValue;
+                    job.RightStatus = (short)EnumJob.RightStatus.Correct;
+                    job.Status = (short)EnumJob.Status.Complete;
+
+                    var resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
+
+                    if (resultUpdateJob != null)
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        // Trigger after jobs submit
+                        var evt = new AfterProcessCheckFinalEvent
+                        {
+                            Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                            AccessToken = accessToken
+                        };
+                        // Outbox
+                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        {
+                            ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
+                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                            Data = JsonConvert.SerializeObject(evt)
+                        });
+                        var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
+                        if (isAck)
+                        {
+                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        }
+                        else
+                        {
+                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        }
+
+                        // Publish message sang DistributionJob
+                        var logJob = _mapper.Map<Job, LogJobDto>(job);
+                        var logJobEvt = new LogJobEvent
+                        {
+                            LogJobs = new List<LogJobDto> { logJob },
+                            AccessToken = accessToken
+                        };
+                        // Outbox
+                        var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        {
+                            ExchangeName = nameof(LogJobEvent).ToLower(),
+                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                            Data = JsonConvert.SerializeObject(logJobEvt)
+                        });
+                        var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                        if (isAckLogJobEvent)
+                        {
+                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                        }
+                        else
+                        {
+                            outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        }
+
+
+                        response = GenericResponse<int>.ResultWithData(1);
                     }
                     else
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error($"ProcessCheckFinal fail: job => {job.Code}");
+                        response = GenericResponse<int>.ResultWithData(0);
                     }
-
-                    // Publish message sang DistributionJob
-                    var logJob = _mapper.Map<Job, LogJobDto>(job);
-                    var logJobEvt = new LogJobEvent
-                    {
-                        LogJobs = new List<LogJobDto> { logJob },
-                        AccessToken = accessToken
-                    };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(LogJobEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
-                    }
-                    else
-                    {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
-                    }
-
-
-                    response = GenericResponse<int>.ResultWithData(1);
                 }
-                else
+                else // nếu bỏ qua phiếu
                 {
-                    Log.Error($"ProcessCheckFinal fail: job => {job.Code}");
-                    response = GenericResponse<int>.ResultWithData(0);
+                    job.LastModificationDate = now;
+                    job.LastModifiedBy = _userPrincipalService.UserInstanceId;
+                    job.Status = (short)EnumJob.Status.Ignore;
+                    job.IsIgnore = true;
+                    job.Note = result.Comment;
+                    job.ReasonIgnore = result.Comment;
+                    var resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
+                    if (resultUpdateJob != null)
+                    {
+                        response = GenericResponse<int>.ResultWithData(2);
+                    }
+                    else
+                    {
+                        Log.Error($"ProcessCheckFinal fail: job => {job.Code}");
+                        response = GenericResponse<int>.ResultWithData(0);
+                    }
                 }
             }
             catch (Exception ex)
