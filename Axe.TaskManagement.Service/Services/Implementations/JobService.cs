@@ -4353,6 +4353,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         filter &= Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
                     }
 
+                    //cần ưu tiên lấy các job CheckFinal bị trả về (numOfRound > 0) => cho phép lấy tất cả các phiếu có round >= numOfRound
+                    if(actionCode== nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
+                    {
+                        filter &= Builders<Job>.Filter.Eq(x => x.LastModifiedBy, _userPrincipalService.UserInstanceId);
+                        filter &= Builders<Job>.Filter.Gte(x => x.NumOfRound, numOfRound);
+                    }
+                    
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
