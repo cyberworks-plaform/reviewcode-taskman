@@ -3312,7 +3312,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var docNameFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocName)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (docNameFilter != null)
                     {
-                        lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.DocName, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim()));
+                        if (docNameFilter.Value.Trim().ToUpper().Contains('J'))
+                        {
+                            lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.Code, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim().ToUpper()));
+                        }
+                        else lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.DocName, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim()));
                     }
 
                     //JobCode
@@ -4449,6 +4453,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         filter &= Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
                     }
 
+                    //cần ưu tiên lấy các job CheckFinal bị trả về (numOfRound > 0) => cho phép lấy tất cả các phiếu có round >= numOfRound
+                    if(actionCode== nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
+                    {
+                        filter &= Builders<Job>.Filter.Eq(x => x.LastModifiedBy, _userPrincipalService.UserInstanceId);
+                        filter &= Builders<Job>.Filter.Gte(x => x.NumOfRound, numOfRound);
+                    }
+                    
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
