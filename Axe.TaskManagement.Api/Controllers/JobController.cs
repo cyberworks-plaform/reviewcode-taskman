@@ -386,6 +386,13 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpPost]
+        [Route("back-multi-job-to-check-final-process")]
+        public async Task<IActionResult> BackMultiJobToCheckFinalProcess(List<JobResult> lstJobResult)
+        {
+            return ResponseResult(await _service.BackMultiJobToCheckFinalProcess(lstJobResult, GetBearerToken()));
+        }
+
+        [HttpPost]
         [Route("get-false-percent")]
         public async Task<IActionResult> GetFalsePercent(string actionCode)
         {

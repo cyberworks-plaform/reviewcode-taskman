@@ -1423,6 +1423,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
                     
+                    //
                     if (resultUpdateJob != null)
                     {
                         response = GenericResponse<int>.ResultWithData(2);
@@ -3522,6 +3523,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var job = await _repos.FindFirstAsync(filter1 & filter2 & filter3);
 
+                Job resultUpdateJob = null;
+
                 if (job == null)
                 {
                     response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
@@ -3535,11 +3538,60 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //job.ReasonIgnore = "";
                 job.Status = (short)EnumJob.Status.Waiting;
 
-                var resultUpdateJob = await _repos.UpdateAsync(job);
+                //var resultUpdateJob = await _repos.UpdateAsync(job);
+                resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job);
 
                 if (resultUpdateJob != null)
                 {
-                    response = GenericResponse<int>.ResultWithData(2);
+                    // Trigger after jobs submit
+                    var evt = new AfterProcessCheckFinalEvent
+                    {
+                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        AccessToken = accessToken
+                    };
+                    // Outbox
+                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                    {
+                        ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
+                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                        Data = JsonConvert.SerializeObject(evt)
+                    });
+                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
+                    if (isAck)
+                    {
+                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                    }
+                    else
+                    {
+                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                    }
+
+                    // Publish message sang DistributionJob
+                    var logJob = _mapper.Map<Job, LogJobDto>(job);
+                    var logJobEvt = new LogJobEvent
+                    {
+                        LogJobs = new List<LogJobDto> { logJob },
+                        AccessToken = accessToken
+                    };
+                    // Outbox
+                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                    {
+                        ExchangeName = nameof(LogJobEvent).ToLower(),
+                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                        Data = JsonConvert.SerializeObject(logJobEvt)
+                    });
+                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                    if (isAckLogJobEvent)
+                    {
+                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                    }
+                    else
+                    {
+                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                    }
+                    response = GenericResponse<int>.ResultWithData(1);
                 }
                 else
                 {
@@ -3554,6 +3606,121 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 Log.Error($"Error on BackToCheckFinalProcess => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
             return response;
+        }
+
+        public async Task<GenericResponse<int>> BackMultiJobToCheckFinalProcess(List<JobResult> lstJobResult, string accessToken = null)
+        {
+            //GenericResponse<int> response;
+            int countSuccess = 0;
+            int countFail = 0;
+            try
+            {
+                if (lstJobResult != null && lstJobResult.Count > 0)
+                {
+                    foreach (var jobResult in lstJobResult)
+                    {
+                        var parse = ObjectId.TryParse(jobResult.JobId, out ObjectId id);
+                        if (!parse)
+                        {
+                            //return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
+                            Log.Error($"BackMultiJobToCheckFinalProcess failParseId: jobId => {jobResult.JobId.ToString()}");
+                            countFail++;
+                            continue;
+                        }
+
+                        var filter1 = Builders<Job>.Filter.Eq(x => x.Id, id); // lấy theo id
+                        var filter2 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore); // Lấy các job đang bị bỏ qua
+                        var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
+
+                        var job = await _repos.FindFirstAsync(filter1 & filter2 & filter3);
+
+                        Job resultUpdateJob = null;
+
+                        if (job == null)
+                        {
+                            //response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
+                            //return response;
+                            Log.Error($"BackMultiJobToCheckFinalProcess failFindFirstAsync: jobId => {jobResult.JobId.ToString()}");
+                            countFail++;
+                            continue;
+                        }
+
+                        var now = DateTime.UtcNow;
+                        job.LastModificationDate = now;
+                        job.UserInstanceId = null;
+                        job.IsIgnore = false;
+                        //job.ReasonIgnore = "";
+                        job.Status = (short)EnumJob.Status.Waiting;
+
+                        //var resultUpdateJob = await _repos.UpdateAsync(job);
+                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job);
+
+                        if (resultUpdateJob != null)
+                        {
+                            // Trigger after jobs submit
+                            var evt = new AfterProcessCheckFinalEvent
+                            {
+                                Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                                AccessToken = accessToken
+                            };
+                            // Outbox
+                            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                            {
+                                ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
+                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                Data = JsonConvert.SerializeObject(evt)
+                            });
+                            var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
+                            if (isAck)
+                            {
+                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                            }
+                            else
+                            {
+                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                            }
+
+                            // Publish message sang DistributionJob
+                            var logJob = _mapper.Map<Job, LogJobDto>(job);
+                            var logJobEvt = new LogJobEvent
+                            {
+                                LogJobs = new List<LogJobDto> { logJob },
+                                AccessToken = accessToken
+                            };
+                            // Outbox
+                            var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                            {
+                                ExchangeName = nameof(LogJobEvent).ToLower(),
+                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                Data = JsonConvert.SerializeObject(logJobEvt)
+                            });
+                            var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                            if (isAckLogJobEvent)
+                            {
+                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                            }
+                            else
+                            {
+                                outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                            }
+                            countSuccess++;
+                        }
+                        else
+                        {
+                            Log.Error($"BackToCheckFinalProcess failReplaceOneAsync: job => {job.Code}");
+                        }
+                    }
+                    //response = GenericResponse<int>.ResultWithData(1,$"Thành công {countSuccess} file, lỗi {countFail} file");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error on BackToCheckFinalProcess => param: {JsonConvert.SerializeObject(lstJobResult)};mess: {ex.Message} ; trace:{ex.StackTrace}");
+                return GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
+            }
+            return GenericResponse<int>.ResultWithData(1, $"Thành công {countSuccess} file, lỗi {countFail} file");
         }
 
         public async Task<GenericResponse<double>> GetFalsePercent(string accessToken)
