@@ -1419,7 +1419,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     job.Status = (short)EnumJob.Status.Ignore;
                     job.IsIgnore = true;
-                    job.Note = result.Comment;
                     job.ReasonIgnore = result.Comment;
                     
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
