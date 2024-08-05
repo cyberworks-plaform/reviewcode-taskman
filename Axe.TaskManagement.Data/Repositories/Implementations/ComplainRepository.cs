@@ -2,18 +2,11 @@
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.Utility.Definitions;
-using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
-using Axe.Utility.Helpers;
-using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.MongoDbBase.Interfaces;
-using Ce.Constant.Lib.Dtos;
-using Microsoft.EntityFrameworkCore.Metadata.Conventions;
-using MongoDB.Bson;
 using MongoDB.Driver;
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -28,19 +21,6 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         public async Task<Complain> GetByJobCode(string code)
         {
             var filter = Builders<Complain>.Filter.Eq(x => x.JobCode, code);
-            var record = DbSet.Find(filter);
-            var records = await record.ToListAsync();
-            if (records != null && records.Count > 0)
-            {
-                return records.OrderByDescending(x => x.CreatedDate).First();
-            }
-            return null;
-        }
-
-        public async Task<Complain> GetByInstanceId(string instanceId)
-        {
-            var guid = Guid.Parse(instanceId);
-            var filter = Builders<Complain>.Filter.Eq(x => x.InstanceId, guid);
             var record = DbSet.Find(filter);
             var records = await record.ToListAsync();
             if (records != null && records.Count > 0)

@@ -41,12 +41,17 @@ namespace Axe.TaskManagement.Model.Entities
         public string JobCode { get; set; }
 
         [Description("InstanceId tài liệu")]
-        [Required]
         [BsonElement("doc_instance_id")]
         public Guid? DocInstanceId { get; set; }
 
         [BsonElement("project_instance_id")]
         public Guid? ProjectInstanceId { get; set; }   // Dư thừa dữ liệu
+
+        [BsonElement("work_flow_instance_id")]
+        public Guid? WorkflowInstanceId { get; set; }   // Dư thừa dữ liệu
+
+        [BsonElement("work_flow_step_instance_id")]
+        public Guid? WorkflowStepInstanceId { get; set; }   // Thuộc bước nào
 
         [BsonElement("action_code")]
         public string ActionCode { get; set; }   // refer ActionCodeConstants: Nhập liệu, Kiểm tra, Đối chiếu, CheckFinal, Dư thừa dữ liệu
@@ -102,7 +107,7 @@ namespace Axe.TaskManagement.Model.Entities
         public short Status { get; set; }
 
         [BsonElement("choose_value")]
-        public short ChooseValue { get; set; } = 0;
+        public short ChooseValue { get; set; }     // Refer: EnumComplain.ChooseValue
 
         #endregion
 

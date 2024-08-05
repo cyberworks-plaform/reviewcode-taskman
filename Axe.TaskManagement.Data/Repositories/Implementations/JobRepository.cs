@@ -359,26 +359,6 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var data = DbSet.Find(filter);
             return await data.ToListAsync();
         }
-        public async Task<List<Job>> GetJobByWfsAndField(Guid docInstanceId, List<Guid?> fields, string actionCode = null, Guid? workflowStepInstanceId = null, short? status = null)
-        {
-            var filter = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId) 
-                & (Builders<Job>.Filter.In(x => x.DocTypeFieldInstanceId, fields) | Builders<Job>.Filter.Eq(x => x.DocTypeFieldInstanceId, null));
-            if (!string.IsNullOrEmpty(actionCode))
-            {
-                filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
-            }
-            if (workflowStepInstanceId != null)
-            {
-                filter = filter & Builders<Job>.Filter.Eq(x => x.WorkflowStepInstanceId, workflowStepInstanceId);
-            }
-
-            if (status != null)
-            {
-                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, status);
-            }
-            var data = DbSet.Find(filter);
-            return await data.ToListAsync();
-        }
 
         public async Task<List<Job>> GetJobByWfsInstanceIds(Guid docInstanceId, List<Guid> workflowStepInstanceIds)
         {

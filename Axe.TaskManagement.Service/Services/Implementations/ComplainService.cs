@@ -1,46 +1,32 @@
 ﻿using AutoMapper;
 using Axe.TaskManagement.Data.EntityExtensions;
-using Axe.TaskManagement.Data.Repositories.Implementations;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
+using Axe.TaskManagement.Model.Enums;
 using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
-using Axe.Utility.Dtos;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
-using Azure.Core;
-using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
-using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
-using Ce.EventBus.Lib;
 using Ce.EventBus.Lib.Abstractions;
-using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
-using Ce.Workflow.Client.Services.Implementations;
 using Ce.Workflow.Client.Services.Interfaces;
-using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.DependencyInjection;
-using MongoDB.Bson;
 using MongoDB.Driver;
-using Nest;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
-using static Nest.MachineLearningUsage;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -52,19 +38,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IComplainRepository _repository;
         private readonly IJobRepository _jobRepository;
         private readonly ISequenceComplainRepository _sequenceComplainRepository;
+        private readonly IEventBus _eventBus;
         private readonly IUserConfigClientService _userConfigClientService;
         private readonly IMoneyService _moneyService;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
         private readonly IDocFieldValueClientService _docFieldValueClientService;
+        private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
+        private readonly IConfiguration _configuration;
 
-        private readonly ICachingHelper _cachingHelper;
-        private readonly bool _useCache;
-        private const string DataProcessing = "DataProcessing";
-        private const int TimeOut = 600;   // Default HttpClient timeout is 100s
         public ComplainService(
             IComplainRepository repos,
             ISequenceComplainRepository sequenceComplainRepository,
+            IEventBus eventBus,
             IUserConfigClientService userConfigClientService,
             IMoneyService moneyService,
             IWorkflowClientService workflowClientService,
@@ -72,19 +58,22 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             IDocFieldValueClientService docFieldValueClientService,
             IJobRepository jobRepository,
             IMapper mapper,
-            IUserPrincipalService userPrincipalService) : base(repos, mapper, userPrincipalService)
+            IUserPrincipalService userPrincipalService,
+            IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
+            IConfiguration configuration) : base(repos, mapper, userPrincipalService)
         {
             _repository = repos;
             _sequenceComplainRepository = sequenceComplainRepository;
+            _eventBus = eventBus;
             _userConfigClientService = userConfigClientService;
             _moneyService = moneyService;
             _workflowClientService = workflowClientService;
             _docClientService = docClientService;
             _docFieldValueClientService = docFieldValueClientService;
             _jobRepository = jobRepository;
-            _useCache = _cachingHelper != null;
+            _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
+            _configuration = configuration;
         }
-
     }
 
 
@@ -106,92 +95,170 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<ComplainDto>> GetByInstanceId(string instanceId)
+        public async Task<GenericResponse<ComplainDto>> CreateOrUpdateComplain(ComplainDto model, string accessToken = null)
         {
             GenericResponse<ComplainDto> response;
             try
             {
-                var complain = await _repository.GetByInstanceId(instanceId);
-                var result = _mapper.Map<Complain, ComplainDto>(complain);
-                response = GenericResponse<ComplainDto>.ResultWithData(result);
-            }
-            catch (Exception ex)
-            {
-                response = GenericResponse<ComplainDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
-            }
-            return response;
-        }
-
-        public async Task<GenericResponse<ComplainDto>> CreateOrUpdateComplain(ComplainDto complainDto, string accessToken = null)
-        {
-            GenericResponse<ComplainDto> response;
-            try
-            {
-                if (string.IsNullOrEmpty(complainDto.Id))
+                if (string.IsNullOrEmpty(model.Id))
                 {
-                    var complain = _mapper.Map<ComplainDto, Complain>(complainDto);
+                    var complain = _mapper.Map<ComplainDto, Complain>(model);
                     complain.Code = $"C{await _sequenceComplainRepository.GetSequenceValue("SequenceComplainName")}";
                     complain = await _repository.AddAsyncV2(complain);
-                    complainDto.Id = complain.Id.ToString();
-                    response = GenericResponse<ComplainDto>.ResultWithData(complainDto);
+                    model.Id = complain.Id.ToString();
+                    response = GenericResponse<ComplainDto>.ResultWithData(model);
                 }
                 else
                 {
-                    var complain = _mapper.Map<ComplainDto, Complain>(complainDto);
-                    if (complain.Status == (int)EnumComplainStatus.Complete)
+                    var complain = _mapper.Map<ComplainDto, Complain>(model);
+                    complain = await _repository.UpdateAsync(complain);
+
+                    if (complain.Status == (short)EnumComplain.Status.Complete && complain.RightStatus == (int)EnumComplain.RightStatus.Correct)
                     {
-                        var job = await _jobRepository.GetJobByInstanceId((Guid)complain.JobInstanceId);
+                        var job = await _jobRepository.GetJobByInstanceId(complain.JobInstanceId.GetValueOrDefault());
                         if (job != null)
                         {
-                            //TODO: Cập nhật Value bảng DocFieldValue
-                            //var docFieldValue = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
-                            //if (docFieldValue.Data != null)
-                            //{
-                            //    docFieldValue.Data.Value = complain.Value;
-                            //    await _docFieldValueClientService.UpdateMulti(new List<DocFieldValueDto> { docFieldValue.Data });
-                            //}
-
-                            //TODO: Cập nhật FinalValue bảng Doc
-
-                            //Tính lại rightStatus và Price các Job liên quan
                             var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                            var crrWfsJobsComplete = await _jobRepository.GetJobByWfs(
-                                    job.DocInstanceId.GetValueOrDefault(), job.ActionCode,
-                                    job.WorkflowStepInstanceId, (short)EnumJob.Status.Complete);
-                            if (crrWfsJobsComplete != null && crrWfsJobsComplete.Any())
+                            var wfsInfoes = wfInfoes.Item1;
+                            var wfSchemaInfoes = wfInfoes.Item2;
+                            if (wfsInfoes != null && wfsInfoes.Any())
                             {
-                                var docItems = crrWfsJobsComplete.Select(x => new DocItem
+                                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
+                                var docInstanceId = complain.DocInstanceId.GetValueOrDefault();
+
+                                var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
+                                var docItems = new List<DocItem>();
+
+                                if (crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File)
                                 {
-                                    //DocTypeFieldId = 0,
-                                    FilePartInstanceId = x.FilePartInstanceId,
-                                    DocTypeFieldInstanceId = x.DocTypeFieldInstanceId,
-                                    DocTypeFieldName = x.DocTypeFieldName,
-                                    DocTypeFieldSortOrder = x.DocTypeFieldSortOrder,
-                                    InputType = x.InputType,
-                                    MaxLength = x.MaxLength,
-                                    MinLength = x.MinLength,
-                                    MaxValue = x.MaxValue,
-                                    MinValue = x.MinValue,
-                                    PrivateCategoryInstanceId = x.PrivateCategoryInstanceId,
-                                    IsMultipleSelection = x.IsMultipleSelection,
-                                    CoordinateArea = x.CoordinateArea,
-                                    //DocFieldValueId = 0,
-                                    DocFieldValueInstanceId = x.DocFieldValueInstanceId,
-                                    Value = x.Value
-                                }).ToList();
-                                await _moneyService.ChargeMoneyForCompleteDocByField(wfInfoes.Item1, wfInfoes.Item2, docItems, complain.DocInstanceId.GetValueOrDefault(), complainDto.FieldChangeInstanceIds, accessToken);
+                                    // 2. Update FinalValue in Doc
+                                    docItems = JsonConvert.DeserializeObject<List<DocItem>>(complain.Value);
+
+                                    // 1.Cập nhật giá trị DocFieldValue
+                                    if (docItems != null && docItems.Any())
+                                    {
+                                        var docTypeFieldInstanceIds = docItems.Select(x => x.DocTypeFieldInstanceId.GetValueOrDefault()).Distinct().ToList();
+                                        var docFieldValuesRs =
+                                            await _docFieldValueClientService.GetByDocTypeFieldInstanceIds(
+                                                docInstanceId,
+                                                JsonConvert.SerializeObject(docTypeFieldInstanceIds), accessToken);
+                                        if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null)
+                                        {
+                                            foreach (var docItem in docItems)
+                                            {
+                                                var actionCode = docFieldValuesRs.Data.FirstOrDefault(x => x.InstanceId == docItem.DocFieldValueInstanceId)?.ActionCode;
+                                                if (!string.IsNullOrEmpty(actionCode))
+                                                {
+                                                    itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                                    {
+                                                        InstanceId = docItem.DocFieldValueInstanceId.GetValueOrDefault(),
+                                                        Value = docItem.Value,
+                                                        CoordinateArea = docItem.CoordinateArea,
+                                                        ActionCode = actionCode
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                else
+                                {
+                                    // 1.Cập nhật giá trị DocFieldValue
+                                    var docFieldValueRs = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
+                                    if (docFieldValueRs != null && docFieldValueRs.Success && docFieldValueRs.Data != null)
+                                    {
+                                        itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                        {
+                                            InstanceId = complain.DocFieldValueInstanceId.GetValueOrDefault(),
+                                            Value = complain.Value,
+                                            CoordinateArea = job.CoordinateArea,
+                                            ActionCode = docFieldValueRs.Data.ActionCode
+                                        });
+                                    }
+
+
+                                    // 2. Update FinalValue in Doc
+                                    var docItemsRs = await _docClientService.GetDocItemByDocInstanceId(docInstanceId, accessToken);
+                                    if (docItemsRs.Success)
+                                    {
+                                        docItems = docItemsRs.Data;
+                                        foreach (var docItem in docItems)
+                                        {
+                                            if (docItem.DocTypeFieldInstanceId == complain.DocTypeFieldInstanceId)
+                                            {
+                                                docItem.Value = complain.Value;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 1.Cập nhật giá trị DocFieldValue
+                                if (itemDocFieldValueUpdateValues.Any())
+                                {
+                                    var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
+                                    {
+                                        ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
+                                    };
+                                    // Outbox
+                                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                    {
+                                        ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                        Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                                    });
+                                    var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                                    if (isAck)
+                                    {
+                                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                    }
+                                    else
+                                    {
+                                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                    }
+                                }
+
+                                // 2. Update FinalValue in Doc
+                                if (docItems != null && docItems.Any())
+                                {
+                                    var finalValue = JsonConvert.SerializeObject(docItems);
+                                    var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
+                                    {
+                                        DocInstanceId = docInstanceId,
+                                        FinalValue = finalValue
+                                    };
+                                    // Outbox
+                                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                    {
+                                        ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
+                                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                        Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
+                                    });
+                                    var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
+                                    if (isAck)
+                                    {
+                                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                    }
+                                    else
+                                    {
+                                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                    }
+                                }
+
+                                // 3. Cập nhật Giá tiền
+                                await _moneyService.ChargeMoneyForComplainJob(wfsInfoes, wfSchemaInfoes, docItems, complain.DocInstanceId.GetValueOrDefault(), job, accessToken);
                             }
                         }
                     }
-                    complain = await _repository.UpdateAsync(complain);
 
-                    response = GenericResponse<ComplainDto>.ResultWithData(complainDto);
+                    response = GenericResponse<ComplainDto>.ResultWithData(model);
                 }
             }
             catch (Exception ex)
             {
                 response = GenericResponse<ComplainDto>.ResultWithError(-1, ex.Message, ex.StackTrace);
-                Log.Error($"Error on CreateOrUpdateComplain => param: {JsonConvert.SerializeObject(complainDto)};mess: {ex.Message} ; trace:{ex.StackTrace}");
+                Log.Error($"Error on CreateOrUpdateComplain => param: {JsonConvert.SerializeObject(model)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
             return response;
         }
@@ -534,6 +601,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        #region Private methods
 
         private async Task<Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>> GetWfInfoes(Guid workflowInstanceId, string accessToken = null)
         {
@@ -575,16 +643,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             return null;
         }
-    }
-    public enum EnumComplainStatus
-    {
-        [Description("Loại bỏ")]
-        Remove,
-        [Description("Chưa xử lý")]
-        Unprocessed,
-        [Description("Đang xử lý")]
-        Processing,
-        [Description("Hoàn thành")]
-        Complete
+
+        #endregion
     }
 }

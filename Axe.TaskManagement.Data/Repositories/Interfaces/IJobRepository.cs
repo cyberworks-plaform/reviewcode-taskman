@@ -34,7 +34,6 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<bool> CheckHasJobCompleteByWfs(Guid docInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null);
 
         Task<List<Job>> GetJobByWfs(Guid docInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null, short? status = null);
-        Task<List<Job>> GetJobByWfsAndField(Guid docInstanceId, List<Guid?> docTypeFieldInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null, short? status = null);
 
         Task<List<Job>> GetJobByWfsInstanceIds(Guid docInstanceId, List<Guid> workflowStepInstanceIds);
 
