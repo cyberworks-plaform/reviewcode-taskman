@@ -3233,8 +3233,18 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //var baseFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault())
                 //    & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode)
                 //    & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
-
-                var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+                string statusFilterValue = "";
+                if (request.Filters != null && request.Filters.Count > 0)
+                {
+                    //Status
+                    var statusFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Status)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (statusFilter != null)
+                    {
+                        statusFilterValue = statusFilter.Value.Trim();
+                    }
+                }
+                // Nếu không có Status truyền vào thì mặc định Status là Complete
+                var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, statusFilterValue == "" ? (short)EnumJob.Status.Complete : short.Parse(statusFilterValue));
                 if (!string.IsNullOrEmpty(actionCode))
                 {
                     baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
@@ -3476,6 +3486,58 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 response = GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
 
+            return response;
+        }
+
+        public async Task<GenericResponse<int>> BackJobToCheckFinalProcess(JobResult result, string accessToken = null)
+        {
+            // 2. Process
+            GenericResponse<int> response;
+            try
+            {
+                var parse = ObjectId.TryParse(result.JobId, out ObjectId id);
+                if (!parse)
+                {
+                    return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
+                }
+
+                var filter1 = Builders<Job>.Filter.Eq(x => x.Id, id); // lấy theo id
+                var filter2 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore); // Lấy các job đang bị bỏ qua
+                var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
+
+                var job = await _repos.FindFirstAsync(filter1 & filter2 & filter3);
+
+                if (job == null)
+                {
+                    response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
+                    return response;
+                }
+
+                var now = DateTime.UtcNow;
+                job.LastModificationDate = now;
+                job.UserInstanceId = null;
+                job.IsIgnore = false;
+                //job.ReasonIgnore = "";
+                job.Status = (short)EnumJob.Status.Waiting;
+
+                var resultUpdateJob = await _repos.UpdateAsync(job);
+
+                if (resultUpdateJob != null)
+                {
+                    response = GenericResponse<int>.ResultWithData(2);
+                }
+                else
+                {
+                    Log.Error($"BackToCheckFinalProcess fail: job => {job.Code}");
+                    response = GenericResponse<int>.ResultWithData(0);
+                }
+            }
+            catch (Exception ex)
+            {
+
+                response = GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
+                Log.Error($"Error on BackToCheckFinalProcess => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
+            }
             return response;
         }
 
