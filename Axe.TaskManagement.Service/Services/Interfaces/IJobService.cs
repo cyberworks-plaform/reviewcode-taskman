@@ -145,7 +145,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse> ResyncJobDistribution();
         Task<GenericResponse<int>> ProcessQaCheckFinal(JobResult result, string accessToken = null);
         Task<bool> PublishLogJobEvent(List<Job> jobs, string accessToken);
-        Task<GenericResponse<int>> BackJobToCheckFinalProcess(JobResult result, string accessToken = null);
-        Task<GenericResponse<int>> BackMultiJobToCheckFinalProcess(List<JobResult> result, string accessToken = null);
+        Task<GenericResponse<int>> BackIgnoreJobToCheckFinalProcess(JobResult result, string accessToken = null);
+        Task<GenericResponse<int>> BackMultiIgnoreJobToCheckFinalProcess(List<JobResult> result, string accessToken = null);
     }
 }

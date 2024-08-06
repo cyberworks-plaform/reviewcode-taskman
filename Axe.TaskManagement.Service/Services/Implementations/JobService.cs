@@ -3505,7 +3505,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<int>> BackJobToCheckFinalProcess(JobResult result, string accessToken = null)
+        public async Task<GenericResponse<int>> BackIgnoreJobToCheckFinalProcess(JobResult result, string accessToken = null)
         {
             // 2. Process
             GenericResponse<int> response;
@@ -3522,7 +3522,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
 
                 var job = await _repos.FindFirstAsync(filter1 & filter2 & filter3);
-
                 Job resultUpdateJob = null;
 
                 if (job == null)
@@ -3530,6 +3529,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     response = GenericResponse<int>.ResultWithData(-1, "Không thấy dữ liệu");
                     return response;
                 }
+                Job cloneJob = job;
 
                 var now = DateTime.UtcNow;
                 job.LastModificationDate = now;
@@ -3543,30 +3543,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (resultUpdateJob != null)
                 {
-                    // Trigger after jobs submit
-                    var evt = new AfterProcessCheckFinalEvent
-                    {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
-                        AccessToken = accessToken
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                    }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
-
                     // Publish message sang DistributionJob
                     var logJob = _mapper.Map<Job, LogJobDto>(job);
                     var logJobEvt = new LogJobEvent
@@ -3596,6 +3572,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 else
                 {
                     Log.Error($"BackToCheckFinalProcess fail: job => {job.Code}");
+                    await _repos.UpdateAsync(cloneJob); // nếu ReplaceOneAsync lỗi thì update lại job về trạng thái ban đầu
                     response = GenericResponse<int>.ResultWithData(0);
                 }
             }
@@ -3608,7 +3585,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<int>> BackMultiJobToCheckFinalProcess(List<JobResult> lstJobResult, string accessToken = null)
+        public async Task<GenericResponse<int>> BackMultiIgnoreJobToCheckFinalProcess(List<JobResult> lstJobResult, string accessToken = null)
         {
             //GenericResponse<int> response;
             int countSuccess = 0;
@@ -3633,7 +3610,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
 
                         var job = await _repos.FindFirstAsync(filter1 & filter2 & filter3);
-
                         Job resultUpdateJob = null;
 
                         if (job == null)
@@ -3644,6 +3620,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             countFail++;
                             continue;
                         }
+                        Job cloneJob = job;
 
                         var now = DateTime.UtcNow;
                         job.LastModificationDate = now;
@@ -3657,30 +3634,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         if (resultUpdateJob != null)
                         {
-                            // Trigger after jobs submit
-                            var evt = new AfterProcessCheckFinalEvent
-                            {
-                                Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
-                                AccessToken = accessToken
-                            };
-                            // Outbox
-                            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                            {
-                                ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
-                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                Data = JsonConvert.SerializeObject(evt)
-                            });
-                            var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
-                            if (isAck)
-                            {
-                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                            }
-                            else
-                            {
-                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                            }
-
                             // Publish message sang DistributionJob
                             var logJob = _mapper.Map<Job, LogJobDto>(job);
                             var logJobEvt = new LogJobEvent
@@ -3710,6 +3663,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         else
                         {
                             Log.Error($"BackToCheckFinalProcess failReplaceOneAsync: job => {job.Code}");
+                            countFail++;
+                            await _repos.UpdateAsync(cloneJob); // nếu ReplaceOneAsync lỗi thì update lại job về trạng thái ban đầu
                         }
                     }
                     //response = GenericResponse<int>.ResultWithData(1,$"Thành công {countSuccess} file, lỗi {countFail} file");

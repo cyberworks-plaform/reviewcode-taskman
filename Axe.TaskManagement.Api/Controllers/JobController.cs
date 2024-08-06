@@ -382,14 +382,14 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("back-job-to-check-final-process")]
         public async Task<IActionResult> BackJobToCheckFinalProcess(JobResult result)
         {
-            return ResponseResult(await _service.BackJobToCheckFinalProcess(result, GetBearerToken()));
+            return ResponseResult(await _service.BackIgnoreJobToCheckFinalProcess(result, GetBearerToken()));
         }
 
         [HttpPost]
         [Route("back-multi-job-to-check-final-process")]
         public async Task<IActionResult> BackMultiJobToCheckFinalProcess(List<JobResult> lstJobResult)
         {
-            return ResponseResult(await _service.BackMultiJobToCheckFinalProcess(lstJobResult, GetBearerToken()));
+            return ResponseResult(await _service.BackMultiIgnoreJobToCheckFinalProcess(lstJobResult, GetBearerToken()));
         }
 
         [HttpPost]
