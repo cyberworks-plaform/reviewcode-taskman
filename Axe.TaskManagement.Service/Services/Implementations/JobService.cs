@@ -1,5 +1,6 @@
 ﻿using AutoMapper;
 using Axe.TaskManagement.Data.EntityExtensions;
+using Axe.TaskManagement.Data.Repositories.Implementations;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
@@ -45,6 +46,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IJobRepository _repository;
         private readonly ITaskRepository _taskRepository;
         private readonly IEventBus _eventBus;
+        private readonly IComplainRepository _complainRepository;
         private readonly IDocClientService _docClientService;
         private readonly IUserConfigClientService _userConfigClientService;
         private readonly IWorkflowClientService _workflowClientService;
@@ -68,6 +70,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             IJobRepository repos,
             IMapper mapper,
             IUserPrincipalService userPrincipalService,
+            IComplainRepository complainRepository,
             IDocClientService docClientService,
             IUserConfigClientService userConfigClientService,
             IWorkflowClientService workflowClientService,
@@ -93,6 +96,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _cachingHelper = cachingHelper;
             _eventBus = eventBus;
             _projectTypeClientService = projectTypeClientService;
+            _complainRepository = complainRepository;
             _docClientService = docClientService;
             _workflowStepTypeClientService = workflowStepTypeClientService;
             _workflowStepClientService = workflowStepClientService;
@@ -3458,6 +3462,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
                 var lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
+                var data = _mapper.Map<List<JobDto>>(lst.Data);
+                if (data != null)
+                    foreach (var item in data)
+                    {
+                        var complain = await _complainRepository.GetByJobCode(item.Code);
+                        if (complain != null)
+                            item.LastComplain = _mapper.Map<ComplainDto>(complain);
+                    }
                 var pagedList = new PagedListExtension<JobDto>
                 {
                     PageIndex = lst.PageIndex,
@@ -3469,7 +3481,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     TotalIsIgnore = lst.TotalIsIgnore,
                     TotalFilter = lst.TotalFilter,
                     TotalPages = lst.TotalPages,
-                    Data = _mapper.Map<List<JobDto>>(lst.Data)
+                    Data = data
                 };
                 //CountAbnormalJob 
 
@@ -5979,6 +5991,40 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 await _cachingHelper.TrySetCacheAsync(cacheKey, pathName);
             }
             return pathName;
+        }
+
+        public async Task<GenericResponse<JobDto>> GetByInstanceId(Guid instanceId)
+        {
+            GenericResponse<JobDto> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.InstanceId, instanceId);
+                var data = await _repos.FindAsync(filter);
+                var dataDto = _mapper.Map<Job, JobDto>(data.FirstOrDefault());
+                response = GenericResponse<JobDto>.ResultWithData(dataDto);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<JobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<List<JobDto>>> GetByInstanceIds(List<Guid> instanceIds)
+        {
+            GenericResponse<List<JobDto>> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.In(x => x.InstanceId, instanceIds);
+                var data = await _repos.FindAsync(filter);
+                var dataDto = _mapper.Map<List<Job>, List<JobDto>>(data);
+                response = GenericResponse<List<JobDto>>.ResultWithData(dataDto);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<List<JobDto>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
         }
     }
 }

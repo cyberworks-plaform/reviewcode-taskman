@@ -38,6 +38,11 @@ namespace Axe.TaskManagement.Service.Mappers
 
             CreateMap<DocErrorExtension, DocErrorDto>(MemberList.Source);
             CreateMap<ProjectCountExtension, ProjectCountExtensionDto>(MemberList.Source);
+
+            CreateMap<Complain, ComplainDto>(MemberList.Destination)
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()));
+            CreateMap<ComplainDto, Complain>(MemberList.Source)
+                .ForMember(dest => dest.Id, opt => opt.MapFrom(src => new ObjectId(src.Id)));
         }
     }
 }

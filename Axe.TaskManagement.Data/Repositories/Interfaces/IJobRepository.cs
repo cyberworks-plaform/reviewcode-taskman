@@ -38,7 +38,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<Job>> GetJobByWfsInstanceIds(Guid docInstanceId, List<Guid> workflowStepInstanceIds);
 
         Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
-            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1,Guid? docInstanceId=null);
+            short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null);
 
         Task<List<Job>> GetPrevJobs(Job crrJob, List<Guid> prevWorkflowStepInstanceIds);
 
@@ -55,7 +55,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<Guid>> GetDistinctUserInstanceId(FilterDefinition<Job> filter);
 
         Task<PagedList<DocErrorExtension>> GetPagingDocErrorAsync(FilterDefinition<Job> filter, int index = 1, int size = 10);
-        Task<PagedListExtension<Job>> GetPagingExtensionAsync(FilterDefinition<Job> filter, SortDefinition<Job> sort = null, int index = 1 , int size = 10 );
+        Task<PagedListExtension<Job>> GetPagingExtensionAsync(FilterDefinition<Job> filter, SortDefinition<Job> sort = null, int index = 1, int size = 10);
         Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter);
 
 
@@ -78,6 +78,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<JobByDocDoneEntity>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);
         Task<List<JobOfFileEntity>> GetSummaryJobOfFile(Guid? docInstanceId);
         Task<Job> UpdateAndLockRecordAsync(Job entity);
+        Task<Job> GetJobByInstanceId(Guid instanceId);
         Task<List<Job>> GetJobsByDocInstanceId(Guid docInstanceId);
     }
 }

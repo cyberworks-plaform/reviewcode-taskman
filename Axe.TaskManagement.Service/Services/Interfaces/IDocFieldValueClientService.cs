@@ -13,5 +13,9 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<int>> GetCountOfExpectedByDocInstanceId(Guid docInstanceId, string accessToken = null);
 
         Task<GenericResponse<int>> DeleteByDocTypeFieldInstanceIds(Guid docInstanceId, string docTypeFieldIntanceIds, string accessToken = null);
+
+        Task<GenericResponse<DocFieldValueDto>> GetByInstanceId(Guid instanceId, string accessToken = null);
+
+        Task<GenericResponse<int>> UpdateMulti(List<DocFieldValueDto> docTypeFields, string accessToken = null);
     }
 }
