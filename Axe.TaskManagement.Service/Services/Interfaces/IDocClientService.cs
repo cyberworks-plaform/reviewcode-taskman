@@ -26,5 +26,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<SyncMetaRelationDto>>> GetAllSyncMetaRelationAsync(string accessToken = null);
         Task<GenericResponse<List<DocDto>>> GetListDocByDocInstanceIds(List<Guid> lstInstanceIds, string accessToken = null);
         Task<GenericResponse<string>> GetPathName(string docPath, string accessToken = null);
+        Task<GenericResponse<DocDto>> GetByInstanceIdAsync(Guid instanceId, string accessToken = null);
     }
 }

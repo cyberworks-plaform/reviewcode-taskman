@@ -10,6 +10,7 @@ using Axe.Utility.Dtos;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
+using Azure;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
@@ -20,6 +21,7 @@ using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Services.Interfaces;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -3517,6 +3519,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
                 }
 
+                var resultJob = await _repos.GetByIdAsync(id);
+                //Kiểm tra nếu công việc không còn dữ liệu tại bảng Doc thì không cho phép trả về cho người dùng
+                if (resultJob != null)
+                {
+                    var docInstanceIds = new List<Guid>();
+                    Guid docInstanceId = resultJob.DocInstanceId ?? new Guid();
+                    docInstanceIds.Add(docInstanceId);
+                    var doc = await _docClientService.GetByInstanceIdAsync(docInstanceId, accessToken);
+                    if (doc.Data != null)
+                    {
+                        if (doc.Data.IsActive == false)
+                        {
+                            return response = GenericResponse<int>.ResultWithData(-1, "Công việc này không còn tài liệu");
+                        }
+                    }
+                }
+
                 var filter1 = Builders<Job>.Filter.Eq(x => x.Id, id); // lấy theo id
                 var filter2 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore); // Lấy các job đang bị bỏ qua
                 var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
@@ -3590,6 +3609,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //GenericResponse<int> response;
             int countSuccess = 0;
             int countFail = 0;
+            bool isNoDataDoc = false;
             try
             {
                 if (lstJobResult != null && lstJobResult.Count > 0)
@@ -3604,7 +3624,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             countFail++;
                             continue;
                         }
-
+                        var resultJob = await _repos.GetByIdAsync(id);
+                        //Kiểm tra nếu công việc không còn dữ liệu tại bảng Doc thì không cho phép trả về cho người dùng
+                        if (resultJob != null)
+                        {
+                            var docInstanceIds = new List<Guid>();
+                            Guid docInstanceId = resultJob.DocInstanceId ?? new Guid();
+                            docInstanceIds.Add(docInstanceId);
+                            var doc = await _docClientService.GetByInstanceIdAsync(docInstanceId, accessToken);
+                            if (doc.Data != null)
+                            {
+                                if (doc.Data.IsActive == false)
+                                {
+                                    Log.Error($"BackMultiJobToCheckFinalProcess NoDataDoc: jobId => {jobResult.JobId.ToString()} DocName: {resultJob.DocName.ToString()}");
+                                    countFail++;
+                                    isNoDataDoc = true;
+                                    continue;
+                                }
+                            }
+                        }
                         var filter1 = Builders<Job>.Filter.Eq(x => x.Id, id); // lấy theo id
                         var filter2 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore); // Lấy các job đang bị bỏ qua
                         var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); // ActionCode
@@ -3675,7 +3713,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 Log.Error($"Error on BackToCheckFinalProcess => param: {JsonConvert.SerializeObject(lstJobResult)};mess: {ex.Message} ; trace:{ex.StackTrace}");
                 return GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
             }
-            return GenericResponse<int>.ResultWithData(1, $"Thành công {countSuccess} file, lỗi {countFail} file");
+            if (isNoDataDoc)
+            {
+                return GenericResponse<int>.ResultWithData(1, $"Thành công {countSuccess} file, lỗi {countFail} file vì không tồn tại tài liệu");
+            }
+            else return GenericResponse<int>.ResultWithData(1, $"Thành công {countSuccess} file, lỗi {countFail} file");
         }
 
         public async Task<GenericResponse<double>> GetFalsePercent(string accessToken)
@@ -4593,6 +4635,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var turnInstanceId = Guid.NewGuid();
 
                     var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode);
+                    // nếu có 2 bước cùng action code thì sẽ nhầm nếu job đang ở wfs bước sau nhưng phía trên lại lấy FirstOrDefault
+                    // => dẫn tới lọc job theo điều kiện wfs.InstanceId không thể lấy được job mặc dù có tồn tại job trong csdl
 
                     if (wfsInfo != null)
                     {
