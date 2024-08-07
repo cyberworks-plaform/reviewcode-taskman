@@ -1,5 +1,4 @@
-﻿using Axe.Utility.Enums;
-using Ce.Common.Lib.Interfaces;
+﻿using Ce.Common.Lib.Interfaces;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using System;
@@ -84,10 +83,6 @@ namespace Axe.TaskManagement.Model.Entities
         [BsonElement("note")]
         public string Note { get; set; }
 
-        [Description("Có cập nhật value")]
-        [BsonElement("has_change")]
-        public bool HasChange { get; set; } = false;        // Có thay đổi giá trị so với bước TRƯỚC hay ko
-
         [Description("Giá trị")]
         [BsonElement("value")]
         public string Value { get; set; }
@@ -102,6 +97,9 @@ namespace Axe.TaskManagement.Model.Entities
 
         [BsonElement("right_status")]
         public short RightStatus { get; set; }
+
+        [BsonElement("right_ratio")]
+        public decimal RightRatio { get; set; }
 
         [BsonElement("status")]
         public short Status { get; set; }
