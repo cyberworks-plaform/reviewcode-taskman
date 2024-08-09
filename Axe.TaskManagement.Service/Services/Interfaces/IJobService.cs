@@ -147,5 +147,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<bool> PublishLogJobEvent(List<Job> jobs, string accessToken);
         Task<GenericResponse<JobDto>> GetByInstanceId(Guid instanceId);
         Task<GenericResponse<List<JobDto>>> GetByInstanceIds(List<Guid> instanceIds);
+        Task<GenericResponse<int>> BackIgnoreJobToCheckFinalProcess(JobResult result, string accessToken = null);
+        Task<GenericResponse<int>> BackMultiIgnoreJobToCheckFinalProcess(List<JobResult> result, string accessToken = null);
     }
 }
