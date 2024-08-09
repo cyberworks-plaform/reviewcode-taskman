@@ -17,8 +17,6 @@ using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Workflow.Client.Services.Interfaces;
-using DocumentFormat.OpenXml.Spreadsheet;
-using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Driver;
 using Newtonsoft.Json;
@@ -229,7 +227,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         }
                                     }
                                 }
-
+                                
                                 // 1.Cập nhật giá trị DocFieldValue: Publish event
                                 if (itemDocFieldValueUpdateValues.Any())
                                 {
@@ -237,25 +235,28 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     {
                                         ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                                     };
-                                    // Outbox
-                                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                    {
-                                        ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                        Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                                    });
-                                    var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                    if (isAck)
-                                    {
-                                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                                    }
-                                    else
-                                    {
-                                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                                    }
-                                }
+                                    //// Outbox
+                                    //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                    //{
+                                    //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                                    //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                    //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                                    //});
+                                    //var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                                    //if (isAck)
+                                    //{
+                                    //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                    //}
+                                    //else
+                                    //{
+                                    //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                    //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                    //}
 
+                                    // Call Api
+                                    await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
+                                }
+                                
                                 // 2. Update FinalValue in Doc: Publish event
                                 if (isUpdateValue && docItems.Any())
                                 {
@@ -265,27 +266,33 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         DocInstanceId = docInstanceId,
                                         FinalValue = finalValue
                                     };
-                                    // Outbox
-                                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                    {
-                                        ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
-                                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                        Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
-                                    });
-                                    var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
-                                    if (isAck)
-                                    {
-                                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                                    }
-                                    else
-                                    {
-                                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                                    }
+                                    //// Outbox
+                                    //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                    //{
+                                    //    ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
+                                    //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                    //    Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
+                                    //});
+                                    //var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
+                                    //if (isAck)
+                                    //{
+                                    //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                    //}
+                                    //else
+                                    //{
+                                    //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                    //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                    //}
+
+                                    // Call Api
+                                    await _docClientService.UpdateFinalValue(docUpdateFinalValueEvt, accessToken);
                                 }
 
                                 // 3. Cập nhật Giá tiền
-                                await _moneyService.ChargeMoneyForComplainJob(wfsInfoes, wfSchemaInfoes, docItems, complain.DocInstanceId.GetValueOrDefault(), job, accessToken);
+                                if (isUpdateValue)
+                                {
+                                    await _moneyService.ChargeMoneyForComplainJob(wfsInfoes, wfSchemaInfoes, docItems, complain.DocInstanceId.GetValueOrDefault(), docItemComplains, accessToken);
+                                }
                             }
                         }
                     }

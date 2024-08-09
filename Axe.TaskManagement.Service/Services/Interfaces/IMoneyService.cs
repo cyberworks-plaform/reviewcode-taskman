@@ -12,6 +12,7 @@ public interface IMoneyService
         List<WorkflowSchemaConditionInfo> wfSchemaInfoes, List<DocItem> docItems, Guid docInstanceId,
         string accessToken);
 
-    public Task ChargeMoneyForComplainJob(List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes,
-        List<DocItem> docItems, Guid docInstanceId, Job itemJob, string accessToken);
+    public Task ChargeMoneyForComplainJob(List<WorkflowStepInfo> wfsInfoes,
+        List<WorkflowSchemaConditionInfo> wfSchemaInfoes, List<DocItem> docItems, Guid docInstanceId,
+        List<DocItemComplain> docItemComplains, string accessToken);
 }

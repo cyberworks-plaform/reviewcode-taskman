@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Ce.Constant.Lib.Dtos;
@@ -26,5 +27,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<List<SyncMetaRelationDto>>> GetAllSyncMetaRelationAsync(string accessToken = null);
         Task<GenericResponse<List<DocDto>>> GetListDocByDocInstanceIds(List<Guid> lstInstanceIds, string accessToken = null);
         Task<GenericResponse<string>> GetPathName(string docPath, string accessToken = null);
+        Task<GenericResponse<int>> UpdateFinalValue(DocUpdateFinalValueEvent model, string accessToken = null);
     }
 }
