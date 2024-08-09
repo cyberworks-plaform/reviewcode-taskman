@@ -260,6 +260,21 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+        public async Task<GenericResponse<int>> UpdateFinalValue(DocUpdateFinalValueEvent model, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "update-final-value";
+                response = await client.PostAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, model, null, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
         public async Task<GenericResponse<DocDto>> GetByInstanceIdAsync(Guid instanceId, string accessToken = null)
         {
             GenericResponse<DocDto> response;
