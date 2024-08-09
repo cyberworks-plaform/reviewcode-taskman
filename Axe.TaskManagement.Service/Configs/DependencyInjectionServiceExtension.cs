@@ -15,6 +15,8 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddScoped<ISequenceJobService, SequenceJobService>();
             services.AddScoped<IRecallJobWorkerService, RecallJobWorkerService>();
             services.AddScoped<IQueueLockService, QueueLockService>();
+            services.AddScoped<IComplainService, ComplainService>();
+            services.AddScoped<ISequenceComplainService, SequenceComplainService>();
 
             // Common service
             services.AddScoped<IMoneyService, MoneyService>();

@@ -3,6 +3,7 @@ using Axe.TaskManagement.Service.Services.Interfaces;
 using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Dtos;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Net;
@@ -70,12 +71,50 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     DocInstanceId = docInstanceId.ToString(),
                     DocTypeFieldIntanceIds = docTypeFieldIntanceIds
                 };
-                response = await client.PostAsync<GenericResponse<int>>(_serviceUri, apiEndpoint,request,null, null, accessToken);
+                response = await client.PostAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, request, null, null, accessToken);
             }
             catch (Exception ex)
             {
                 response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
+            return response;
+        }
+
+        public async Task<GenericResponse<DocFieldValueDto>> GetByInstanceId(Guid instanceId, string accessToken = null)
+        {
+            GenericResponse<DocFieldValueDto> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-by-instance/{instanceId}";
+                response = await client.GetAsync<GenericResponse<DocFieldValueDto>>(_serviceUri, apiEndpoint, null, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<DocFieldValueDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<int>> UpdateMulti(List<DocFieldValueDto> docFieldValues, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "update-multi";
+                response = await client.PutAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, docFieldValues, null, null, accessToken);
+                if (response != null && !response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
             return response;
         }
     }

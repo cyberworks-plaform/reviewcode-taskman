@@ -281,6 +281,7 @@ namespace Axe.TaskManagement.Service.Dtos
         public string PathName { get; set; }
         #endregion
 
+        public ComplainDto LastComplain { get; set; } = null;
 
     }
 }

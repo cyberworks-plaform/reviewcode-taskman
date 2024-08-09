@@ -261,7 +261,28 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+        public async Task<GenericResponse<DocDto>> GetByInstanceIdAsync(Guid instanceId, string accessToken = null)
+        {
+            GenericResponse<DocDto> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-by-instance/{instanceId}";
+                response = await client.GetAsync<GenericResponse<DocDto>>(_serviceUri, apiEndpoint, null, null, accessToken);
+                if (response != null && !response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<DocDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+                Log.Error(ex, ex.Message);
+            }
 
+            return response;
+        }
 
     }
 }

@@ -379,6 +379,20 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpPost]
+        [Route("back-job-to-check-final-process")]
+        public async Task<IActionResult> BackJobToCheckFinalProcess(JobResult result)
+        {
+            return ResponseResult(await _service.BackIgnoreJobToCheckFinalProcess(result, GetBearerToken()));
+        }
+
+        [HttpPost]
+        [Route("back-multi-job-to-check-final-process")]
+        public async Task<IActionResult> BackMultiJobToCheckFinalProcess(List<JobResult> lstJobResult)
+        {
+            return ResponseResult(await _service.BackMultiIgnoreJobToCheckFinalProcess(lstJobResult, GetBearerToken()));
+        }
+
+        [HttpPost]
         [Route("get-false-percent")]
         public async Task<IActionResult> GetFalsePercent(string actionCode)
         {
@@ -643,6 +657,20 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> ResyncJobDistribution()
         {
             return ResponseResult(await _service.ResyncJobDistribution());
+        }
+
+        [HttpPost]
+        [Route("get-by-instance-id")]
+        public async Task<IActionResult> GetByInstanceId(Guid instanceId)
+        {
+            return ResponseResult(await _service.GetByInstanceId(instanceId));
+        }
+
+        [HttpPost]
+        [Route("get-by-instance-ids")]
+        public async Task<IActionResult> GetByInstanceIds(List<Guid> instanceIds)
+        {
+            return ResponseResult(await _service.GetByInstanceIds(instanceIds));
         }
     }
 }
