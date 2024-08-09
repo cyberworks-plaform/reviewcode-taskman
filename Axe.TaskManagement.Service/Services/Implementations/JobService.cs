@@ -3252,6 +3252,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //    & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode)
                 //    & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
                 string statusFilterValue = "";
+                string codeFilterValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
                     //Status
@@ -3260,9 +3261,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         statusFilterValue = statusFilter.Value.Trim();
                     }
+
+                    //Code
+                    var codeFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Code)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (codeFilter != null)
+                    {
+                        codeFilterValue = codeFilter.Value.Trim();
+                    }
                 }
                 // Nếu không có Status truyền vào thì mặc định Status là Complete
                 var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, statusFilterValue == "" ? (short)EnumJob.Status.Complete : short.Parse(statusFilterValue));
+                if (!string.IsNullOrEmpty(codeFilterValue))
+                {
+                    baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.Code, codeFilterValue);
+                }
                 if (!string.IsNullOrEmpty(actionCode))
                 {
                     baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);

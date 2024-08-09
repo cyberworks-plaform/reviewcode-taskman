@@ -332,6 +332,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //    return GenericResponse<HistoryComplainDto>.ResultWithError((int)HttpStatusCode.BadRequest, "Chưa chọn dự án", "Chưa chọn dự án");
                 //}
                 var baseFilter = Builders<Complain>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
+                if (!string.IsNullOrEmpty(actionCode))
+                {
+                    baseFilter = baseFilter & Builders<Complain>.Filter.Eq(x => x.ActionCode, actionCode);
+                }
 
                 //var baseOrder = Builders<Complain>.Sort.Descending(nameof(Complain.LastModificationDate));
                 var baseOrder = Builders<Complain>.Sort.Descending(nameof(Complain.CreatedDate));
@@ -370,7 +374,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var jobInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals(nameof(ComplainDto.JobInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (jobInstanceIdFilter != null)
                     {
-                        lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.ProjectInstanceId, Guid.Parse(jobInstanceIdFilter.Value));
+                        lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.JobInstanceId, Guid.Parse(jobInstanceIdFilter.Value));
+                    }
+
+                    //JobCode
+                    var jobCodeFilter = request.Filters.Where(_ => _.Field.Equals(nameof(ComplainDto.JobCode)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (jobCodeFilter != null)
+                    {
+                        lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.JobCode, jobCodeFilter.Value);
                     }
 
                     //ProjectInstanceId

@@ -403,25 +403,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     itemJob.UserInstanceId.GetValueOrDefault(),
                                     itemJob.Code)
                             };
-                            //var itemTransactionAddRecall = new ItemTransactionAddDto
-                            //{
-                            //    SourceUserInstanceId = itemJob.UserInstanceId.GetValueOrDefault(),
-                            //    DestinationUserInstanceId = clientInstanceId,
-                            //    //ChangeAmount = itemJob.Price,
-                            //    ChangeProvisionalAmount = 0,
-                            //    JobCode = itemJob.Code,
-                            //    ProjectInstanceId = itemJob.ProjectInstanceId,
-                            //    WorkflowInstanceId = itemJob.WorkflowInstanceId,
-                            //    WorkflowStepInstanceId = itemJob.WorkflowStepInstanceId,
-                            //    ActionCode = itemJob.ActionCode,
-                            //    Message = string.Format(MsgTransactionTemplate.MsgComplainJobInfo, itemWfsInfo?.Name,
-                            //        itemJob.Code),
-                            //    Description = string.Format(
-                            //        DescriptionTransactionTemplateV2.DescriptionTranferMoneyForComplainJob,
-                            //        clientInstanceId,
-                            //        itemJob.UserInstanceId.GetValueOrDefault(),
-                            //        itemJob.Code)
-                            //};
                             if (!itemJob.IsIgnore)
                             {
                                 if (itemWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
@@ -441,7 +422,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
                                                 itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId,
                                                 isPriceEdit);
-                                            itemTransactionAdd.ChangeAmount = changeAmount;
+                                            itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
                                         }
                                         else if (prevWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File)
@@ -458,7 +439,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
                                                 itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId,
                                                 isPriceEdit);
-                                            itemTransactionAdd.ChangeAmount = changeAmount;
+                                            itemTransactionAdd.ChangeAmount = changeAmount; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
                                         }
                                     }
@@ -643,13 +624,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         itemTransactionAdds.Add(itemTransactionAdd);
                                     }
                                 }
-
-                                //// Recall money
-                                //if (itemJob.Price > changeAmount)
-                                //{
-                                //    itemTransactionAddRecall.ChangeAmount = itemJob.Price - changeAmount;
-                                //    itemTransactionAdds.Add(itemTransactionAddRecall);
-                                //}
                             }
 
                             // Update RightStatus & Price
