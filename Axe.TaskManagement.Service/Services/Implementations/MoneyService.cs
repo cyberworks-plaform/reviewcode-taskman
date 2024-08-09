@@ -403,25 +403,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     itemJob.UserInstanceId.GetValueOrDefault(),
                                     itemJob.Code)
                             };
-                            var itemTransactionAddRecall = new ItemTransactionAddDto
-                            {
-                                SourceUserInstanceId = itemJob.UserInstanceId.GetValueOrDefault(),
-                                DestinationUserInstanceId = clientInstanceId,
-                                //ChangeAmount = itemJob.Price,
-                                ChangeProvisionalAmount = 0,
-                                JobCode = itemJob.Code,
-                                ProjectInstanceId = itemJob.ProjectInstanceId,
-                                WorkflowInstanceId = itemJob.WorkflowInstanceId,
-                                WorkflowStepInstanceId = itemJob.WorkflowStepInstanceId,
-                                ActionCode = itemJob.ActionCode,
-                                Message = string.Format(MsgTransactionTemplate.MsgComplainJobInfo, itemWfsInfo?.Name,
-                                    itemJob.Code),
-                                Description = string.Format(
-                                    DescriptionTransactionTemplateV2.DescriptionTranferMoneyForComplainJob,
-                                    clientInstanceId,
-                                    itemJob.UserInstanceId.GetValueOrDefault(),
-                                    itemJob.Code)
-                            };
+                            //var itemTransactionAddRecall = new ItemTransactionAddDto
+                            //{
+                            //    SourceUserInstanceId = itemJob.UserInstanceId.GetValueOrDefault(),
+                            //    DestinationUserInstanceId = clientInstanceId,
+                            //    //ChangeAmount = itemJob.Price,
+                            //    ChangeProvisionalAmount = 0,
+                            //    JobCode = itemJob.Code,
+                            //    ProjectInstanceId = itemJob.ProjectInstanceId,
+                            //    WorkflowInstanceId = itemJob.WorkflowInstanceId,
+                            //    WorkflowStepInstanceId = itemJob.WorkflowStepInstanceId,
+                            //    ActionCode = itemJob.ActionCode,
+                            //    Message = string.Format(MsgTransactionTemplate.MsgComplainJobInfo, itemWfsInfo?.Name,
+                            //        itemJob.Code),
+                            //    Description = string.Format(
+                            //        DescriptionTransactionTemplateV2.DescriptionTranferMoneyForComplainJob,
+                            //        clientInstanceId,
+                            //        itemJob.UserInstanceId.GetValueOrDefault(),
+                            //        itemJob.Code)
+                            //};
                             if (!itemJob.IsIgnore)
                             {
                                 if (itemWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
@@ -639,17 +639,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             }
                                         }
 
-                                        itemTransactionAdd.ChangeAmount = changeAmount;
+                                        itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price;
                                         itemTransactionAdds.Add(itemTransactionAdd);
                                     }
                                 }
 
-                                // Recall money
-                                if (itemJob.Price > changeAmount)
-                                {
-                                    itemTransactionAddRecall.ChangeAmount = itemJob.Price - changeAmount;
-                                    itemTransactionAdds.Add(itemTransactionAddRecall);
-                                }
+                                //// Recall money
+                                //if (itemJob.Price > changeAmount)
+                                //{
+                                //    itemTransactionAddRecall.ChangeAmount = itemJob.Price - changeAmount;
+                                //    itemTransactionAdds.Add(itemTransactionAddRecall);
+                                //}
                             }
 
                             // Update RightStatus & Price
