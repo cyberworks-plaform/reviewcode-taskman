@@ -349,7 +349,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             List<WorkflowSchemaConditionInfo> wfSchemaInfoes, List<DocItem> docItems, Guid docInstanceId,
             List<DocItemComplain> docItemComplains, string accessToken)
         {
-            if (docItemComplains == null || docItemComplains.Any())
+            if (docItemComplains == null || !docItemComplains.Any())
             {
                 Log.Logger.Error($"No change money for complain with DocInstanceId: {docInstanceId}!");
                 return;

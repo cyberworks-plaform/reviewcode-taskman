@@ -254,7 +254,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     //}
 
                                     // Call Api
-                                    await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
+                                    var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
                                 }
                                 
                                 // 2. Update FinalValue in Doc: Publish event
@@ -285,7 +285,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     //}
 
                                     // Call Api
-                                    await _docClientService.UpdateFinalValue(docUpdateFinalValueEvt, accessToken);
+                                    var _ = await _docClientService.UpdateFinalValue(docUpdateFinalValueEvt, accessToken);
                                 }
 
                                 // 3. Cập nhật Giá tiền
