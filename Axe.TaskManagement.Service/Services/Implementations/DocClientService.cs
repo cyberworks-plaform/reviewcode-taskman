@@ -1,17 +1,16 @@
-﻿using Axe.TaskManagement.Service.Services.Interfaces;
+﻿using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Dtos;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
-using Axe.TaskManagement.Service.Dtos;
-using Serilog;
-using System.Web;
-using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -281,8 +280,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 Log.Error(ex, ex.Message);
             }
 
+
             return response;
         }
 
+	
     }
 }

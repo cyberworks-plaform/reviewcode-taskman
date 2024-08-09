@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -104,6 +105,28 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var client = _clientFatory.Create();
                 var apiEndpoint = "update-multi";
                 response = await client.PutAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, docFieldValues, null, null, accessToken);
+                if (response != null && !response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return response;
+        }
+
+        public async Task<GenericResponse<int>> UpdateMultiValue(DocFieldValueUpdateMultiValueEvent model, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "update-multi-values";
+                response = await client.PostAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, model, null, null, accessToken);
                 if (response != null && !response.Success)
                 {
                     Log.Error(response.Message);
