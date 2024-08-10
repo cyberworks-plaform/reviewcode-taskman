@@ -1,17 +1,16 @@
-﻿using Axe.TaskManagement.Service.Services.Interfaces;
+﻿using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Dtos;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading.Tasks;
-using Axe.TaskManagement.Service.Dtos;
-using Serilog;
-using System.Web;
-using Pipelines.Sockets.Unofficial.Arenas;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -261,6 +260,21 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+        public async Task<GenericResponse<int>> UpdateFinalValue(DocUpdateFinalValueEvent model, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "update-final-value";
+                response = await client.PostAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, model, null, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
         public async Task<GenericResponse<DocDto>> GetByInstanceIdAsync(Guid instanceId, string accessToken = null)
         {
             GenericResponse<DocDto> response;
@@ -281,8 +295,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 Log.Error(ex, ex.Message);
             }
 
+
             return response;
         }
 
+	
     }
 }

@@ -102,6 +102,9 @@ namespace Axe.TaskManagement.Service.Dtos
         [BsonElement("right_status")]
         public short RightStatus { get; set; }
 
+        [BsonElement("right_ratio")]
+        public decimal RightRatio { get; set; }
+
         [BsonElement("status")]
         public short Status { get; set; }
 

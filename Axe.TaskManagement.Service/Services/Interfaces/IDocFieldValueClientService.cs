@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Ce.Constant.Lib.Dtos;
 
 namespace Axe.TaskManagement.Service.Services.Interfaces
@@ -17,5 +18,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<DocFieldValueDto>> GetByInstanceId(Guid instanceId, string accessToken = null);
 
         Task<GenericResponse<int>> UpdateMulti(List<DocFieldValueDto> docTypeFields, string accessToken = null);
+
+        Task<GenericResponse<int>> UpdateMultiValue(DocFieldValueUpdateMultiValueEvent model, string accessToken = null);
     }
 }
