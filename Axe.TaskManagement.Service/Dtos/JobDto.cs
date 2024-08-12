@@ -279,6 +279,8 @@ namespace Axe.TaskManagement.Service.Dtos
         public string InputShortNote { get; set; }
 
         public string PathName { get; set; }
+
+        public DateTime? DocCompleteDate { get; set; }
         #endregion
 
         public ComplainDto LastComplain { get; set; } = null;

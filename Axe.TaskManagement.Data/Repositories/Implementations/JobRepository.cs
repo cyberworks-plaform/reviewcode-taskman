@@ -407,6 +407,22 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return await data.ToListAsync();
         }
 
+        public async Task<List<Job>> GetJobByDocs(IEnumerable<Guid?> docInstanceIds, string actionCode = null, short? status = null)
+        {
+            var filter = Builders<Job>.Filter.In(x => x.DocInstanceId, docInstanceIds);
+            if (!string.IsNullOrEmpty(actionCode))
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            }
+
+            if (status != null)
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, status);
+            }
+            var data = DbSet.Find(filter);
+            return await data.ToListAsync();
+        }
+
         public async Task<List<Job>> GetPrevJobs(Job crrJob, List<Guid> prevWorkflowStepInstanceIds)
         {
             var lstPrevWorkflowStepInstanceIds = prevWorkflowStepInstanceIds.Select(x => (Guid?)x).ToList();

@@ -3475,13 +3475,27 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
                 var data = _mapper.Map<List<JobDto>>(lst.Data);
-                if (data != null)
+                if (data != null && data.Any())
+                {
+                    var docInstanceIds = data.Where(x => x.DocInstanceId != null && x.DocInstanceId != Guid.Empty)
+                        .Select(x => x.DocInstanceId).Distinct();
+                    var syntheticDataJobs = await _repository.GetJobByDocs(docInstanceIds,
+                        ActionCodeConstants.SyntheticData, (short) EnumJob.Status.Complete);
                     foreach (var item in data)
                     {
+                        var syntheticDataJob = syntheticDataJobs?.FirstOrDefault(x => x.DocInstanceId == item.DocInstanceId);
+                        if (syntheticDataJob != null)
+                        {
+                            item.DocCompleteDate = syntheticDataJob.LastModificationDate;
+                        }
+                        
                         var complain = await _complainRepository.GetByJobCode(item.Code);
                         if (complain != null)
+                        {
                             item.LastComplain = _mapper.Map<ComplainDto>(complain);
+                        }
                     }
+                }
                 var pagedList = new PagedListExtension<JobDto>
                 {
                     PageIndex = lst.PageIndex,
