@@ -203,12 +203,37 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         var docFieldValueRs = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
                                         if (docFieldValueRs != null && docFieldValueRs.Success && docFieldValueRs.Data != null)
                                         {
+                                            var docFieldValue = docFieldValueRs.Data;
+                                            docItemComplains.Add(new DocItemComplain
+                                            {
+                                                FilePartInstanceId = job.FilePartInstanceId,
+                                                DocTypeFieldId = docFieldValue.DocTypeFieldId,
+                                                DocTypeFieldInstanceId = job.DocTypeFieldInstanceId,
+                                                DocTypeFieldCode = job.DocTypeFieldCode,
+                                                DocTypeFieldName = job.DocTypeFieldName,
+                                                DocTypeFieldSortOrder = job.DocTypeFieldSortOrder,
+                                                PrivateCategoryInstanceId = job.PrivateCategoryInstanceId,
+                                                InputType = job.InputType,
+                                                MinLength = job.MinLength,
+                                                MaxLength = job.MaxLength,
+                                                MaxValue = job.MaxValue,
+                                                MinValue = job.MinValue,
+                                                IsMultipleSelection = job.IsMultipleSelection,
+                                                CoordinateArea = job.CoordinateArea,
+                                                IsCombineCoordinateArea = false,
+                                                CoordinateAreas = null,
+                                                DocFieldValueId = docFieldValue.Id,
+                                                DocFieldValueInstanceId = job.DocFieldValueInstanceId,
+                                                Value = complain.Value,
+                                                ShowForInput = false
+                                            });
+
                                             itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
                                             {
                                                 InstanceId = complain.DocFieldValueInstanceId.GetValueOrDefault(),
                                                 Value = complain.Value,
                                                 CoordinateArea = job.CoordinateArea,
-                                                ActionCode = docFieldValueRs.Data.ActionCode
+                                                ActionCode = docFieldValue.ActionCode
                                             });
                                         }
 

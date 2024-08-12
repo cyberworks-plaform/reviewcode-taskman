@@ -439,7 +439,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
                                                 itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId,
                                                 isPriceEdit);
-                                            itemTransactionAdd.ChangeAmount = changeAmount; // = changeAmount, vì itemJob.Price = 0
+                                            itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
                                         }
                                     }
