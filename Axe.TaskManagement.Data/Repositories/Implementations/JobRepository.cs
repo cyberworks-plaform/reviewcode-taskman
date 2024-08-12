@@ -1524,10 +1524,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             }
 
             var totalfilter = await DbSet.CountDocumentsAsync(filter);
-            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
+            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
             var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
-            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
+            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
             var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
 
             var total = isNullFilter ?

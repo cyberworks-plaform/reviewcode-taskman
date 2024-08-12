@@ -376,7 +376,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
                         itemJob.WorkflowStepInstanceId.GetValueOrDefault());
                     var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
-                    short rightStatus = (short)EnumJob.RightStatus.WaitingConfirm;
+                    short rightStatus = itemJob.RightStatus;
                     if (!string.IsNullOrEmpty(itemWfsInfo.ConfigPrice))
                     {
                         var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(itemWfsInfo.ConfigPrice);
