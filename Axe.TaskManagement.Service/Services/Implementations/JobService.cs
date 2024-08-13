@@ -3438,6 +3438,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.IsIgnore, isIgnore);
                         }
                     }
+                    //NumOfRound
+                    var isNumOfRoundFilter = request.Filters.Where(_ => _.Field.Equals("NumOfRound") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (isNumOfRoundFilter != null)
+                    {
+                        var canParse = Int16.TryParse(isNumOfRoundFilter.Value, out short numOfRound);
+
+                        if (canParse)
+                        {
+                            lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
+                        }
+                    }
                 }
                 else
                 {
