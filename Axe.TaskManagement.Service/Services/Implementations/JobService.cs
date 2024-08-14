@@ -3449,6 +3449,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.NumOfRound, numOfRound);
                         }
                     }
+                    //QAStatus
+                    var qAStautsFilter = request.Filters.Where(_ => _.Field.Equals("QAStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (qAStautsFilter != null)
+                    {
+                        var canParse = Boolean.TryParse(qAStautsFilter.Value, out bool qAStatus);
+
+                        if (canParse)
+                        {
+                            //Nếu lọc theo QAStatus thì chỉ lấy theo bước QACheckFinal
+                            lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.QaStatus, qAStatus);
+                            lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, ActionCodeConstants.QACheckFinal);
+                        }
+                    }
                 }
                 else
                 {
