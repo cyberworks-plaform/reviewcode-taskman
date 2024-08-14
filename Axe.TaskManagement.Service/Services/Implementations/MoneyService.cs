@@ -58,7 +58,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
                         itemJob.WorkflowStepInstanceId.GetValueOrDefault());
                     var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
-                    short rightStatus = (short)EnumJob.RightStatus.WaitingConfirm;
+                    short rightStatus = itemJob.RightStatus;
                     if (!string.IsNullOrEmpty(itemWfsInfo.ConfigPrice))
                     {
                         var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(itemWfsInfo.ConfigPrice);
@@ -137,8 +137,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     var itemVals = JsonConvert.DeserializeObject<List<DocItem>>(itemJob.Value);
                                     if (itemVals != null && itemVals.Any())
                                     {
-                                        if (objConfigPrice.Status ==
-                                            (short)EnumWorkflowStep.UnitPriceConfigType.ByStep)
+                                        if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByStep)
                                         {
                                             var isCorrectTotal = true;
                                             var isPriceEditTotal = true;
@@ -211,8 +210,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             }
 
                                         }
-                                        else if (objConfigPrice.Status ==
-                                                 (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
+                                        else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
                                         {
                                             var totalCorrect = 0;
                                             foreach (var itemVal in itemVals)
@@ -378,7 +376,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
                         itemJob.WorkflowStepInstanceId.GetValueOrDefault());
                     var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
-                    short rightStatus = (short)EnumJob.RightStatus.WaitingConfirm;
+                    short rightStatus = itemJob.RightStatus;
                     if (!string.IsNullOrEmpty(itemWfsInfo.ConfigPrice))
                     {
                         var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(itemWfsInfo.ConfigPrice);
@@ -439,7 +437,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             changeAmount = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
                                                 itemJob.DigitizedTemplateInstanceId, itemJob.DocTypeFieldInstanceId,
                                                 isPriceEdit);
-                                            itemTransactionAdd.ChangeAmount = changeAmount; // = changeAmount, vì itemJob.Price = 0
+                                            itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
                                         }
                                     }

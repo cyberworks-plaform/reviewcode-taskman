@@ -203,12 +203,37 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         var docFieldValueRs = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
                                         if (docFieldValueRs != null && docFieldValueRs.Success && docFieldValueRs.Data != null)
                                         {
+                                            var docFieldValue = docFieldValueRs.Data;
+                                            docItemComplains.Add(new DocItemComplain
+                                            {
+                                                FilePartInstanceId = job.FilePartInstanceId,
+                                                DocTypeFieldId = docFieldValue.DocTypeFieldId,
+                                                DocTypeFieldInstanceId = job.DocTypeFieldInstanceId,
+                                                DocTypeFieldCode = job.DocTypeFieldCode,
+                                                DocTypeFieldName = job.DocTypeFieldName,
+                                                DocTypeFieldSortOrder = job.DocTypeFieldSortOrder,
+                                                PrivateCategoryInstanceId = job.PrivateCategoryInstanceId,
+                                                InputType = job.InputType,
+                                                MinLength = job.MinLength,
+                                                MaxLength = job.MaxLength,
+                                                MaxValue = job.MaxValue,
+                                                MinValue = job.MinValue,
+                                                IsMultipleSelection = job.IsMultipleSelection,
+                                                CoordinateArea = job.CoordinateArea,
+                                                IsCombineCoordinateArea = false,
+                                                CoordinateAreas = null,
+                                                DocFieldValueId = docFieldValue.Id,
+                                                DocFieldValueInstanceId = job.DocFieldValueInstanceId,
+                                                Value = complain.Value,
+                                                ShowForInput = false
+                                            });
+
                                             itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
                                             {
                                                 InstanceId = complain.DocFieldValueInstanceId.GetValueOrDefault(),
                                                 Value = complain.Value,
                                                 CoordinateArea = job.CoordinateArea,
-                                                ActionCode = docFieldValueRs.Data.ActionCode
+                                                ActionCode = docFieldValue.ActionCode
                                             });
                                         }
 
@@ -396,14 +421,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     //}
 
                     //RightStatus =>//EnumComplain.RightStatus
-                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var rightStatusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (rightStatusFilter != null)
+                    {
+                        var canParse = Int16.TryParse(rightStatusFilter.Value, out short statusValue);
+
+                        if (canParse && statusValue >= 0)
+                        {
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                        }
+
+                    }
+                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("Status") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
                     {
                         var canParse = Int16.TryParse(statusFilter.Value, out short statusValue);
 
                         if (canParse && statusValue >= 0)
                         {
-                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.Status, statusValue);
                         }
 
                     }
