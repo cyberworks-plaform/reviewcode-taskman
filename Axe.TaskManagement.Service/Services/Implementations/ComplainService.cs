@@ -421,14 +421,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     //}
 
                     //RightStatus =>//EnumComplain.RightStatus
-                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var rightStatusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (rightStatusFilter != null)
+                    {
+                        var canParse = Int16.TryParse(rightStatusFilter.Value, out short statusValue);
+
+                        if (canParse && statusValue >= 0)
+                        {
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                        }
+
+                    }
+                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("Status") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
                     {
                         var canParse = Int16.TryParse(statusFilter.Value, out short statusValue);
 
                         if (canParse && statusValue >= 0)
                         {
-                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.Status, statusValue);
                         }
 
                     }
