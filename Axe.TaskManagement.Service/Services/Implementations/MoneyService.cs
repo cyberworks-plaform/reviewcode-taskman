@@ -369,6 +369,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var updateJobs = new List<Job>();
 
                 //Check tính đúng/sai
+                Log.Information($"Huytd ChargeMoneyForComplainJob: all job => {JsonConvert.SerializeObject(allManualJobs.Select(x => x.Code))}");
                 foreach (var itemJob in allManualJobs)
                 {
                     decimal changeAmount = 0;
@@ -422,6 +423,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                 isPriceEdit);
                                             itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
+                                            Log.Information($"Huytd ChargeMoneyForComplainJob: job => {itemJob.Code}, Value => {itemJob.Value}, PrevValue => {preVal}, Price => {changeAmount}, RightStatus => {rightStatus}");
                                         }
                                         else if (prevWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File)
                                         {
@@ -439,6 +441,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                 isPriceEdit);
                                             itemTransactionAdd.ChangeAmount = changeAmount - itemJob.Price; // = changeAmount, vì itemJob.Price = 0
                                             rightStatus = (short)EnumJob.RightStatus.Correct;
+                                            Log.Information($"Huytd ChargeMoneyForComplainJob: job => {itemJob.Code}, Value => {itemJob.Value}, PrevValue => {preVal}, Price => {changeAmount}, RightStatus => {rightStatus}");
                                         }
                                     }
                                     else
@@ -468,8 +471,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                         itemVal.Value, finalValField.Value);
                                                     if (isCorrectField)
                                                     {
-                                                        if (prevWfsInfo?.Attribute ==
-                                                            (short)EnumWorkflowStep.AttributeType.Meta)
+                                                        if (prevWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
                                                         {
                                                             var preValField = allJobs.FirstOrDefault(x =>
                                                                 x.WorkflowStepInstanceId == prevWfsInfo.InstanceId &&
@@ -482,9 +484,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                             {
                                                                 isPriceEditTotal = false;
                                                             }
+                                                            Log.Information($"Huytd ChargeMoneyForComplainJob: job => {itemJob.Code}, Value => {itemJob.Value}, PrevValue => {preValField?.Value}, Price => {changeAmount}, RightStatus => {rightStatus}");
                                                         }
-                                                        else if (prevWfsInfo?.Attribute ==
-                                                                 (short)EnumWorkflowStep.AttributeType.File)
+                                                        else if (prevWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File)
                                                         {
                                                             var preValFields = allJobs.FirstOrDefault(x =>
                                                                 x.WorkflowStepInstanceId == prevWfsInfo.InstanceId);
@@ -503,6 +505,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                             {
                                                                 isPriceEditTotal = false;
                                                             }
+                                                            Log.Information($"Huytd ChargeMoneyForComplainJob: job => {itemJob.Code}, Value => {itemJob.Value}, PrevValue => {preValField?.Value}, Price => {changeAmount}, RightStatus => {rightStatus}");
                                                         }
                                                     }
                                                     else
@@ -525,7 +528,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                                 changeAmount = 0;
                                                 rightStatus = (short)EnumJob.RightStatus.Wrong;
                                             }
-
                                         }
                                         else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
                                         {

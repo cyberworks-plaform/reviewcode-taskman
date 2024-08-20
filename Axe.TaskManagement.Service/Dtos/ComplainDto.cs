@@ -111,7 +111,8 @@ namespace Axe.TaskManagement.Service.Dtos
         [BsonElement("choose_value")]
         public short ChooseValue { get; set; }     // Refer: EnumComplain.ChooseValue
 
+        public bool IsReadOnly { get; set; }
+
         #endregion
-        public List<Guid?> FieldChangeInstanceIds { get; set; }
     }
 }
