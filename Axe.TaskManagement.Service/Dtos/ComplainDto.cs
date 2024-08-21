@@ -103,7 +103,7 @@ namespace Axe.TaskManagement.Service.Dtos
         public short RightStatus { get; set; }
 
         [BsonElement("right_ratio")]
-        public decimal RightRatio { get; set; }
+        public decimal RightRatio { get; set; } = -1;
 
         [BsonElement("status")]
         public short Status { get; set; }
