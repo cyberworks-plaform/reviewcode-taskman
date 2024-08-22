@@ -264,7 +264,7 @@ namespace Axe.TaskManagement.Service.Dtos
 
         [Description("Trạng thái QA")]
         [BsonElement("qa_status")]
-        public bool QaStatus { get; set; } = false;
+        public bool? QaStatus { get; set; }
 
         [BsonElement("tenant_id")]
         public int TenantId { get; set; }
