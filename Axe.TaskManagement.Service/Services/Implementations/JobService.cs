@@ -1415,9 +1415,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.RightStatus = (short)EnumJob.RightStatus.Correct;
                     job.Status = (short)EnumJob.Status.Complete;
 
-                    resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
+                    // Xử lý RightStatus nếu bước SAU là QaCheckFinal
+                    var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                    var wfsInfoes = wfInfoes.Item1;
+                    var wfSchemaInfoes = wfInfoes.Item2;
+                    if (wfsInfoes != null && wfsInfoes.Any())
+                    {
+                        var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                        if (nextWfsInfoes != null && nextWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.QACheckFinal))
+                        {
+                            job.RightStatus = (short) EnumJob.RightStatus.Confirmed;
+                        }
+                    }
 
-                   
+                    resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
                 }
                 else // nếu bỏ qua phiếu
                 {
