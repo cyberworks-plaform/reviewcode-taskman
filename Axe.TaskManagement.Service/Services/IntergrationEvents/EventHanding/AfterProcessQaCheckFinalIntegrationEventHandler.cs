@@ -23,6 +23,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Axe.TaskManagement.Model.Entities;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -373,7 +374,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             if (nextWfsInfoes != null && nextWfsInfoes.Any())
             {
                 bool isTriggerNextStep = false;
-                bool isQAPass = job.QaStatus;
+                var isQAPass = job.QaStatus;
 
                 if (jTokenConditionType != null && jTokenConfigStepConditions != null)
                 {
@@ -450,7 +451,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
                                                 inputParamsForQARollback = AsignNote_Round_Value(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
                                             }
-                                            else // forward step (SyntheticData cho phiếu hiện tại
+                                            else if (isQAPass == true) // forward step (SyntheticData cho phiếu hiện tại
                                             {
                                                 inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
                                                 inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
@@ -477,7 +478,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 {
                                                     numOfWrongQaCheck = 1;
                                                 }
-                                                var completeQAFailJobs = allJobsInBatchAndRound.Where(x => x.Status == (short)EnumJob.Status.Complete && !x.QaStatus).ToList();
+                                                var completeQAFailJobs = allJobsInBatchAndRound.Where(x => x.Status == (short)EnumJob.Status.Complete && x.QaStatus == false).ToList();
 
 
                                                 // 1.1 Trả lại cả LÔ: nếu Total_QA_Fail >= numOfWrongQaCheck và hủy bỏ các job QA đang chờ xử lý
@@ -553,6 +554,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 }
                                             }
                                         }
+
+                                        // Cập nhật trạng thái QAStatus cho các bước TRƯỚC (CheckFinal)
+                                        await UpdatePrevJobsQaStatus(completePrevJobs, job.QaStatus.GetValueOrDefault(), job.NumOfRound);
                                     }
                                 }
                                 break;
@@ -611,6 +615,22 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 }
             }
 
+        }
+
+        private async Task UpdatePrevJobsQaStatus(List<Job> prevJobs, bool qaStatus, short numOfRound)
+        {
+            if (prevJobs.Count == 0)
+            {
+                return;
+            }
+
+            prevJobs = prevJobs.Where(x => x.NumOfRound == numOfRound).ToList();
+            prevJobs.ForEach(x =>
+            {
+                x.QaStatus = qaStatus;
+                x.RightStatus = !qaStatus ? (short) EnumJob.RightStatus.Wrong : (short) EnumJob.RightStatus.Confirmed;
+            });
+            await _repository.UpdateMultiAsync(prevJobs);
         }
 
         private async Task ProcessTriggerNextStep(JobDto job, List<DocItem> docItems, Guid parallelJobInstanceId, bool isConvergenceNextStep, List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string accessToken)
@@ -739,7 +759,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         /// <param name="qaJobs"></param>
         /// <param name="isQAPass"></param>
         /// <returns></returns>
-        private List<InputParam> AsignNote_Round_Value(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool isQAPass)
+        private List<InputParam> AsignNote_Round_Value(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool? isQAPass)
         {
             foreach (var jobNextStepItem in jobsForNextStep)
             {
