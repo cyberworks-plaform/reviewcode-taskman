@@ -1512,6 +1512,17 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 isNullFilter = true;
             }
 
+            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
+            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
+            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
+            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
+
+            var total = isNullFilter ?
+                totalfilter
+                : await DbSet.EstimatedDocumentCountAsync();
+
             if (index == -1)
             {
                 data = DbSet.Find(filter);
@@ -1523,20 +1534,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 : DbSet.Find(filter).Sort(sort).Skip((index - 1) * size).Limit(size);
             }
 
-            var totalfilter = await DbSet.CountDocumentsAsync(filter);
-            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
-            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
-            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
-            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
-
-            var total = isNullFilter ?
-                totalfilter
-                : await DbSet.CountDocumentsAsync(Builders<Job>.Filter.Empty);
-
             return new PagedListExtension<Job>
             {
-                Data = data.ToList(),
+                Data = await data.ToListAsync(),
                 PageIndex = index,
                 PageSize = size,
                 TotalCount = total,
