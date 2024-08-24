@@ -1387,7 +1387,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
                 var now = DateTime.UtcNow;
-                
+
                 Job resultUpdateJob = null;
 
                 if (result.IsIgnore == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
@@ -1424,7 +1424,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
                         if (nextWfsInfoes != null && nextWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.QACheckFinal))
                         {
-                            job.RightStatus = (short) EnumJob.RightStatus.Confirmed;
+                            job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                         }
                     }
 
@@ -1437,9 +1437,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.Status = (short)EnumJob.Status.Ignore;
                     job.IsIgnore = true;
                     job.ReasonIgnore = result.Comment;
-                    
+
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
-                    
+
                     //
                     if (resultUpdateJob != null)
                     {
@@ -1510,7 +1510,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (resultUpdateJob.IsIgnore)
                     {
                         responseCode = 2; //Bỏ qua thành công
-                    }    
+                    }
                     response = GenericResponse<int>.ResultWithData(responseCode);
                 }
                 else
@@ -3258,10 +3258,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             GenericResponse<HistoryJobDto> response;
             try
             {
-                //BaseFilter 
-                //var baseFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault())
-                //    & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode)
-                //    & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
                 string statusFilterValue = "";
                 string codeFilterValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
@@ -3292,24 +3288,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
                 var baseOrder = Builders<Job>.Sort.Descending(nameof(Job.LastModificationDate));
-
-                //if (request.PageInfo == null)
-                //{
-                //    request.PageInfo = new PageInfo
-                //    {
-                //        PageIndex = 1,
-                //        PageSize = 10
-                //    };
-                //}
-
-                //if (request.PageInfo.PageIndex <= 0)
-                //{
-                //    return GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Page index must be greater or than 1");
-                //}
-                //if (request.PageInfo.PageSize < 0)
-                //{
-                //    return GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Page size must be greater or than 0");
-                //}
 
                 if (_userPrincipalService == null)
                 {
@@ -3510,27 +3488,62 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
                 var data = _mapper.Map<List<JobDto>>(lst.Data);
-                if (data != null && data.Any())
+
+                //xử lý bổ sung thêm các dữ liệu trước khi return => không cần xử lý nếu là export 
+                if (data != null && data.Any() && request.PageInfo.PageIndex != -1)
                 {
+                    //Lấy danh sách complate cho các Job
+                    var listComplain = new List<Complain>();
+                    var batchSize = 1000;
+                    var totalBatchPage = (int)Math.Ceiling(data.Count() / (double)batchSize);
+
+                    for (var batchPage = 0; batchPage < totalBatchPage; batchPage++)
+                    {
+                        var batchItem = data.Skip(batchPage * batchSize).Take(batchSize);
+                        if (batchItem.Any())
+                        {
+                            var listJobCode = batchItem.Select(x => x.Code).ToList();
+                            var batchListComplain = await _complainRepository.GetByMultipleJobCode(listJobCode);
+                            listComplain.AddRange(batchListComplain);
+                        }
+                    }
+
+                    //Lấy thông tin ngày hoàn thành Job
+                    var syntheticDataJobs = new List<Job>();
                     var docInstanceIds = data.Where(x => x.DocInstanceId != null && x.DocInstanceId != Guid.Empty)
                         .Select(x => x.DocInstanceId).Distinct();
-                    var syntheticDataJobs = await _repository.GetJobByDocs(docInstanceIds,
-                        ActionCodeConstants.SyntheticData, (short) EnumJob.Status.Complete);
-                    foreach (var item in data)
+
+                    totalBatchPage = (int)Math.Ceiling(docInstanceIds.Count() / (double)batchSize);
+
+                    for (var batchPage = 0; batchPage < totalBatchPage; batchPage++)
+                    {
+                        var batchDocInstanceId = docInstanceIds.Skip(batchPage * batchSize).Take(batchSize);
+                        if (batchDocInstanceId.Any())
+                        {
+                            var batchSyntheticJob = await _repository.GetJobByDocs(batchDocInstanceId,
+                                                            ActionCodeConstants.SyntheticData, (short)EnumJob.Status.Complete);
+
+                            syntheticDataJobs.AddRange(batchSyntheticJob);
+                        }
+                    }
+
+
+                    Parallel.ForEach(data, item =>
                     {
                         var syntheticDataJob = syntheticDataJobs?.FirstOrDefault(x => x.DocInstanceId == item.DocInstanceId);
                         if (syntheticDataJob != null)
                         {
                             item.DocCompleteDate = syntheticDataJob.LastModificationDate;
                         }
-                        
-                        var complain = await _complainRepository.GetByJobCode(item.Code);
+
+                        var complain = listComplain.FirstOrDefault(x => x.JobCode.Equals(item.Code));
                         if (complain != null)
                         {
                             item.LastComplain = _mapper.Map<ComplainDto>(complain);
                         }
-                    }
+                    });
                 }
+
                 var pagedList = new PagedListExtension<JobDto>
                 {
                     PageIndex = lst.PageIndex,
@@ -4690,12 +4703,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //cần ưu tiên lấy các job CheckFinal bị trả về (numOfRound > 0) => cho phép lấy tất cả các phiếu có round >= numOfRound
-                    if(actionCode== nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
+                    if (actionCode == nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
                     {
                         filter &= Builders<Job>.Filter.Eq(x => x.LastModifiedBy, _userPrincipalService.UserInstanceId);
                         filter &= Builders<Job>.Filter.Gte(x => x.NumOfRound, numOfRound);
                     }
-                    
+
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
