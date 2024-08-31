@@ -3448,7 +3448,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             //Nếu lọc theo QAStatus thì chỉ lấy theo bước QACheckFinal
                             lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.QaStatus, qAStatus);
-                            lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, ActionCodeConstants.QACheckFinal);
+                            //lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, ActionCodeConstants.QACheckFinal);
                         }
                     }
                 }
