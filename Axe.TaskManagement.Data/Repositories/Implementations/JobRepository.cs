@@ -10,8 +10,10 @@ using Ce.Common.Lib.MongoDbBase.Interfaces;
 using Ce.Constant.Lib.Dtos;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -1916,9 +1918,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<List<CountJobEntity>> GetCountAllJobByStatus()
         {
-
+            var sw = new Stopwatch();
+            sw.Start();
             var aggregate = DbSet.Aggregate();
             var result = await aggregate
+                .SortBy(x=>x.Status) // and need to create index by status for best performance
                 .Group(x => x.Status,
                 l => new CountJobEntity
                 {
@@ -1926,7 +1930,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                     Total = l.Count()
                 })
                 .ToListAsync();
-
+            sw.Stop();
+            Log.Debug($"Done GetCountAllJobByStatus in {sw.ElapsedMilliseconds} ms");
             return result;
         }
 
