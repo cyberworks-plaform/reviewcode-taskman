@@ -3315,6 +3315,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         if (canParse) lastFilter = lastFilter & Builders<Job>.Filter.Lt(x => x.LastModificationDate, endDate.ToUniversalTime());
                     }
 
+                    //DocInstanceId
+                    var docInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (docInstanceIdFilter != null)
+                    {
+                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, Guid.Parse(docInstanceIdFilter.Value));
+                    }
+
+
                     //DocName
                     var docNameFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocName)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (docNameFilter != null)
@@ -3486,11 +3494,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (isValidSort) baseOrder = newSort;
                 }
 
-                var lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
+                //refator: Nếu chỉ view thông tin job thì không cần paging -> 
+                 // -> do hàm paging phải count nên rất chậm
+                var lst = new PagedListExtension<Job>();
+                if (request.PageInfo != null)
+                {
+                    lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
+                }
+                else
+                {
+                    var findJobData = await _repository.FindAsync(lastFilter);
+                    lst.Data = findJobData;
+                }
+
                 var data = _mapper.Map<List<JobDto>>(lst.Data);
 
                 //xử lý bổ sung thêm các dữ liệu trước khi return => không cần xử lý nếu là export 
-                if (data != null && data.Any() && request.PageInfo.PageIndex != -1)
+                if (data != null && data.Any() && request.PageInfo?.PageIndex != -1)
                 {
                     //Lấy danh sách complate cho các Job
                     var listComplain = new List<Complain>();
