@@ -6025,6 +6025,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     if (jobValue != null)
                     {
+                        //hotfix: loại bỏ duplicate
+                        var groupedDocTypeFieldId = jobValue.GroupBy(x => x.DocTypeFieldInstanceId);
+                        jobValue = groupedDocTypeFieldId.Select(g=>g.First()).ToList();
+
                         foreach (var item in jobValue)
                         {
                             var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
@@ -6047,9 +6051,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     if (jobOldValue != null)
                     {
+                        //hotfix: loại bỏ duplicate
+                        var groupedDocTypeFieldId = jobOldValue.GroupBy(x => x.DocTypeFieldInstanceId);
+                        jobOldValue = groupedDocTypeFieldId.Select(g => g.First()).ToList();
+
                         foreach (var item in jobOldValue)
                         {
-                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
