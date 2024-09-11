@@ -5994,7 +5994,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
                 if (job.DocTypeFieldInstanceId != null)
                 {
-                    var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
 
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
@@ -6027,7 +6027,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         foreach (var item in jobValue)
                         {
-                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
