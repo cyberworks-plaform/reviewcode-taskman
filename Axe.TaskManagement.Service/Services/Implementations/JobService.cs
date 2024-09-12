@@ -191,6 +191,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
 
         }
+
     }
 
     /// <summary>
@@ -3495,7 +3496,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
                 //refator: Nếu chỉ view thông tin job thì không cần paging -> 
-                 // -> do hàm paging phải count nên rất chậm
+                // -> do hàm paging phải count nên rất chậm
                 var lst = new PagedListExtension<Job>();
                 if (request.PageInfo != null)
                 {
@@ -4670,7 +4671,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, Guid workflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
@@ -4740,10 +4741,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     var turnInstanceId = Guid.NewGuid();
 
-                    var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode);
-                    // nếu có 2 bước cùng action code thì sẽ nhầm nếu job đang ở wfs bước sau nhưng phía trên lại lấy FirstOrDefault
-                    // => dẫn tới lọc job theo điều kiện wfs.InstanceId không thể lấy được job mặc dù có tồn tại job trong csdl
-
+                    var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode && c.InstanceId == workflowStepInstanceId);
+                    
                     if (wfsInfo != null)
                     {
                         int pageSize = wfsInfo.ConfigStepProperty.NumOfJobDistributed > 0 ? wfsInfo.ConfigStepProperty.NumOfJobDistributed : 10;
@@ -4752,11 +4751,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var sortDefinition = Builders<Job>.Sort.Ascending(nameof(Job.CreatedDate)).Ascending(nameof(Job.LastModificationDate));
 
                         var parallelJob = wfsInfo.ActionCode == actionCode
-                        && wfsInfo.ConfigStepProperty.IsShareJob
-                        && wfsInfo.InputTypeGroups != null
-                        && wfsInfo.InputTypeGroups.Any(x => x.InputType == inputType
-                        && x.DocTypeFields != null
-                        && x.DocTypeFields.Any(d => d.DocTypeFieldInstanceId == docTypeFieldInstanceId));
+                            && wfsInfo.ConfigStepProperty.IsShareJob
+                            && wfsInfo.InputTypeGroups != null
+                            && wfsInfo.InputTypeGroups.Any(x => x.InputType == inputType
+                            && x.DocTypeFields != null
+                            && x.DocTypeFields.Any(d => d.DocTypeFieldInstanceId == docTypeFieldInstanceId));
 
                         // Re calculate pagesize in case parallel job
                         var query = filter & filter4 & filterWfs;
@@ -6027,7 +6026,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         //hotfix: loại bỏ duplicate
                         var groupedDocTypeFieldId = jobValue.GroupBy(x => x.DocTypeFieldInstanceId);
-                        jobValue = groupedDocTypeFieldId.Select(g=>g.First()).ToList();
+                        jobValue = groupedDocTypeFieldId.Select(g => g.First()).ToList();
 
                         foreach (var item in jobValue)
                         {
