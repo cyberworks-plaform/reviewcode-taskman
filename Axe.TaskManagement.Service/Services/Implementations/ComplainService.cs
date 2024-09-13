@@ -18,6 +18,7 @@ using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Newtonsoft.Json;
 using Serilog;
@@ -701,5 +702,68 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         }
 
         #endregion
+        public async Task<GenericResponse<long>> DeleteByIdAsync(string id, string accessToken = null)
+        {
+            GenericResponse<long> response;
+            if (!ObjectId.TryParse(id, out ObjectId priorityFolderId))
+            {
+                response = GenericResponse<long>.ResultWithError((int)HttpStatusCode.BadRequest, "Mã không chính xác");
+                return response;
+            }
+            var result = await _repository.DeleteAsync(priorityFolderId);
+            if (result)
+            {
+                response = GenericResponse<long>.ResultWithData((int)HttpStatusCode.OK, "Xóa dữ liệu thành công");
+            }
+            else response = GenericResponse<long>.ResultWithError((int)HttpStatusCode.BadRequest, "Lỗi");
+            return response;
+        }
+        public async Task<GenericResponse<long>> DeleteByIdsAsync(string ids, string accessToken = null)
+        {
+            GenericResponse<long> response = null;
+            int success = 0,fail = 0;
+            if (!string.IsNullOrEmpty(ids))
+            {
+                var lstId = JsonConvert.DeserializeObject<List<string>>(ids);
+                foreach (var id in lstId)
+                {
+                    try
+                    {
+                        if (!ObjectId.TryParse(id, out ObjectId priorityFolderId))
+                        {
+                            response = GenericResponse<long>.ResultWithError((int)HttpStatusCode.BadRequest, "Mã không chính xác");
+                            return response;
+                        }
+                        var result = await _repository.DeleteAsync(priorityFolderId);
+                        if (result)
+                        {
+                            success++;
+                            response = GenericResponse<long>.ResultWithData((int)HttpStatusCode.OK, "Xóa dữ liệu thành công");
+                        }
+                        else fail++;
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error($"DeleteByIdsAsync Lỗi:{ex.Message} ObjectId:{id}");
+                        fail++;
+                        continue;
+                    }
+                }
+                if (success > 0 && fail > 0)
+                {
+                    response = GenericResponse<long>.ResultWithData((int)HttpStatusCode.OK, $"Xóa dữ liệu thành công:{success} lỗi :{fail}");
+                }
+                else if (success > 0 && fail == 0)
+                {
+                    response = GenericResponse<long>.ResultWithData((int)HttpStatusCode.OK, $"Xóa dữ liệu thành công:{success} bản ghi");
+                }
+                else if (success == 0 && fail > 0)
+                {
+                    response = GenericResponse<long>.ResultWithError((int)HttpStatusCode.BadRequest, $"Lỗi xóa dữ liệu không thành công {fail} bản ghi");
+                }
+                else response = GenericResponse<long>.ResultWithError((int)HttpStatusCode.BadRequest, "Lỗi xóa dữ liệu không thành công");
+            }
+            return response;
+        }
     }
 }

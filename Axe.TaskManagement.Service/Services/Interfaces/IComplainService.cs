@@ -17,5 +17,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<HistoryComplainDto>> GetPaging(PagingRequest request, string accessToken);
         Task<GenericResponse<ComplainDto>> GetByInstanceId(Guid instanceId);
         Task<GenericResponse<List<ComplainDto>>> GetByInstanceIds(List<Guid> instanceIds);
+        Task<GenericResponse<long>> DeleteByIdAsync(string id, string accessToken = null);
+        Task<GenericResponse<long>> DeleteByIdsAsync(string ids, string accessToken = null);
     }
 }

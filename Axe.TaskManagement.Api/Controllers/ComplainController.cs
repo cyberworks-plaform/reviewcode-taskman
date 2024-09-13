@@ -3,6 +3,7 @@ using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.MongoDbBase.Implementations;
+using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -82,6 +83,17 @@ namespace Axe.TaskManagement.Api.Controllers
             return ResponseResult(await _service.GetPaging(request, GetBearerToken()));
         }
 
-        
+        [HttpDelete]
+        [Route("delete-by-id/{id}")]
+        public async Task<IActionResult> DeleteByIdAsync(string id)
+        {
+            return ResponseResult(await _service.DeleteByIdAsync(id, GetBearerToken()));
+        }
+        [HttpPost]
+        [Route("delete-by-ids")]
+        public async Task<IActionResult> DeleteByIdsAsync([FromBody] IdsDto ids)
+        {
+            return ResponseResult(await _service.DeleteByIdsAsync(ids.Ids, GetBearerToken()));
+        }
     }
 }
