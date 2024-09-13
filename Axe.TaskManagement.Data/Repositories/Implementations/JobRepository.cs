@@ -1118,7 +1118,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return response;
         }
 
-        public async Task<List<TotalDocPathJob>> GetSummaryDoc(FilterDefinition<Job> filter)
+        public async Task<List<TotalDocPathJob>> GetSummaryDoc (FilterDefinition<Job> filter)
         {
             var serializerRegistry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
             var documentSerializer = serializerRegistry.GetSerializer<Job>();
@@ -1147,7 +1147,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "doc_type_field_sort_order",
                             1
-                        }, {
+                        },
+                        { "batch_name", 1 },
+                        { "num_of_round", 1 },
+                        {
                             "isNL",
                             new BsonDocument("$cond",
                                 new BsonArray {
@@ -1223,7 +1226,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                                     }, {
                                         "work_flow_step_instance_id",
                                         "$work_flow_step_instance_id"
-                                    }
+                                    },
+                                    { "batch_name", "$batch_name" },
+                                    { "num_of_round", "$num_of_round" }
                                 })
                         }
                     }),
@@ -1284,7 +1289,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "status",
                             "$z.status"
-                        }
+                        },
+                        { "batch_name", "$z.batch_name" },
+                        { "num_of_round", "$z.num_of_round" }
                     }),
                 new BsonDocument("$group",
                     new BsonDocument {
@@ -1332,7 +1339,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "total",
                             new BsonDocument("$sum", 1)
-                        }
+                        },
+                        { "batch_name", new BsonDocument("$first", "$batch_name") },
+                        { "num_of_round", new BsonDocument("$first", "$num_of_round") }
                     }),
                 new BsonDocument("$group",
                     new BsonDocument {
@@ -1380,7 +1389,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "totalSum",
                             new BsonDocument("$sum", 1)
-                        }
+                        },
+                        { "batch_name", new BsonDocument("$first", "$batch_name") },
+                        { "num_of_round", new BsonDocument("$first", "$num_of_round") }
                     }),
                 new BsonDocument("$project",
                     new BsonDocument {
@@ -1402,7 +1413,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "totalOCR",
                             1
-                        }, {
+                        },
+                        { "batch_name", 1 },
+                        { "num_of_round", 1 },
+                        {
                             "status",
                             new BsonDocument("$cond",
                                 new BsonArray {
@@ -1480,7 +1494,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 WorkflowStepInstanceId = x["work_flow_step_instance_id"].AsGuid,
                 Path = x["doc_path"].ToString(),
                 Status = !string.IsNullOrEmpty(x["status"].ToString()) ? short.Parse(x["status"].ToString()) : (short)0,
-                DocInstanceId = x["doc_instance_id"].AsGuid
+                DocInstanceId = x["doc_instance_id"].AsGuid,
+                BatchName = x.GetValue("batch_name", "").ToString(), // Lấy batch_name
+                NumOfRound = !string.IsNullOrEmpty(x["num_of_round"].ToString()) ? int.Parse(x["num_of_round"].ToString()) : 0, // Lấy num_of_round
             }).ToList();
 
             return response;

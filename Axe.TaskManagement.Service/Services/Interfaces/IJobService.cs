@@ -121,7 +121,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         //Task<GenericResponse<bool>> RetryErrorJobByStep(Guid workflowStepInstanceId, long pathId, string accessToken);
 
         Task<GenericResponse<SelectItemChartDto>> GetTimeNumberJobChart(string startDateStr, string endDateStr);
-        Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstPathId, string accessToken = null);
+        Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string pathIds, string syncMetaPaths, string accessToken = null);
         //Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstPathId);
         Task<GenericResponse<List<TotalDocPathJob>>> GetSummaryDoc(Guid projectInstanceId, string path, string docInstanceIds);
         Task<GenericResponse<List<TotalJobProcessingStatistics>>> GetTotalJobProcessingStatistics(Guid projectInstanceId, string startDate = null, string endDate = null);
