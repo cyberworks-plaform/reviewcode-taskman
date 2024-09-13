@@ -191,6 +191,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
 
         }
+
     }
 
     /// <summary>
@@ -1387,7 +1388,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
                 var now = DateTime.UtcNow;
-                
+
                 Job resultUpdateJob = null;
 
                 if (result.IsIgnore == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
@@ -1424,7 +1425,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
                         if (nextWfsInfoes != null && nextWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.QACheckFinal))
                         {
-                            job.RightStatus = (short) EnumJob.RightStatus.Confirmed;
+                            job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                         }
                     }
 
@@ -1437,9 +1438,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.Status = (short)EnumJob.Status.Ignore;
                     job.IsIgnore = true;
                     job.ReasonIgnore = result.Comment;
-                    
+
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
-                    
+
                     //
                     if (resultUpdateJob != null)
                     {
@@ -1510,7 +1511,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (resultUpdateJob.IsIgnore)
                     {
                         responseCode = 2; //Bỏ qua thành công
-                    }    
+                    }
                     response = GenericResponse<int>.ResultWithData(responseCode);
                 }
                 else
@@ -3258,10 +3259,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             GenericResponse<HistoryJobDto> response;
             try
             {
-                //BaseFilter 
-                //var baseFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault())
-                //    & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode)
-                //    & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
                 string statusFilterValue = "";
                 string codeFilterValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
@@ -3293,24 +3290,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var baseOrder = Builders<Job>.Sort.Descending(nameof(Job.LastModificationDate));
 
-                //if (request.PageInfo == null)
-                //{
-                //    request.PageInfo = new PageInfo
-                //    {
-                //        PageIndex = 1,
-                //        PageSize = 10
-                //    };
-                //}
-
-                //if (request.PageInfo.PageIndex <= 0)
-                //{
-                //    return GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Page index must be greater or than 1");
-                //}
-                //if (request.PageInfo.PageSize < 0)
-                //{
-                //    return GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Page size must be greater or than 0");
-                //}
-
                 if (_userPrincipalService == null)
                 {
                     return GenericResponse<HistoryJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Not Authorize");
@@ -3336,6 +3315,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var canParse = DateTime.TryParse(endDateFilter.Value, CultureInfo.CreateSpecificCulture("vi-vn"), DateTimeStyles.AssumeLocal, out DateTime endDate);
                         if (canParse) lastFilter = lastFilter & Builders<Job>.Filter.Lt(x => x.LastModificationDate, endDate.ToUniversalTime());
                     }
+
+                    //DocInstanceId
+                    var docInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (docInstanceIdFilter != null)
+                    {
+                        lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, Guid.Parse(docInstanceIdFilter.Value));
+                    }
+
 
                     //DocName
                     var docNameFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocName)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
@@ -3508,29 +3495,76 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (isValidSort) baseOrder = newSort;
                 }
 
-                var lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
-                var data = _mapper.Map<List<JobDto>>(lst.Data);
-                if (data != null && data.Any())
+                //refator: Nếu chỉ view thông tin job thì không cần paging -> 
+                // -> do hàm paging phải count nên rất chậm
+                var lst = new PagedListExtension<Job>();
+                if (request.PageInfo != null)
                 {
+                    lst = await _repository.GetPagingExtensionAsync(lastFilter, baseOrder, request.PageInfo.PageIndex, request.PageInfo.PageSize);
+                }
+                else
+                {
+                    var findJobData = await _repository.FindAsync(lastFilter);
+                    lst.Data = findJobData;
+                }
+
+                var data = _mapper.Map<List<JobDto>>(lst.Data);
+
+                //xử lý bổ sung thêm các dữ liệu trước khi return => không cần xử lý nếu là export 
+                if (data != null && data.Any() && request.PageInfo?.PageIndex != -1)
+                {
+                    //Lấy danh sách complate cho các Job
+                    var listComplain = new List<Complain>();
+                    var batchSize = 1000;
+                    var totalBatchPage = (int)Math.Ceiling(data.Count() / (double)batchSize);
+
+                    for (var batchPage = 0; batchPage < totalBatchPage; batchPage++)
+                    {
+                        var batchItem = data.Skip(batchPage * batchSize).Take(batchSize);
+                        if (batchItem.Any())
+                        {
+                            var listJobCode = batchItem.Select(x => x.Code).ToList();
+                            var batchListComplain = await _complainRepository.GetByMultipleJobCode(listJobCode);
+                            listComplain.AddRange(batchListComplain);
+                        }
+                    }
+
+                    //Lấy thông tin ngày hoàn thành Job
+                    var syntheticDataJobs = new List<Job>();
                     var docInstanceIds = data.Where(x => x.DocInstanceId != null && x.DocInstanceId != Guid.Empty)
                         .Select(x => x.DocInstanceId).Distinct();
-                    var syntheticDataJobs = await _repository.GetJobByDocs(docInstanceIds,
-                        ActionCodeConstants.SyntheticData, (short) EnumJob.Status.Complete);
-                    foreach (var item in data)
+
+                    totalBatchPage = (int)Math.Ceiling(docInstanceIds.Count() / (double)batchSize);
+
+                    for (var batchPage = 0; batchPage < totalBatchPage; batchPage++)
+                    {
+                        var batchDocInstanceId = docInstanceIds.Skip(batchPage * batchSize).Take(batchSize);
+                        if (batchDocInstanceId.Any())
+                        {
+                            var batchSyntheticJob = await _repository.GetJobByDocs(batchDocInstanceId,
+                                                            ActionCodeConstants.SyntheticData, (short)EnumJob.Status.Complete);
+
+                            syntheticDataJobs.AddRange(batchSyntheticJob);
+                        }
+                    }
+
+
+                    Parallel.ForEach(data, item =>
                     {
                         var syntheticDataJob = syntheticDataJobs?.FirstOrDefault(x => x.DocInstanceId == item.DocInstanceId);
                         if (syntheticDataJob != null)
                         {
                             item.DocCompleteDate = syntheticDataJob.LastModificationDate;
                         }
-                        
-                        var complain = await _complainRepository.GetByJobCode(item.Code);
+
+                        var complain = listComplain.FirstOrDefault(x => x.JobCode.Equals(item.Code));
                         if (complain != null)
                         {
                             item.LastComplain = _mapper.Map<ComplainDto>(complain);
                         }
-                    }
+                    });
                 }
+
                 var pagedList = new PagedListExtension<JobDto>
                 {
                     PageIndex = lst.PageIndex,
@@ -4471,17 +4505,26 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
         #endregion
-
-        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstSyncMetaRelationPath, string accessToken = null)
+        
+        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string pathIds, string syncMetaPaths, string accessToken = null)
         {
             GenericResponse<List<SummaryTotalDocPathJob>> response;
             var result = new List<SummaryTotalDocPathJob>();
             try
             {
-                var lstSyncMetaRelation = await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
-                var syncMetaRelations = lstSyncMetaRelation.Data;
-                var lstSyncMetaRelationIdArr = !string.IsNullOrEmpty(lstSyncMetaRelationPath) ? JsonConvert.DeserializeObject<List<string>>(lstSyncMetaRelationPath) : new List<string>();
+                var lstSyncMetaRelationAll = await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
+                var syncMetaRelations = lstSyncMetaRelationAll.Data;
+                var syncMetaIds = !string.IsNullOrEmpty(pathIds) ? JsonConvert.DeserializeObject<List<string>>(pathIds) : new List<string>();
+                var syncMetaPathsDeserilize = !string.IsNullOrEmpty(syncMetaPaths) ? JsonConvert.DeserializeObject<List<string>>(syncMetaPaths) : new List<string>();
                 var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                if (syncMetaPathsDeserilize.Count() > 0)
+                {
+                    var regexFilters = syncMetaPathsDeserilize.Select(path => Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"))).ToList();
+
+                    var combinedFilter = Builders<Job>.Filter.And(filter, Builders<Job>.Filter.Or(regexFilters));
+
+                    filter = combinedFilter;
+                }
                 var lstData = await _repository.GetSummaryFolder(filter);
                 var lstDocInstanceId = lstData.Select(x => x.DocInstanceId).ToList();
                 var lstDocDataResponse = await _docClientService.GetListDocByDocInstanceIds(lstDocInstanceId, accessToken);
@@ -4494,7 +4537,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         data.RelationPath = docData.SyncMetaRelationPath;
                     }
                 }
-                foreach (var item in lstSyncMetaRelationIdArr)
+                foreach (var item in syncMetaIds)
                 {
                     var id = item.Replace("/", "").Trim();
                     var syncMetaRelation = syncMetaRelations.FirstOrDefault(x => x.Id == long.Parse(id));
@@ -4637,7 +4680,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <param name="docPath">Ưu tiên lấy theo docPath nào</param>
         /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null)
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, Guid workflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null)
         {
             var projectInstanceId = project.InstanceId;
             var projectTypeInstanceId = project.ProjectTypeInstanceId;
@@ -4690,12 +4733,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //cần ưu tiên lấy các job CheckFinal bị trả về (numOfRound > 0) => cho phép lấy tất cả các phiếu có round >= numOfRound
-                    if(actionCode== nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
+                    if (actionCode == nameof(ActionCodeConstants.CheckFinal) && numOfRound > 0)
                     {
                         filter &= Builders<Job>.Filter.Eq(x => x.LastModifiedBy, _userPrincipalService.UserInstanceId);
                         filter &= Builders<Job>.Filter.Gte(x => x.NumOfRound, numOfRound);
                     }
-                    
+
                     var jobDtos = new List<JobDto>();
 
                     var workflowInstanceId = project.WorkflowInstanceId;
@@ -4707,10 +4750,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     var turnInstanceId = Guid.NewGuid();
 
-                    var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode);
-                    // nếu có 2 bước cùng action code thì sẽ nhầm nếu job đang ở wfs bước sau nhưng phía trên lại lấy FirstOrDefault
-                    // => dẫn tới lọc job theo điều kiện wfs.InstanceId không thể lấy được job mặc dù có tồn tại job trong csdl
-
+                    var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode && c.InstanceId == workflowStepInstanceId);
+                    
                     if (wfsInfo != null)
                     {
                         int pageSize = wfsInfo.ConfigStepProperty.NumOfJobDistributed > 0 ? wfsInfo.ConfigStepProperty.NumOfJobDistributed : 10;
@@ -4719,11 +4760,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var sortDefinition = Builders<Job>.Sort.Ascending(nameof(Job.CreatedDate)).Ascending(nameof(Job.LastModificationDate));
 
                         var parallelJob = wfsInfo.ActionCode == actionCode
-                        && wfsInfo.ConfigStepProperty.IsShareJob
-                        && wfsInfo.InputTypeGroups != null
-                        && wfsInfo.InputTypeGroups.Any(x => x.InputType == inputType
-                        && x.DocTypeFields != null
-                        && x.DocTypeFields.Any(d => d.DocTypeFieldInstanceId == docTypeFieldInstanceId));
+                            && wfsInfo.ConfigStepProperty.IsShareJob
+                            && wfsInfo.InputTypeGroups != null
+                            && wfsInfo.InputTypeGroups.Any(x => x.InputType == inputType
+                            && x.DocTypeFields != null
+                            && x.DocTypeFields.Any(d => d.DocTypeFieldInstanceId == docTypeFieldInstanceId));
 
                         // Re calculate pagesize in case parallel job
                         var query = filter & filter4 & filterWfs;
@@ -5961,7 +6002,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
                 if (job.DocTypeFieldInstanceId != null)
                 {
-                    var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
 
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
@@ -5992,9 +6033,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     if (jobValue != null)
                     {
+                        //hotfix: loại bỏ duplicate
+                        var groupedDocTypeFieldId = jobValue.GroupBy(x => x.DocTypeFieldInstanceId);
+                        jobValue = groupedDocTypeFieldId.Select(g => g.First()).ToList();
+
                         foreach (var item in jobValue)
                         {
-                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
@@ -6014,9 +6059,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     if (jobOldValue != null)
                     {
+                        //hotfix: loại bỏ duplicate
+                        var groupedDocTypeFieldId = jobOldValue.GroupBy(x => x.DocTypeFieldInstanceId);
+                        jobOldValue = groupedDocTypeFieldId.Select(g => g.First()).ToList();
+
                         foreach (var item in jobOldValue)
                         {
-                            var docItem = listDocItem.SingleOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;

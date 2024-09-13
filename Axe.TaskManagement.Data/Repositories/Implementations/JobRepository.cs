@@ -10,8 +10,10 @@ using Ce.Common.Lib.MongoDbBase.Interfaces;
 using Ce.Constant.Lib.Dtos;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -1134,7 +1136,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return response;
         }
 
-        public async Task<List<TotalDocPathJob>> GetSummaryDoc(FilterDefinition<Job> filter)
+        public async Task<List<TotalDocPathJob>> GetSummaryDoc (FilterDefinition<Job> filter)
         {
             var serializerRegistry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
             var documentSerializer = serializerRegistry.GetSerializer<Job>();
@@ -1163,7 +1165,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "doc_type_field_sort_order",
                             1
-                        }, {
+                        },
+                        { "batch_name", 1 },
+                        { "num_of_round", 1 },
+                        {
                             "isNL",
                             new BsonDocument("$cond",
                                 new BsonArray {
@@ -1239,7 +1244,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                                     }, {
                                         "work_flow_step_instance_id",
                                         "$work_flow_step_instance_id"
-                                    }
+                                    },
+                                    { "batch_name", "$batch_name" },
+                                    { "num_of_round", "$num_of_round" }
                                 })
                         }
                     }),
@@ -1300,7 +1307,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "status",
                             "$z.status"
-                        }
+                        },
+                        { "batch_name", "$z.batch_name" },
+                        { "num_of_round", "$z.num_of_round" }
                     }),
                 new BsonDocument("$group",
                     new BsonDocument {
@@ -1348,7 +1357,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "total",
                             new BsonDocument("$sum", 1)
-                        }
+                        },
+                        { "batch_name", new BsonDocument("$first", "$batch_name") },
+                        { "num_of_round", new BsonDocument("$first", "$num_of_round") }
                     }),
                 new BsonDocument("$group",
                     new BsonDocument {
@@ -1396,7 +1407,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "totalSum",
                             new BsonDocument("$sum", 1)
-                        }
+                        },
+                        { "batch_name", new BsonDocument("$first", "$batch_name") },
+                        { "num_of_round", new BsonDocument("$first", "$num_of_round") }
                     }),
                 new BsonDocument("$project",
                     new BsonDocument {
@@ -1418,7 +1431,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                         }, {
                             "totalOCR",
                             1
-                        }, {
+                        },
+                        { "batch_name", 1 },
+                        { "num_of_round", 1 },
+                        {
                             "status",
                             new BsonDocument("$cond",
                                 new BsonArray {
@@ -1496,7 +1512,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 WorkflowStepInstanceId = x["work_flow_step_instance_id"].AsGuid,
                 Path = x["doc_path"].ToString(),
                 Status = !string.IsNullOrEmpty(x["status"].ToString()) ? short.Parse(x["status"].ToString()) : (short)0,
-                DocInstanceId = x["doc_instance_id"].AsGuid
+                DocInstanceId = x["doc_instance_id"].AsGuid,
+                BatchName = x.GetValue("batch_name", "").ToString(), // Lấy batch_name
+                NumOfRound = !string.IsNullOrEmpty(x["num_of_round"].ToString()) ? int.Parse(x["num_of_round"].ToString()) : 0, // Lấy num_of_round
             }).ToList();
 
             return response;
@@ -1512,6 +1530,17 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 isNullFilter = true;
             }
 
+            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
+            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
+            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
+            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
+
+            var total = isNullFilter ?
+                totalfilter
+                : await DbSet.EstimatedDocumentCountAsync();
+
             if (index == -1)
             {
                 data = DbSet.Find(filter);
@@ -1523,20 +1552,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 : DbSet.Find(filter).Sort(sort).Skip((index - 1) * size).Limit(size);
             }
 
-            var totalfilter = await DbSet.CountDocumentsAsync(filter);
-            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
-            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
-            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
-            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
-
-            var total = isNullFilter ?
-                totalfilter
-                : await DbSet.CountDocumentsAsync(Builders<Job>.Filter.Empty);
-
             return new PagedListExtension<Job>
             {
-                Data = data.ToList(),
+                Data = await data.ToListAsync(),
                 PageIndex = index,
                 PageSize = size,
                 TotalCount = total,
@@ -1916,9 +1934,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<List<CountJobEntity>> GetCountAllJobByStatus()
         {
-
+            var sw = new Stopwatch();
+            sw.Start();
             var aggregate = DbSet.Aggregate();
             var result = await aggregate
+                .SortBy(x=>x.Status) // and need to create index by status for best performance
                 .Group(x => x.Status,
                 l => new CountJobEntity
                 {
@@ -1926,7 +1946,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                     Total = l.Count()
                 })
                 .ToListAsync();
-
+            sw.Stop();
+            Log.Debug($"Done GetCountAllJobByStatus in {sw.ElapsedMilliseconds} ms");
             return result;
         }
 

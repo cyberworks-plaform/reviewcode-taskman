@@ -8,6 +8,7 @@ using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.MongoDbBase.Interfaces;
 using MongoDB.Driver;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -23,6 +24,13 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         {
             return await DbSet.Find(Builders<Complain>.Filter.Eq(x => x.JobCode, code))
                 .Sort(Builders<Complain>.Sort.Descending(nameof(Complain.CreatedDate))).SingleOrDefaultAsync();
+        }
+
+        public Task<List<Complain>> GetByMultipleJobCode(List<string> listJobCode)
+        {
+            var filter = Builders<Complain>.Filter.In(x => x.JobCode, listJobCode);
+            var listComplain = DbSet.Find(filter);
+            return listComplain.ToListAsync();
         }
 
         public async Task<bool> CheckComplainProcessing(Guid docInstanceId)
@@ -57,10 +65,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var totalfilter = await DbSet.CountDocumentsAsync(filter);
             long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Complain>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Complain>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
             var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Complain>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            
+
             var total = isNullFilter ?
                 totalfilter
-                : await DbSet.CountDocumentsAsync(Builders<Complain>.Filter.Empty);
+                : await DbSet.EstimatedDocumentCountAsync();
 
             return new PagedListExtension<Complain>
             {
@@ -74,5 +82,6 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 TotalPages = (int)Math.Ceiling((decimal)totalfilter / size)
             };
         }
+
     }
 }

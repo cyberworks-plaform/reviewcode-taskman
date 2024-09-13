@@ -476,9 +476,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("get-summary-folder")]
-        public async Task<IActionResult> GetSummaryFolder(Guid projectInstanceId, [FromBody]IdsDto lstPathId)
+        public async Task<IActionResult> GetSummaryFolder(Guid projectInstanceId, [FromBody] SummaryRequestDto data)
         {
-            return ResponseResult(await _service.GetSummaryFolder(projectInstanceId, lstPathId.Ids, GetBearerToken()));
+            return ResponseResult(await _service.GetSummaryFolder(projectInstanceId, data.PathIds, data.SyncMetaPaths, GetBearerToken()));
         }
 
         [HttpPost]
@@ -520,9 +520,9 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-jobs-by-user")]
         [HttpPost]
 
-        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
+        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
         {
-            return ResponseResult(await _service.GetListJobForUser(project, actionCode, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
+            return ResponseResult(await _service.GetListJobForUser(project, actionCode, WorkflowStepInstanceId, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
         }
         #endregion
 
