@@ -110,194 +110,231 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 else
                 {
-                    var complain = _mapper.Map<ComplainDto, Complain>(model);
-                    complain = await _repository.UpdateAsync(complain);
-
-                    if (complain.Status == (short)EnumComplain.Status.Complete)
+                    // Check has complain Processing
+                    var hasComplainProcessing = await _repository.CheckComplainProcessing(model.DocInstanceId.GetValueOrDefault());
+                    if (hasComplainProcessing)
                     {
-                        var job = await _jobRepository.GetJobByInstanceId(complain.JobInstanceId.GetValueOrDefault());
-                        if (job != null)
+                        response = GenericResponse<ComplainDto>.ResultWithData(model, "Phiếu có Khiếu nại đang được xử lý");
+                    }
+                    else
+                    {
+                        var complain = _mapper.Map<ComplainDto, Complain>(model);
+                        complain = await _repository.UpdateAsync(complain);
+
+                        if (complain.Status == (short)EnumComplain.Status.Processing)
                         {
-                            var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                            var wfsInfoes = wfInfoes.Item1;
-                            var wfSchemaInfoes = wfInfoes.Item2;
-                            if (wfsInfoes != null && wfsInfoes.Any())
+                            var job = await _jobRepository.GetJobByInstanceId(complain.JobInstanceId.GetValueOrDefault());
+                            if (job != null)
                             {
-                                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
-                                var docInstanceId = complain.DocInstanceId.GetValueOrDefault();
-
-                                var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                                var docItems = new List<DocItem>();
-                                var docItemComplains = new List<DocItemComplain>();
-
-                                var isUpdateValue = false;
-
-                                if (crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File)
+                                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                                List<WorkflowStepInfo> wfsInfoes = wfInfoes?.Item1;
+                                List<WorkflowSchemaConditionInfo> wfSchemaInfoes = wfInfoes?.Item2;
+                                if (wfsInfoes != null && wfsInfoes.Any())
                                 {
-                                    docItemComplains = JsonConvert.DeserializeObject<List<DocItemComplain>>(complain.Value);
+                                    var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
+                                    var docInstanceId = complain.DocInstanceId.GetValueOrDefault();
 
-                                    if (docItemComplains != null && docItemComplains.Any())
+                                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
+                                    var docItems = new List<DocItem>();
+                                    var docItemComplains = new List<DocItemComplain>();
+
+                                    var isUpdateValue = false;
+
+                                    if (crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File)
                                     {
-                                        var docTypeFieldInstanceIds = docItemComplains.Select(x => x.DocTypeFieldInstanceId.GetValueOrDefault()).Distinct().ToList();
-                                        var docFieldValuesRs =
-                                            await _docFieldValueClientService.GetByDocTypeFieldInstanceIds(
-                                                docInstanceId,
-                                                JsonConvert.SerializeObject(docTypeFieldInstanceIds), accessToken);
-                                        if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null)
-                                        {
-                                            var docFieldValues = docFieldValuesRs.Data;
-                                            isUpdateValue = docItemComplains.Any(x => docFieldValues.Any(y => y.InstanceId == x.DocFieldValueInstanceId && y.Value != x.Value));
+                                        docItemComplains = JsonConvert.DeserializeObject<List<DocItemComplain>>(complain.Value);
 
-                                            if (isUpdateValue)
+                                        if (docItemComplains != null && docItemComplains.Any())
+                                        {
+                                            var docTypeFieldInstanceIds = docItemComplains.Select(x => x.DocTypeFieldInstanceId.GetValueOrDefault()).Distinct().ToList();
+                                            var docFieldValuesRs =
+                                                await _docFieldValueClientService.GetByDocTypeFieldInstanceIds(
+                                                    docInstanceId,
+                                                    JsonConvert.SerializeObject(docTypeFieldInstanceIds), accessToken);
+                                            if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null)
                                             {
-                                                // 1.Cập nhật giá trị DocFieldValue: Chuẩn bị dữ liệu
-                                                foreach (var docItemComplain in docItemComplains)
+                                                var docFieldValues = docFieldValuesRs.Data;
+                                                isUpdateValue = docItemComplains.Any(x => docFieldValues.Any(y => y.InstanceId == x.DocFieldValueInstanceId && y.Value != x.Value));
+
+                                                if (isUpdateValue)
                                                 {
-                                                    var crrDocFieldValue = docFieldValues.FirstOrDefault(x =>
-                                                        x.InstanceId == docItemComplain.DocFieldValueInstanceId);
-                                                    if (crrDocFieldValue != null)
+                                                    // 1.Cập nhật giá trị DocFieldValue: Chuẩn bị dữ liệu
+                                                    foreach (var docItemComplain in docItemComplains)
                                                     {
-                                                        itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                                        var crrDocFieldValue = docFieldValues.FirstOrDefault(x =>
+                                                            x.InstanceId == docItemComplain.DocFieldValueInstanceId);
+                                                        if (crrDocFieldValue != null)
                                                         {
-                                                            InstanceId = docItemComplain.DocFieldValueInstanceId.GetValueOrDefault(),
-                                                            Value = docItemComplain.Value,
-                                                            CoordinateArea = crrDocFieldValue.CoordinateArea,
-                                                            ActionCode = crrDocFieldValue.ActionCode
-                                                        });
+                                                            itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                                            {
+                                                                InstanceId = docItemComplain.DocFieldValueInstanceId.GetValueOrDefault(),
+                                                                Value = docItemComplain.Value,
+                                                                CoordinateArea = crrDocFieldValue.CoordinateArea,
+                                                                ActionCode = crrDocFieldValue.ActionCode
+                                                            });
+                                                        }
+
                                                     }
 
-                                                }
-
-                                                // 2. Update FinalValue in Doc: Chuẩn bị dữ liệu
-                                                var docItemsRs = await _docClientService.GetDocItemByDocInstanceId(docInstanceId, accessToken);
-                                                if (docItemsRs.Success)
-                                                {
-                                                    docItems = docItemsRs.Data;
-                                                    foreach (var docItem in docItems)
+                                                    // 2. Update FinalValue in Doc: Chuẩn bị dữ liệu
+                                                    var docItemsRs = await _docClientService.GetDocItemByDocInstanceId(docInstanceId, accessToken);
+                                                    if (docItemsRs.Success)
                                                     {
-                                                        var crrDocItemComplain = docItemComplains.FirstOrDefault(x => x.DocFieldValueInstanceId == docItem.DocFieldValueInstanceId);
-                                                        if (crrDocItemComplain != null)
+                                                        docItems = docItemsRs.Data;
+                                                        foreach (var docItem in docItems)
                                                         {
-                                                            docItem.Value = crrDocItemComplain.Value;
+                                                            var crrDocItemComplain = docItemComplains.FirstOrDefault(x => x.DocFieldValueInstanceId == docItem.DocFieldValueInstanceId);
+                                                            if (crrDocItemComplain != null)
+                                                            {
+                                                                docItem.Value = crrDocItemComplain.Value;
+                                                            }
                                                         }
                                                     }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                                else
-                                {
-                                    // Khiếu nại Đúng hoặc (khiếu nại Sai + chọn giá trị Khác) => Cập nhật giá trị & Giá tiền
-                                    if (complain.RightStatus == (short)EnumComplain.RightStatus.Correct ||
-                                        (complain.RightStatus == (short)EnumComplain.RightStatus.Wrong &&
-                                         complain.ChooseValue == (short)EnumComplain.ChooseValue.Other &&
-                                         complain.Value != complain.CompareValue))
+                                    else
                                     {
-                                        isUpdateValue = true;
-                                    }
-
-                                    if (isUpdateValue)
-                                    {
-                                        // 1.Cập nhật giá trị DocFieldValue: Chuẩn bị dữ liệu
-                                        var docFieldValueRs = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
-                                        if (docFieldValueRs != null && docFieldValueRs.Success && docFieldValueRs.Data != null)
+                                        // Khiếu nại Đúng hoặc (khiếu nại Sai + chọn giá trị Khác) => Cập nhật giá trị & Giá tiền
+                                        if (complain.RightStatus == (short)EnumComplain.RightStatus.Correct ||
+                                            (complain.RightStatus == (short)EnumComplain.RightStatus.Wrong &&
+                                             complain.ChooseValue == (short)EnumComplain.ChooseValue.Other &&
+                                             complain.Value != complain.CompareValue))
                                         {
-                                            itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                                            {
-                                                InstanceId = complain.DocFieldValueInstanceId.GetValueOrDefault(),
-                                                Value = complain.Value,
-                                                CoordinateArea = job.CoordinateArea,
-                                                ActionCode = docFieldValueRs.Data.ActionCode
-                                            });
+                                            isUpdateValue = true;
                                         }
 
-                                        // 2. Update FinalValue in Doc: Chuẩn bị dữ liệu
-                                        var docItemsRs = await _docClientService.GetDocItemByDocInstanceId(docInstanceId, accessToken);
-                                        if (docItemsRs.Success)
+                                        if (isUpdateValue)
                                         {
-                                            docItems = docItemsRs.Data;
-                                            foreach (var docItem in docItems)
+                                            // 1.Cập nhật giá trị DocFieldValue: Chuẩn bị dữ liệu
+                                            var docFieldValueRs = await _docFieldValueClientService.GetByInstanceId(complain.DocFieldValueInstanceId.GetValueOrDefault(), accessToken);
+                                            if (docFieldValueRs != null && docFieldValueRs.Success && docFieldValueRs.Data != null)
                                             {
-                                                if (docItem.DocTypeFieldInstanceId == complain.DocTypeFieldInstanceId)
+                                                var docFieldValue = docFieldValueRs.Data;
+                                                docItemComplains.Add(new DocItemComplain
                                                 {
-                                                    docItem.Value = complain.Value;
+                                                    FilePartInstanceId = job.FilePartInstanceId,
+                                                    DocTypeFieldId = docFieldValue.DocTypeFieldId,
+                                                    DocTypeFieldInstanceId = job.DocTypeFieldInstanceId,
+                                                    DocTypeFieldCode = job.DocTypeFieldCode,
+                                                    DocTypeFieldName = job.DocTypeFieldName,
+                                                    DocTypeFieldSortOrder = job.DocTypeFieldSortOrder,
+                                                    PrivateCategoryInstanceId = job.PrivateCategoryInstanceId,
+                                                    InputType = job.InputType,
+                                                    MinLength = job.MinLength,
+                                                    MaxLength = job.MaxLength,
+                                                    MaxValue = job.MaxValue,
+                                                    MinValue = job.MinValue,
+                                                    IsMultipleSelection = job.IsMultipleSelection,
+                                                    CoordinateArea = job.CoordinateArea,
+                                                    IsCombineCoordinateArea = false,
+                                                    CoordinateAreas = null,
+                                                    DocFieldValueId = docFieldValue.Id,
+                                                    DocFieldValueInstanceId = job.DocFieldValueInstanceId,
+                                                    Value = complain.Value,
+                                                    ShowForInput = false
+                                                });
+
+                                                itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
+                                                {
+                                                    InstanceId = complain.DocFieldValueInstanceId.GetValueOrDefault(),
+                                                    Value = complain.Value,
+                                                    CoordinateArea = job.CoordinateArea,
+                                                    ActionCode = docFieldValue.ActionCode
+                                                });
+                                            }
+
+                                            // 2. Update FinalValue in Doc: Chuẩn bị dữ liệu
+                                            var docItemsRs = await _docClientService.GetDocItemByDocInstanceId(docInstanceId, accessToken);
+                                            if (docItemsRs.Success)
+                                            {
+                                                docItems = docItemsRs.Data;
+                                                foreach (var docItem in docItems)
+                                                {
+                                                    if (docItem.DocTypeFieldInstanceId == complain.DocTypeFieldInstanceId)
+                                                    {
+                                                        docItem.Value = complain.Value;
+                                                    }
                                                 }
                                             }
                                         }
                                     }
-                                }
-                                
-                                // 1.Cập nhật giá trị DocFieldValue: Publish event
-                                if (itemDocFieldValueUpdateValues.Any())
-                                {
-                                    var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
+
+                                    // 1.Cập nhật giá trị DocFieldValue: Publish event
+                                    if (itemDocFieldValueUpdateValues.Any())
                                     {
-                                        ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                                    };
-                                    //// Outbox
-                                    //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                    //{
-                                    //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                    //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                                    //});
-                                    //var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                    //if (isAck)
-                                    //{
-                                    //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                                    //}
-                                    //else
-                                    //{
-                                    //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                    //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                                    //}
+                                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
+                                        {
+                                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
+                                        };
+                                        //// Outbox
+                                        //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                        //{
+                                        //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                                        //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                        //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                                        //});
+                                        //var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                                        //if (isAck)
+                                        //{
+                                        //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                        //}
+                                        //else
+                                        //{
+                                        //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                        //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                        //}
 
-                                    // Call Api
-                                    var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
-                                }
-                                
-                                // 2. Update FinalValue in Doc: Publish event
-                                if (isUpdateValue && docItems.Any())
-                                {
-                                    var finalValue = JsonConvert.SerializeObject(docItems);
-                                    var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
+                                        // Call Api
+                                        var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
+                                    }
+
+                                    // 2. Update FinalValue in Doc: Publish event
+                                    if (isUpdateValue && docItems.Any())
                                     {
-                                        DocInstanceId = docInstanceId,
-                                        FinalValue = finalValue
-                                    };
-                                    //// Outbox
-                                    //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                    //{
-                                    //    ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
-                                    //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    //    Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
-                                    //});
-                                    //var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
-                                    //if (isAck)
-                                    //{
-                                    //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                                    //}
-                                    //else
-                                    //{
-                                    //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                    //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                                    //}
+                                        var finalValue = JsonConvert.SerializeObject(docItems);
+                                        var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
+                                        {
+                                            DocInstanceId = docInstanceId,
+                                            FinalValue = finalValue
+                                        };
+                                        //// Outbox
+                                        //var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                        //{
+                                        //    ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
+                                        //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                        //    Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
+                                        //});
+                                        //var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
+                                        //if (isAck)
+                                        //{
+                                        //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                        //}
+                                        //else
+                                        //{
+                                        //    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                        //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                        //}
 
-                                    // Call Api
-                                    var _ = await _docClientService.UpdateFinalValue(docUpdateFinalValueEvt, accessToken);
-                                }
+                                        // Call Api
+                                        var _ = await _docClientService.UpdateFinalValue(docUpdateFinalValueEvt, accessToken);
+                                    }
 
-                                // 3. Cập nhật Giá tiền
-                                if (isUpdateValue)
-                                {
-                                    await _moneyService.ChargeMoneyForComplainJob(wfsInfoes, wfSchemaInfoes, docItems, complain.DocInstanceId.GetValueOrDefault(), docItemComplains, accessToken);
+                                    // 3. Cập nhật Giá tiền
+                                    if (isUpdateValue)
+                                    {
+                                        await _moneyService.ChargeMoneyForComplainJob(wfsInfoes, wfSchemaInfoes, docItems, complain.DocInstanceId.GetValueOrDefault(), docItemComplains, accessToken);
+                                    }
                                 }
                             }
-                        }
-                    }
 
-                    response = GenericResponse<ComplainDto>.ResultWithData(model);
+                            complain.Status = (short)EnumComplain.Status.Complete;
+                            complain = await _repository.UpdateAsync(complain);
+                        }
+
+                        response = GenericResponse<ComplainDto>.ResultWithData(_mapper.Map<Complain, ComplainDto>(complain));
+                    }
                 }
             }
             catch (Exception ex)
@@ -396,14 +433,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     //}
 
                     //RightStatus =>//EnumComplain.RightStatus
-                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var rightStatusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (rightStatusFilter != null)
+                    {
+                        var canParse = Int16.TryParse(rightStatusFilter.Value, out short statusValue);
+
+                        if (canParse && statusValue >= 0)
+                        {
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                        }
+
+                    }
+                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("Status") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
                     {
                         var canParse = Int16.TryParse(statusFilter.Value, out short statusValue);
 
                         if (canParse && statusValue >= 0)
                         {
-                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.RightStatus, statusValue);
+                            lastFilter = lastFilter & Builders<Complain>.Filter.Eq(x => x.Status, statusValue);
                         }
 
                     }
@@ -631,6 +679,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var filter = Builders<Complain>.Filter.Eq(x => x.InstanceId, instanceId);
                 var data = await _repos.FindAsync(filter);
                 var dataDto = _mapper.Map<Complain, ComplainDto>(data.FirstOrDefault());
+
+                // Check has complain Processing
+                dataDto.IsReadOnly = dataDto.DocInstanceId != null && await _repository.CheckComplainProcessing(dataDto.DocInstanceId.GetValueOrDefault());
+
                 response = GenericResponse<ComplainDto>.ResultWithData(dataDto);
             }
             catch (Exception ex)

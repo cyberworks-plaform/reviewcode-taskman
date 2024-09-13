@@ -218,6 +218,9 @@ namespace Axe.TaskManagement.Service.Dtos
         [BsonElement("price")]
         public decimal Price { get; set; }
 
+        [BsonElement("price_details")]
+        public string PriceDetails { get; set; }
+
         [BsonElement("client_toll_ratio")]
         public decimal ClientTollRatio { get; set; }
 
@@ -261,13 +264,16 @@ namespace Axe.TaskManagement.Service.Dtos
 
         [Description("Trạng thái QA")]
         [BsonElement("qa_status")]
-        public bool QaStatus { get; set; } = false;
+        public bool? QaStatus { get; set; }
 
         [BsonElement("tenant_id")]
         public int TenantId { get; set; }
 
         [BsonElement("right_status")]
         public short RightStatus { get; set; } = (short)EnumJob.RightStatus.WaitingConfirm;   // refer: EnumJob.RightStatus: Chờ confirm, Đúng, Sai
+
+        [BsonElement("right_ratio")]
+        public decimal RightRatio { get; set; } = -1;
 
         [BsonElement("status")]
         public short Status { get; set; } = (short)EnumJob.Status.Waiting;   // refer: EnumJob.Status: Chờ phân phối, Đang xử lý, Hoàn thành
@@ -279,6 +285,8 @@ namespace Axe.TaskManagement.Service.Dtos
         public string InputShortNote { get; set; }
 
         public string PathName { get; set; }
+
+        public DateTime? DocCompleteDate { get; set; }
         #endregion
 
         public ComplainDto LastComplain { get; set; } = null;

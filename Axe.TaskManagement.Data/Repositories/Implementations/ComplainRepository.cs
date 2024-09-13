@@ -1,12 +1,14 @@
 ﻿using Axe.TaskManagement.Data.EntityExtensions;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
+using Axe.TaskManagement.Model.Enums;
 using Axe.Utility.Definitions;
 using Axe.Utility.Enums;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.MongoDbBase.Interfaces;
 using MongoDB.Driver;
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -20,14 +22,23 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<Complain> GetByJobCode(string code)
         {
-            var filter = Builders<Complain>.Filter.Eq(x => x.JobCode, code);
-            var record = DbSet.Find(filter);
-            var records = await record.ToListAsync();
-            if (records != null && records.Count > 0)
-            {
-                return records.OrderByDescending(x => x.CreatedDate).First();
-            }
-            return null;
+            return await DbSet.Find(Builders<Complain>.Filter.Eq(x => x.JobCode, code))
+                .Sort(Builders<Complain>.Sort.Descending(nameof(Complain.CreatedDate))).SingleOrDefaultAsync();
+        }
+
+        public Task<List<Complain>> GetByMultipleJobCode(List<string> listJobCode)
+        {
+            var filter = Builders<Complain>.Filter.In(x => x.JobCode, listJobCode);
+            var listComplain = DbSet.Find(filter);
+            return listComplain.ToListAsync();
+        }
+
+        public async Task<bool> CheckComplainProcessing(Guid docInstanceId)
+        {
+            var filter = Builders<Complain>.Filter.Eq(x => x.DocInstanceId, docInstanceId) &
+                         Builders<Complain>.Filter.Eq(x => x.Status, (short)EnumComplain.Status.Processing);
+            var entity = await DbSet.Find(filter).SingleOrDefaultAsync();
+            return entity != null;
         }
 
         public async Task<PagedListExtension<Complain>> GetPagingExtensionAsync(FilterDefinition<Complain> filter, SortDefinition<Complain> sort = null, int index = 1, int size = 10)
@@ -54,10 +65,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var totalfilter = await DbSet.CountDocumentsAsync(filter);
             long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Complain>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Complain>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
             var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Complain>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            
+
             var total = isNullFilter ?
                 totalfilter
-                : await DbSet.CountDocumentsAsync(Builders<Complain>.Filter.Empty);
+                : await DbSet.EstimatedDocumentCountAsync();
 
             return new PagedListExtension<Complain>
             {
@@ -71,5 +82,6 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 TotalPages = (int)Math.Ceiling((decimal)totalfilter / size)
             };
         }
+
     }
 }

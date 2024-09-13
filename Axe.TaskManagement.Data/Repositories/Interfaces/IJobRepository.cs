@@ -40,6 +40,8 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
             short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null);
 
+        Task<List<Job>> GetJobByDocs(IEnumerable<Guid?> docInstanceIds, string actionCode = null, short? status = null);
+
         Task<List<Job>> GetPrevJobs(Job crrJob, List<Guid> prevWorkflowStepInstanceIds);
 
         Task<long> DeleteMultiByDocAsync(Guid docInstanceId);

@@ -10,8 +10,10 @@ using Ce.Common.Lib.MongoDbBase.Interfaces;
 using Ce.Constant.Lib.Dtos;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -403,6 +405,22 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 filter = filter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
             }
 
+            var data = DbSet.Find(filter);
+            return await data.ToListAsync();
+        }
+
+        public async Task<List<Job>> GetJobByDocs(IEnumerable<Guid?> docInstanceIds, string actionCode = null, short? status = null)
+        {
+            var filter = Builders<Job>.Filter.In(x => x.DocInstanceId, docInstanceIds);
+            if (!string.IsNullOrEmpty(actionCode))
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            }
+
+            if (status != null)
+            {
+                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, status);
+            }
             var data = DbSet.Find(filter);
             return await data.ToListAsync();
         }
@@ -1512,6 +1530,17 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 isNullFilter = true;
             }
 
+            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
+            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
+            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
+            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Ne(x => x.ActionCode, nameof(ActionCodeConstants.QACheckFinal)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
+            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
+
+            var total = isNullFilter ?
+                totalfilter
+                : await DbSet.EstimatedDocumentCountAsync();
+
             if (index == -1)
             {
                 data = DbSet.Find(filter);
@@ -1523,20 +1552,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 : DbSet.Find(filter).Sort(sort).Skip((index - 1) * size).Limit(size);
             }
 
-            var totalfilter = await DbSet.CountDocumentsAsync(filter);
-            long totalCorrect = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Correct));
-            var totalComplete = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Complete));
-            var totalWrong = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong));
-            var totalIsIgnore = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.DataEntry)) & Builders<Job>.Filter.Eq(x => x.IsIgnore, true));
-            var totalError = await DbSet.CountDocumentsAsync(filter & Builders<Job>.Filter.Eq(x => x.Status, (int)EnumJob.Status.Error));
-
-            var total = isNullFilter ?
-                totalfilter
-                : await DbSet.CountDocumentsAsync(Builders<Job>.Filter.Empty);
-
             return new PagedListExtension<Job>
             {
-                Data = data.ToList(),
+                Data = await data.ToListAsync(),
                 PageIndex = index,
                 PageSize = size,
                 TotalCount = total,
@@ -1916,9 +1934,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<List<CountJobEntity>> GetCountAllJobByStatus()
         {
-
+            var sw = new Stopwatch();
+            sw.Start();
             var aggregate = DbSet.Aggregate();
             var result = await aggregate
+                .SortBy(x=>x.Status) // and need to create index by status for best performance
                 .Group(x => x.Status,
                 l => new CountJobEntity
                 {
@@ -1926,7 +1946,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                     Total = l.Count()
                 })
                 .ToListAsync();
-
+            sw.Stop();
+            Log.Debug($"Done GetCountAllJobByStatus in {sw.ElapsedMilliseconds} ms");
             return result;
         }
 

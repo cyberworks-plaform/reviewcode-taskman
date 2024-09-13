@@ -230,6 +230,9 @@ namespace Axe.TaskManagement.Model.Entities
         [BsonElement("price")]
         public decimal Price { get; set; }
 
+        [BsonElement("price_details")]
+        public string PriceDetails { get; set; }
+
         [BsonElement("client_toll_ratio")]
         public decimal ClientTollRatio { get; set; }
 
@@ -271,13 +274,16 @@ namespace Axe.TaskManagement.Model.Entities
 
         [Description("Trạng thái QA")]
         [BsonElement("qa_status")]
-        public bool QaStatus { get; set; } = false;
+        public bool? QaStatus { get; set; }
 
         [BsonElement("tenant_id")]
         public int TenantId { get; set; }
 
         [BsonElement("right_status")]
         public short RightStatus { get; set; } = (short)EnumJob.RightStatus.WaitingConfirm;   // refer: EnumJob.RightStatus: Chờ confirm, Đúng, Sai
+
+        [BsonElement("right_ratio")]
+        public decimal RightRatio { get; set; } = -1;
 
         [BsonElement("status")]
         public short Status { get; set; } = (short)EnumJob.Status.Waiting;   // refer: EnumJob.Status: Chờ phân phối, Đang xử lý, Hoàn thành

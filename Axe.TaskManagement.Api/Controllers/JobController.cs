@@ -520,9 +520,9 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-jobs-by-user")]
         [HttpPost]
 
-        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
+        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
         {
-            return ResponseResult(await _service.GetListJobForUser(project, actionCode, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
+            return ResponseResult(await _service.GetListJobForUser(project, actionCode, WorkflowStepInstanceId, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
         }
         #endregion
 
