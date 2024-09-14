@@ -4505,17 +4505,26 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
         #endregion
-
-        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string lstSyncMetaRelationPath, string accessToken = null)
+        
+        public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string pathIds, string syncMetaPaths, string accessToken = null)
         {
             GenericResponse<List<SummaryTotalDocPathJob>> response;
             var result = new List<SummaryTotalDocPathJob>();
             try
             {
-                var lstSyncMetaRelation = await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
-                var syncMetaRelations = lstSyncMetaRelation.Data;
-                var lstSyncMetaRelationIdArr = !string.IsNullOrEmpty(lstSyncMetaRelationPath) ? JsonConvert.DeserializeObject<List<string>>(lstSyncMetaRelationPath) : new List<string>();
+                var lstSyncMetaRelationAll = await _docClientService.GetAllSyncMetaRelationAsync(accessToken);
+                var syncMetaRelations = lstSyncMetaRelationAll.Data;
+                var syncMetaIds = !string.IsNullOrEmpty(pathIds) ? JsonConvert.DeserializeObject<List<string>>(pathIds) : new List<string>();
+                var syncMetaPathsDeserilize = !string.IsNullOrEmpty(syncMetaPaths) ? JsonConvert.DeserializeObject<List<string>>(syncMetaPaths) : new List<string>();
                 var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                if (syncMetaPathsDeserilize.Count() > 0)
+                {
+                    var regexFilters = syncMetaPathsDeserilize.Select(path => Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"))).ToList();
+
+                    var combinedFilter = Builders<Job>.Filter.And(filter, Builders<Job>.Filter.Or(regexFilters));
+
+                    filter = combinedFilter;
+                }
                 var lstData = await _repository.GetSummaryFolder(filter);
                 var lstDocInstanceId = lstData.Select(x => x.DocInstanceId).ToList();
                 var lstDocDataResponse = await _docClientService.GetListDocByDocInstanceIds(lstDocInstanceId, accessToken);
@@ -4528,7 +4537,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         data.RelationPath = docData.SyncMetaRelationPath;
                     }
                 }
-                foreach (var item in lstSyncMetaRelationIdArr)
+                foreach (var item in syncMetaIds)
                 {
                     var id = item.Replace("/", "").Trim();
                     var syncMetaRelation = syncMetaRelations.FirstOrDefault(x => x.Id == long.Parse(id));
