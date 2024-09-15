@@ -2099,6 +2099,40 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<int>> GetListJobCheckFinalBounced(Guid projectInstanceId, string path,Guid userInstanceId)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                var filter1 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); //Chỉ lấy job CheckFinal
+                var filter2 = Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"));// lấy các job có DocPath bắt đầu bằng path
+                var filter3 = Builders<Job>.Filter.Ne(x => x.Status, (short)EnumJob.Status.Complete);// Lấy các job có trạng thái khác Complete
+                var filter4 = Builders<Job>.Filter.Gt(x => x.NumOfRound, 0); //NumOfRound lớn hơn 0
+                var data = await _repos.FindAsync(filter & filter1 & filter2 & filter3 & filter4);
+                int result = -1;
+                if (data != null && data.Count() > 0)
+                {
+                    foreach (var job in data)
+                    {
+                        job.UserInstanceId = userInstanceId;
+                    }
+                    result = await _repos.UpdateMultiAsync(data);
+                }
+                if (result != -1)
+                {
+                    response = GenericResponse<int>.ResultWithData(result, "Phân phối việc thành công");
+                }
+                else response = GenericResponse<int>.ResultWithError(result, "Phân phối việc không thành công");
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
         public async Task<GenericResponse<List<JobDto>>> GetProactiveListJob(string actionCode = null, Guid? projectTypeInstanceId = null, string accessToken = null)
         {
             GenericResponse<List<JobDto>> response;
