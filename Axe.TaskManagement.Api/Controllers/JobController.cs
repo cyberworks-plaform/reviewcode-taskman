@@ -9,11 +9,13 @@ using Ce.Common.Lib.Caching.Implementations;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
+using DocumentFormat.OpenXml.Bibliography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace Axe.TaskManagement.Api.Controllers
 {
@@ -99,6 +101,12 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetListJob(string actionCode = null)
         {
             return ResponseResult(await _service.GetListJob(actionCode, GetBearerToken()));
+        }
+        [HttpPost]
+        [Route("get-list-job-checkfinal-bounced")]
+        public async Task<IActionResult> GetListJobCheckFinalBounced(Guid projectInstanceId, string path, Guid userInstanceId)
+        {
+            return ResponseResult(await _service.GetListJobCheckFinalBounced(projectInstanceId, HttpUtility.UrlDecode(path), userInstanceId));
         }
 
         [HttpPost]
