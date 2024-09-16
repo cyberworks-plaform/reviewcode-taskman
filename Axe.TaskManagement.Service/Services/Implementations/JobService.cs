@@ -12,6 +12,7 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Azure;
+using Azure.Core;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
@@ -2099,7 +2100,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path,Guid userInstanceId)
+        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path,Guid userInstanceId, string accessToken = null)
         {
             GenericResponse<int> response;
             try
@@ -2110,20 +2111,61 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var filter3 = Builders<Job>.Filter.Ne(x => x.Status, (short)EnumJob.Status.Complete);// Lấy các job có trạng thái khác Complete
                 var filter4 = Builders<Job>.Filter.Gt(x => x.NumOfRound, 0); //NumOfRound lớn hơn 0
                 var data = await _repos.FindAsync(filter & filter1 & filter2 & filter3 & filter4);
-                int result = -1;
+
+                int countSuccess = 0;
+                int countFail = 0;
                 if (data != null && data.Count() > 0)
                 {
                     foreach (var job in data)
                     {
+                        var cloneJob = (Job)job.Clone();
                         job.LastModifiedBy = userInstanceId;
+                        var filterJobById = Builders<Job>.Filter.Eq(x => x.Id, job.Id); // lấy theo id
+                        var updateLastUser = Builders<Job>.Update
+                       .Set(s => s.LastModifiedBy, userInstanceId);
+                        var kq = _repos.UpdateOneAsync(filterJobById, updateLastUser);
+                        if (kq != null)
+                        {
+                            // Publish message sang DistributionJob
+                            var logJob = _mapper.Map<Job, LogJobDto>(job);
+                            var logJobEvt = new LogJobEvent
+                            {
+                                LogJobs = new List<LogJobDto> { logJob },
+                                AccessToken = accessToken
+                            };
+                            // Outbox
+                            var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                            {
+                                ExchangeName = nameof(LogJobEvent).ToLower(),
+                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                Data = JsonConvert.SerializeObject(logJobEvt)
+                            });
+                            var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                            if (isAckLogJobEvent)
+                            {
+                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                            }
+                            else
+                            {
+                                outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                            }
+                            countSuccess++;
+                        }
+                        else
+                        {
+                            Log.Error($"BackToCheckFinalProcess failReplaceOneAsync: job => {job.Code}");
+                            countFail++;
+                            await _repos.UpdateAsync(cloneJob); // nếu ReplaceOneAsync lỗi thì update lại job về trạng thái ban đầu
+                        }
                     }
-                    result = await _repos.UpdateMultiAsync(data);
+                    //result = await _repos.UpdateMultiAsync(data);
                 }
-                if (result != -1)
+                if (countSuccess <= 0)
                 {
-                    response = GenericResponse<int>.ResultWithData(result, "Phân phối việc thành công");
+                    response = GenericResponse<int>.ResultWithError(1, $"Phân phối việc không thành công, lỗi {countFail} file");
                 }
-                else response = GenericResponse<int>.ResultWithError(result, "Phân phối việc không thành công");
+                else response = GenericResponse<int>.ResultWithData(1, $"Phân phối thành công {countSuccess} file, lỗi {countFail} file");
 
             }
             catch (Exception ex)
@@ -3847,7 +3889,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         job.Status = (short)EnumJob.Status.Waiting;
 
                         //var resultUpdateJob = await _repos.UpdateAsync(job);
-                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job);
+                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job); 
 
                         if (resultUpdateJob != null)
                         {

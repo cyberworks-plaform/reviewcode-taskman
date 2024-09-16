@@ -106,7 +106,7 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("distribute-job-checkfinal-bounced-to-new-user")]
         public async Task<IActionResult> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path, Guid userInstanceId)
         {
-            return ResponseResult(await _service.DistributeJobCheckFinalBouncedToNewUser(projectInstanceId, HttpUtility.UrlDecode(path), userInstanceId));
+            return ResponseResult(await _service.DistributeJobCheckFinalBouncedToNewUser(projectInstanceId, HttpUtility.UrlDecode(path), userInstanceId, GetBearerToken()));
         }
         [HttpPost]
         [Route("get-list-job-checkfinal-by-path")]
