@@ -2099,7 +2099,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<int>> GetListJobCheckFinalBounced(Guid projectInstanceId, string path,Guid userInstanceId)
+        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path,Guid userInstanceId)
         {
             GenericResponse<int> response;
             try
@@ -2115,7 +2115,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     foreach (var job in data)
                     {
-                        job.UserInstanceId = userInstanceId;
+                        job.LastModifiedBy = userInstanceId;
                     }
                     result = await _repos.UpdateMultiAsync(data);
                 }
@@ -2129,6 +2129,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             catch (Exception ex)
             {
                 response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<CountJobDto>> GetListJobCheckFinalByPath(Guid projectInstanceId, string path)
+        {
+            GenericResponse<CountJobDto> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                filter &= Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); //Chỉ lấy job CheckFinal
+                filter &= Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"));// lấy các job có DocPath bắt đầu bằng path
+                var filter3 = Builders<Job>.Filter.Ne(x => x.Status, (short)EnumJob.Status.Complete);// Lấy các job có trạng thái khác Complete
+                var filter4 = Builders<Job>.Filter.Gt(x => x.NumOfRound, 0); //NumOfRound lớn hơn 0s
+                var filter5 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore);// Lấy các job có trạng thái Ignore
+                var bounced = await _repos.CountAsync(filter & filter3 & filter4);
+                var ignore = await _repos.CountAsync(filter & filter5);
+                var result = new CountJobDto();
+                result.CountIgnore = ignore > 0 ? ignore : 0;
+                result.CountBounced = bounced > 0 ? bounced : 0;
+                response = GenericResponse<CountJobDto>.ResultWithData(result);
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<CountJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
             return response;
         }
@@ -3295,8 +3321,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 string statusFilterValue = "";
                 string codeFilterValue = "";
+                string pathFilterValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
+                    //DocPath
+                    var pathFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocPath)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (pathFilter != null)
+                    {
+                        pathFilterValue = pathFilter.Value.Trim();
+                    }
                     //Status
                     var statusFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Status)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
@@ -3316,6 +3349,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (!string.IsNullOrEmpty(codeFilterValue))
                 {
                     baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.Code, codeFilterValue);
+                }
+                //Lấy ra các việc có DocPath bắt đầu bằng path được truyền vào nếu có
+                if (!string.IsNullOrEmpty(pathFilterValue))
+                { 
+                    baseFilter = baseFilter & Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFilterValue}"));
                 }
                 if (!string.IsNullOrEmpty(actionCode))
                 {
