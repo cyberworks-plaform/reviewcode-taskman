@@ -2119,12 +2119,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     foreach (var job in data)
                     {
                         var cloneJob = (Job)job.Clone();
+                        var currentLastModifyBy = job.LastModifiedBy;
                         job.LastModifiedBy = userInstanceId;
                         var filterJobById = Builders<Job>.Filter.Eq(x => x.Id, job.Id); // lấy theo id
                         var updateLastUser = Builders<Job>.Update
                        .Set(s => s.LastModifiedBy, userInstanceId);
-                        var kq = _repos.UpdateOneAsync(filterJobById, updateLastUser);
-                        if (kq != null)
+                        var kq = await _repos.UpdateOneAsync(filterJobById, updateLastUser);
+                        if (kq)
                         {
                             // Publish message sang DistributionJob
                             var logJob = _mapper.Map<Job, LogJobDto>(job);
@@ -2133,33 +2134,27 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 LogJobs = new List<LogJobDto> { logJob },
                                 AccessToken = accessToken
                             };
-                            // Outbox
-                            var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                            {
-                                ExchangeName = nameof(LogJobEvent).ToLower(),
-                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                Data = JsonConvert.SerializeObject(logJobEvt)
-                            });
+                            
                             var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                            if (isAckLogJobEvent)
+                            
+                            if (!isAckLogJobEvent)
                             {
-                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
-                            }
-                            else
-                            {
-                                outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
-                            }
+                                var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                {
+                                    ExchangeName = nameof(LogJobEvent).ToLower(),
+                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                    Data = JsonConvert.SerializeObject(logJobEvt),
+                                    Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                                });
+                            }                           
                             countSuccess++;
                         }
                         else
                         {
-                            Log.Error($"BackToCheckFinalProcess failReplaceOneAsync: job => {job.Code}");
+                            Log.Error($"Can not assigned field LastModifiedBy to job: {job.Code}");
                             countFail++;
-                            await _repos.UpdateAsync(cloneJob); // nếu ReplaceOneAsync lỗi thì update lại job về trạng thái ban đầu
                         }
                     }
-                    //result = await _repos.UpdateMultiAsync(data);
                 }
                 if (countSuccess <= 0)
                 {
