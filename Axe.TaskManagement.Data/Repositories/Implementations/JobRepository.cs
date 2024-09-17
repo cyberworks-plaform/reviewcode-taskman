@@ -371,10 +371,25 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return await data.ToListAsync();
         }
 
-        public async Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
+        /// <summary>
+        /// Lấy danh sách các job theo 1 step
+        /// Update 17-09-2024: bắt buộc filter theo projectId
+        /// </summary>
+        /// <param name="actionCode"></param>
+        /// <param name="workflowStepInstanceId"></param>
+        /// <param name="status"></param>
+        /// <param name="docPath"></param>
+        /// <param name="batchJobInstanceId"></param>
+        /// <param name="numOfRound"></param>
+        /// <param name="docInstanceId"></param>
+        /// <returns></returns>
+        public async Task<List<Job>> GetAllJobByWfs(Guid projectInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null,
             short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null)
         {
-            var filter = Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+            var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+            
+            filter =filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+
             if (workflowStepInstanceId != null)
             {
                 filter = filter & Builders<Job>.Filter.Eq(x => x.WorkflowStepInstanceId, workflowStepInstanceId);
