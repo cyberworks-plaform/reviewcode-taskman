@@ -495,7 +495,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                         if (output.BatchJobInstanceId == null)
                         {
-                            output.BatchJobInstanceId = Guid.Empty; //quan trọng: gắn = empty để phân biệt File đã hoàn thành và chuyển sang QA
+                            if (isNextStepQa)
+                            {
+                                output.BatchJobInstanceId = Guid.Empty; //quan trọng: gắn = empty để phân biệt File đã hoàn thành và chuyển sang QA
+                            }
                         }
                         var taskEvt = new TaskEvent
                         {
@@ -506,15 +509,19 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         bool isTriggerNextStep = false;
                         bool isProcessQAInBatchMode = false; // kiểm tra xem xử lý QA theo lô hay theo file đơn lẻ
 
-                        var configQa = WorkflowHelper.GetConfigQa(nextWfsInfo.ConfigStep);
-
-                        var batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
-                        var batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
-                        var batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
-                        isProcessQAInBatchMode = configQa.Item1;
+                        var batchQASize = 0; //  Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
+                        var batchQASampling = 100;  // % lấy mẫu trong lô 
+                        var batchQAFalseThreshold = 100; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
                         if (isNextStepQa)
                         {
+                            var configQa = WorkflowHelper.GetConfigQa(nextWfsInfo.ConfigStep);
+                            batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
+                            batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
+                            batchQAFalseThreshold = configQa.Item4; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
+                            isProcessQAInBatchMode = configQa.Item1;
+
+
                             //Tạm fix: nếu file upload không vào thư mục nào thì chạy theo chế độ QA đơn file
                             if (string.IsNullOrEmpty(job.DocPath))
                             {
@@ -607,24 +614,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 }
 
                                 // 1. Trường hợp chưa có Lô => tính toán tạo lô
-                                if (job.NumOfRound == 0 && job.BatchJobInstanceId == null)
+                                if (job.NumOfRound == 0 && job.BatchJobInstanceId.GetValueOrDefault()==Guid.Empty)
                                 {
                                     // Lấy tất cả các jobs CheckFinal Complete tại Round=0 và chưa có lô
-                                    var allCompleteJobs = await _repository.GetAllJobByWfs(
+                                    var allCompleteJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
                                                                         job.ActionCode,
                                                                         job.WorkflowStepInstanceId,
                                                                         (short)EnumJob.Status.Complete,
                                                                         job.DocPath, null, 0);
+                                    
+                                    
+                                    var total_Job_Round_0_has_batch = allCompleteJobs.Where(x=>x.BatchJobInstanceId.GetValueOrDefault()!=Guid.Empty).Count();
 
-                                    allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId == null).ToList();
+                                    allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
 
                                     var isCreateNewBatch = false;
-
-                                    var total_Job_Round_0_has_batch = _repository.GetAllJobByWfs(
-                                                                                   crrWfsInfo.ActionCode,
-                                                                                   crrWfsInfo.InstanceId,
-                                                                                   null,
-                                                                                   job.DocPath, null, 0).Result.Count(x => x.BatchJobInstanceId != null);
 
 
                                     // nếu tất cả các file trong cùng 1 path đã hoàn thành hết thì tạo ra tất cả các lô cho từng user
@@ -691,7 +695,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 else
                                 {
                                     // Lấy jobs CheckFinal (có Status=ALL) của Batch + Round hiện tại
-                                    var allJobInBatch = await _repository.GetAllJobByWfs(job.ActionCode,
+                                    var allJobInBatch = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                        job.ActionCode,
                                         job.WorkflowStepInstanceId, null, job.DocPath,
                                         job.BatchJobInstanceId, job.NumOfRound);
 
@@ -705,7 +710,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     if (completedJobInBatch == totalJobInBatch)
                                     {
                                         // tạo lượt QA mới => gồm các phiếu bị QA fail ở round hiện tại -> ưu tiên lấy các fiel bị QA=False ở Round trước
-                                        var listQAJobInLastRound = await _repository.GetAllJobByWfs(nextWfsInfo.ActionCode,
+                                        var listQAJobInLastRound = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                            nextWfsInfo.ActionCode,
                                         nextWfsInfo.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
                                         job.BatchJobInstanceId, (short)(job.NumOfRound - 1));
 
@@ -735,7 +741,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 }
                             }
                         }
-                        else
+                        else //nếu là ( QA nhưng đơn file ) hoặc ( các điều kiện khác ) thì next step luôn
                         {
                             await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
                             isTriggerNextStep = true;

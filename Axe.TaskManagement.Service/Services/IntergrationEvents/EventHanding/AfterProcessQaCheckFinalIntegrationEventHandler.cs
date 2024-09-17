@@ -407,12 +407,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                          */
 
                                         // Lấy danh sách jobs bước HIỆN TẠI (QACheckFinal) vòng hiện tại
-                                        var allJobsInBatchAndRound = await _repository.GetAllJobByWfs(crrWfsInfo.ActionCode, crrWfsInfo.InstanceId, null, job.DocPath, job.BatchJobInstanceId, job.NumOfRound);
+                                        var allJobsInBatchAndRound = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                            crrWfsInfo.ActionCode, crrWfsInfo.InstanceId, null, job.DocPath, job.BatchJobInstanceId, job.NumOfRound);
 
                                         // Lấy danh sách jobs Complete bước TRƯỚC (CheckFinal)
                                         var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
                                         var preWfsInfo = prevWfsInfoes.FirstOrDefault();
-                                        var completePrevJobs = await _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
+                                        var completePrevJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(), preWfsInfo?.ActionCode,
                                                 preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
                                                 job.BatchJobInstanceId, job.NumOfRound);
 
@@ -442,7 +443,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
                                             var nextWfsInfo_case = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_by_case.WorkflowStepInstanceId);
 
-                                            completePrevJobs = await _repository.GetAllJobByWfs(preWfsInfo?.ActionCode,
+                                            completePrevJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(), preWfsInfo?.ActionCode,
                                                 preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
                                                 null, job.NumOfRound, job.DocInstanceId);
 
@@ -628,7 +629,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             prevJobs.ForEach(x =>
             {
                 x.QaStatus = qaStatus;
-                x.RightStatus = !qaStatus ? (short) EnumJob.RightStatus.Wrong : (short) EnumJob.RightStatus.Confirmed;
+                x.RightStatus = !qaStatus ? (short)EnumJob.RightStatus.Wrong : (short)EnumJob.RightStatus.Confirmed;
             });
             await _repository.UpdateMultiAsync(prevJobs);
         }
