@@ -12,6 +12,7 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Azure;
+using Azure.Core;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
@@ -2099,6 +2100,102 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path,Guid userInstanceId, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                var filter1 = Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); //Chỉ lấy job CheckFinal
+                var filter2 = Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"));// lấy các job có DocPath bắt đầu bằng path
+                var filter3 = Builders<Job>.Filter.Ne(x => x.Status, (short)EnumJob.Status.Complete);// Lấy các job có trạng thái khác Complete
+                var filter4 = Builders<Job>.Filter.Gt(x => x.NumOfRound, 0); //NumOfRound lớn hơn 0
+                var data = await _repos.FindAsync(filter & filter1 & filter2 & filter3 & filter4);
+
+                int countSuccess = 0;
+                int countFail = 0;
+                if (data != null && data.Count() > 0)
+                {
+                    foreach (var job in data)
+                    {
+                        var cloneJob = (Job)job.Clone();
+                        var currentLastModifyBy = job.LastModifiedBy;
+                        job.LastModifiedBy = userInstanceId;
+                        var filterJobById = Builders<Job>.Filter.Eq(x => x.Id, job.Id); // lấy theo id
+                        var updateLastUser = Builders<Job>.Update
+                       .Set(s => s.LastModifiedBy, userInstanceId);
+                        var kq = await _repos.UpdateOneAsync(filterJobById, updateLastUser);
+                        if (kq)
+                        {
+                            // Publish message sang DistributionJob
+                            var logJob = _mapper.Map<Job, LogJobDto>(job);
+                            var logJobEvt = new LogJobEvent
+                            {
+                                LogJobs = new List<LogJobDto> { logJob },
+                                AccessToken = accessToken
+                            };
+                            
+                            var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                            
+                            if (!isAckLogJobEvent)
+                            {
+                                var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                {
+                                    ExchangeName = nameof(LogJobEvent).ToLower(),
+                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                    Data = JsonConvert.SerializeObject(logJobEvt),
+                                    Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                                });
+                            }                           
+                            countSuccess++;
+                        }
+                        else
+                        {
+                            Log.Error($"Can not assigned field LastModifiedBy to job: {job.Code}");
+                            countFail++;
+                        }
+                    }
+                }
+                if (countSuccess <= 0)
+                {
+                    response = GenericResponse<int>.ResultWithError(1, $"Phân phối việc không thành công, lỗi {countFail} file");
+                }
+                else response = GenericResponse<int>.ResultWithData(1, $"Phân phối thành công {countSuccess} file, lỗi {countFail} file");
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<CountJobDto>> GetListJobCheckFinalByPath(Guid projectInstanceId, string path)
+        {
+            GenericResponse<CountJobDto> response;
+            try
+            {
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                filter &= Builders<Job>.Filter.Eq(x => x.ActionCode, nameof(ActionCodeConstants.CheckFinal)); //Chỉ lấy job CheckFinal
+                filter &= Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{path}"));// lấy các job có DocPath bắt đầu bằng path
+                var filter3 = Builders<Job>.Filter.Ne(x => x.Status, (short)EnumJob.Status.Complete);// Lấy các job có trạng thái khác Complete
+                var filter4 = Builders<Job>.Filter.Gt(x => x.NumOfRound, 0); //NumOfRound lớn hơn 0s
+                var filter5 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Ignore);// Lấy các job có trạng thái Ignore
+                var bounced = await _repos.CountAsync(filter & filter3 & filter4);
+                var ignore = await _repos.CountAsync(filter & filter5);
+                var result = new CountJobDto();
+                result.CountIgnore = ignore > 0 ? ignore : 0;
+                result.CountBounced = bounced > 0 ? bounced : 0;
+                response = GenericResponse<CountJobDto>.ResultWithData(result);
+
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<CountJobDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
         public async Task<GenericResponse<List<JobDto>>> GetProactiveListJob(string actionCode = null, Guid? projectTypeInstanceId = null, string accessToken = null)
         {
             GenericResponse<List<JobDto>> response;
@@ -3261,8 +3358,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 string statusFilterValue = "";
                 string codeFilterValue = "";
+                string pathFilterValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
+                    //DocPath
+                    var pathFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocPath)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (pathFilter != null)
+                    {
+                        pathFilterValue = pathFilter.Value.Trim();
+                    }
                     //Status
                     var statusFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Status)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
@@ -3282,6 +3386,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (!string.IsNullOrEmpty(codeFilterValue))
                 {
                     baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.Code, codeFilterValue);
+                }
+                //Lấy ra các việc có DocPath bắt đầu bằng path được truyền vào nếu có
+                if (!string.IsNullOrEmpty(pathFilterValue))
+                { 
+                    baseFilter = baseFilter & Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFilterValue}"));
                 }
                 if (!string.IsNullOrEmpty(actionCode))
                 {
@@ -3775,7 +3884,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         job.Status = (short)EnumJob.Status.Waiting;
 
                         //var resultUpdateJob = await _repos.UpdateAsync(job);
-                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job);
+                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job); 
 
                         if (resultUpdateJob != null)
                         {

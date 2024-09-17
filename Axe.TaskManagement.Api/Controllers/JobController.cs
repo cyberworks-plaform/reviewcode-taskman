@@ -9,11 +9,13 @@ using Ce.Common.Lib.Caching.Implementations;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
+using DocumentFormat.OpenXml.Bibliography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Web;
 
 namespace Axe.TaskManagement.Api.Controllers
 {
@@ -100,7 +102,18 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.GetListJob(actionCode, GetBearerToken()));
         }
-
+        [HttpPost]
+        [Route("distribute-job-checkfinal-bounced-to-new-user")]
+        public async Task<IActionResult> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path, Guid userInstanceId)
+        {
+            return ResponseResult(await _service.DistributeJobCheckFinalBouncedToNewUser(projectInstanceId, HttpUtility.UrlDecode(path), userInstanceId, GetBearerToken()));
+        }
+        [HttpPost]
+        [Route("get-list-job-checkfinal-by-path")]
+        public async Task<IActionResult> GetListJobCheckFinalByPath(Guid projectInstanceId, string path)
+        {
+            return ResponseResult(await _service.GetListJobCheckFinalByPath(projectInstanceId, HttpUtility.UrlDecode(path)));
+        }
         [HttpPost]
         [Route("get-proactive-list-job")]
         public async Task<IActionResult> GetProactiveListJob(string actionCode = null, Guid? projectTypeInstanceId = null)
