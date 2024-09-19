@@ -760,11 +760,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         /// <param name="qaJobs"></param>
         /// <param name="isQAPass"></param>
         /// <returns></returns>
-        private List<InputParam> AsignNote_Round_Value(List<InputParam> jobsForNextStep, List<Model.Entities.Job> qaJobs, bool? isQAPass)
+        private List<InputParam> AsignNote_Round_Value(List<InputParam> jobsForNextStep, List<Job> qaJobs, bool? isQAPass)
         {
+            qaJobs = qaJobs.OrderByDescending(o => o.NumOfRound).ThenByDescending(o => o.LastModificationDate).ToList();
             foreach (var jobNextStepItem in jobsForNextStep)
             {
-                var qaItem = qaJobs.SingleOrDefault(x => x.DocInstanceId == jobNextStepItem.DocInstanceId);
+                var qaItem = qaJobs.FirstOrDefault(x => x.DocInstanceId == jobNextStepItem.DocInstanceId);
                 if (qaItem != null)
                 {
                     jobNextStepItem.Note = qaItem.Note;
