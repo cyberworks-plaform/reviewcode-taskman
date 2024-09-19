@@ -37,7 +37,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<List<Job>> GetJobByWfsInstanceIds(Guid docInstanceId, List<Guid> workflowStepInstanceIds);
 
-        Task<List<Job>> GetAllJobByWfs(string actionCode = null, Guid? workflowStepInstanceId = null,
+        Task<List<Job>> GetAllJobByWfs(Guid projectInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null,
             short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null);
 
         Task<List<Job>> GetJobByDocs(IEnumerable<Guid?> docInstanceIds, string actionCode = null, short? status = null);
