@@ -5746,8 +5746,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         private async Task TriggerRetryDoc(RetryDocEvent evt)
         {
-            //bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(evt.Jobs.First().ActionCode);
-            bool isCrrStepHeavyJob = true;
+            bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(evt.Jobs.First().ActionCode);
+            //bool isCrrStepHeavyJob = true;
+
             // Outbox
             var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
             {
