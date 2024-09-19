@@ -82,5 +82,6 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<Job> UpdateAndLockRecordAsync(Job entity);
         Task<Job> GetJobByInstanceId(Guid instanceId);
         Task<List<Job>> GetJobsByDocInstanceId(Guid docInstanceId);
+        Task<IAsyncCursor<Job>> GetCursorListJobAsync(FilterDefinition<Job> filter, FindOptions<Job> findOption);
     }
 }

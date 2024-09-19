@@ -127,52 +127,71 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             string msg = string.Empty;
             try
             {
-
+                var totalJob = 0;
                 //lấy các job đang ở trạng thái waiting
                 var filter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
-                //Todo: cần loại bỏ các Job auto và các project đã đóng
-                var jobs = await _repos.FindAsync(filter);
+                var findOption = new FindOptions<Job>()
+                {
+                    BatchSize = 1000
+                };
 
-                //gửi theo từng bó 100 job sang distribution
-                var pageSize = 100;
-                var totalPage = jobs.Count / pageSize;
-                if (jobs.Count % pageSize != 0)
+                //Todo: cần loại bỏ các Job auto và các project đã đóng
+                using (var jobCursor = await _repository.GetCursorListJobAsync(filter, findOption))
                 {
-                    totalPage += 1;
-                }
-                for (var page = 0; page < totalPage; page++)
-                {
-                    // Publish message sang DistributionJob
-                    var batchjobs = jobs.Skip(page * pageSize).Take(pageSize).ToList();
-                    var logJobEvt = new LogJobEvent
+                    var jobs = new List<Job>();
+
+                    var pageSize = 100;
+
+                    while (jobCursor.MoveNext())
                     {
-                        LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(batchjobs),
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(LogJobEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        jobs.AddRange(jobCursor.Current);
+
+                        //gửi theo từng bó 100 job sang distribution
+                        var totalPage = jobs.Count / pageSize;
+                        if (jobs.Count % pageSize != 0)
+                        {
+                            totalPage += 1;
+                        }
+                        for (var page = 0; page < totalPage; page++)
+                        {
+                            // Publish message sang DistributionJob
+                            var batchjobs = jobs.Skip(page * pageSize).Take(pageSize).ToList();
+                            var logJobEvt = new LogJobEvent
+                            {
+                                LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(batchjobs),
+                            };
+                            try
+                            {
+                                var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                                totalJob += jobs.Count();
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Error($"Error:{ex.Message}");
+                                Log.Information("List job send error");
+                                foreach (var item in batchjobs)
+                                {
+                                    Log.Information($"JobID:{item.Id} - JobCode:{item.Code} - Project: {item.ProjectInstanceId} - Actioncode:{item.ActionCode}");
+                                }
+                            }
+
+                            logJobEvt.LogJobs.Clear();
+                            logJobEvt = null;
+                            batchjobs.Clear();
+                        }
+                        jobs.Clear();
+                        msg = string.Format("Đã thực hiện gửi {0} job sang Job Distribution. Đang tiếp tục...", totalJob);
+                        Log.Information(msg);
                     }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
                 }
-                if (jobs.Count > 0)
+
+                if (totalJob <= 0)
                 {
-                    msg = string.Format("Đã thực hiện gửi {0} job sang Job Distribution", jobs.Count);
+                    msg = "Không có job nào đang ở trạng thái chờ phân phối";
                 }
                 else
                 {
-                    msg = "Không có job nào đang ở trạng thái chờ phân phối";
+                    msg = string.Format("Đã hoàn thành thực hiện gửi {0} job sang Job Distribution.", totalJob);
                 }
 
                 response.Success = true;
@@ -2100,7 +2119,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
-        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path,Guid userInstanceId, string accessToken = null)
+        public async Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path, Guid userInstanceId, string accessToken = null)
         {
             GenericResponse<int> response;
             try
@@ -2134,9 +2153,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 LogJobs = new List<LogJobDto> { logJob },
                                 AccessToken = accessToken
                             };
-                            
+
                             var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                            
+
                             if (!isAckLogJobEvent)
                             {
                                 var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
@@ -2146,7 +2165,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                     Data = JsonConvert.SerializeObject(logJobEvt),
                                     Status = (short)EnumEventBus.PublishMessageStatus.Nack
                                 });
-                            }                           
+                            }
                             countSuccess++;
                         }
                         else
@@ -3389,7 +3408,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 //Lấy ra các việc có DocPath bắt đầu bằng path được truyền vào nếu có
                 if (!string.IsNullOrEmpty(pathFilterValue))
-                { 
+                {
                     baseFilter = baseFilter & Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFilterValue}"));
                 }
                 if (!string.IsNullOrEmpty(actionCode))
@@ -3884,7 +3903,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         job.Status = (short)EnumJob.Status.Waiting;
 
                         //var resultUpdateJob = await _repos.UpdateAsync(job);
-                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job); 
+                        resultUpdateJob = await _repos.ReplaceOneAsync(filter1, job);
 
                         if (resultUpdateJob != null)
                         {
@@ -4614,7 +4633,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
         #endregion
-        
+
         public async Task<GenericResponse<List<SummaryTotalDocPathJob>>> GetSummaryFolder(Guid projectInstanceId, string pathIds, string syncMetaPaths, string accessToken = null)
         {
             GenericResponse<List<SummaryTotalDocPathJob>> response;
@@ -4860,7 +4879,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var turnInstanceId = Guid.NewGuid();
 
                     var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode && c.InstanceId == workflowStepInstanceId);
-                    
+
                     if (wfsInfo != null)
                     {
                         int pageSize = wfsInfo.ConfigStepProperty.NumOfJobDistributed > 0 ? wfsInfo.ConfigStepProperty.NumOfJobDistributed : 10;
