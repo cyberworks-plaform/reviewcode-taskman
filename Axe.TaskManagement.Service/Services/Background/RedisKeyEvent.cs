@@ -38,7 +38,6 @@ namespace Axe.TaskManagement.Service.Services.Background
             var subscriber = _connectionMultiplexer.GetSubscriber();
             await subscriber.SubscribeAsync(EXPIRED_KEYS_CHANNEL, (async (channel, key) =>
             {
-                Log.Information($"Expired key {key} at: {DateTime.UtcNow}");
                 await HandleKeyRedis(key);
             }));
 
