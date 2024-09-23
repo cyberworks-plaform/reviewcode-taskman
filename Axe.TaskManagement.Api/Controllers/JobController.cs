@@ -533,9 +533,9 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-jobs-by-user")]
         [HttpPost]
 
-        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds,string docPath,Guid batchInstanceId, int numOfRound)
+        public async Task<IActionResult> GetListJobForUser([FromBody] ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound)
         {
-            return ResponseResult(await _service.GetListJobForUser(project, actionCode, WorkflowStepInstanceId, inputType, docTypeFieldInstanceId, parallelInstanceIds,docPath,batchInstanceId, numOfRound, GetBearerToken()));
+            return ResponseResult(await _service.GetListJobForUser(project, actionCode, WorkflowStepInstanceId, inputType, docTypeFieldInstanceId, parallelInstanceIds, docPath, batchInstanceId, numOfRound, GetBearerToken()));
         }
         #endregion
 
@@ -566,11 +566,11 @@ namespace Axe.TaskManagement.Api.Controllers
             if (reportData == null)
             {
                 var serviceResponse = await _service.GetCountAllJobByStatus();
-                if(serviceResponse.Success)
+                if (serviceResponse.Success)
                 {
                     reportData = serviceResponse.Data;
                     //save data to cache
-                    await _cachingHelper.TrySetCacheAsync(cacheKey, reportData,cacheTimeOut);
+                    await _cachingHelper.TrySetCacheAsync(cacheKey, reportData, cacheTimeOut);
                 }
 
             }
@@ -667,9 +667,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("resync-job-distribution")]
-        public async Task<IActionResult> ResyncJobDistribution()
+        public async Task<IActionResult> ResyncJobDistribution(Guid projectInstanceId, string actionCode)
         {
-            return ResponseResult(await _service.ResyncJobDistribution());
+            return ResponseResult(await _service.ResyncJobDistribution(projectInstanceId, actionCode));
         }
 
         [HttpPost]

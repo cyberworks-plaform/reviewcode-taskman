@@ -121,21 +121,27 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// </summary>
         /// <returns></returns>
         /// <exception cref="NotImplementedException"></exception>
-        public async Task<GenericResponse> ResyncJobDistribution()
+        public async Task<GenericResponse> ResyncJobDistribution(Guid projectInstanceId, string actionCode)
         {
             var response = new GenericResponse();
             string msg = string.Empty;
             try
             {
                 var totalJob = 0;
-                //lấy các job đang ở trạng thái waiting
-                var filter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
+                //lấy các job của project đang ở trạng thái waiting
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
+
+                if (!string.IsNullOrEmpty(actionCode))
+                {
+                    filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+                }
+
                 var findOption = new FindOptions<Job>()
                 {
                     BatchSize = 1000
                 };
 
-                //Todo: cần loại bỏ các Job auto và các project đã đóng
                 using (var jobCursor = await _repository.GetCursorListJobAsync(filter, findOption))
                 {
                     var jobs = new List<Job>();
@@ -162,7 +168,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             };
                             try
                             {
-                                var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                                //var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                                 totalJob += jobs.Count();
                             }
                             catch (Exception ex)
