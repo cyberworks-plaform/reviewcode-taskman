@@ -440,22 +440,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox AfterProcessDataEntryEvent
+                    var outboxEntity = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(AfterProcessDataEntryEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessDataEntryEvent).ToLower());
-                    if (isAck)
+                        Data = JsonConvert.SerializeObject(evt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        _eventBus.Publish(evt, nameof(AfterProcessDataEntryEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error(exPublishEvent, "Error publish for event AfterProcessDataEntryEvent");
+
+                        //save to DB for retry later
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessDataEntryEvent");
+                        }
                     }
 
                     // Publish message sang DistributionJob
@@ -464,22 +476,33 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox LogJob
+                    var outboxEntityLogJobEvent = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
+                        Data = JsonConvert.SerializeObject(logJobEvt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+
+                        //save to DB for retry later
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessDataEntryEvent");
+                        }
                     }
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
@@ -1528,43 +1551,60 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
                             ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(evt)
+                            Data = JsonConvert.SerializeObject(evt),
+                            LastModificationDate = DateTime.Now,
+                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
                         });
-                        var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
-                        if (isAck)
+                        try
                         {
-                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                            _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
                         }
-                        else
+                        catch (Exception exPublishEvent)
                         {
-                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                            Log.Error(exPublishEvent, "Error publish for event AfterProcessCheckFinalEvent");
+                            try
+                            {
+                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                            }
+                            catch (Exception exSaveDb)
+                            {
+                                Log.Error(exSaveDb, "Error save DB for event AfterProcessCheckFinalEvent");
+                            }
                         }
-                    }
 
-                    // Publish message to DistributionJob to sync job status
-                    var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
-                    var logJobEvt = new LogJobEvent
-                    {
-                        LogJobs = new List<LogJobDto> { logJob },
-                        AccessToken = accessToken
-                    };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(LogJobEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
-                    }
-                    else
-                    {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        // Publish message to DistributionJob to sync job status
+                        var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
+                        var logJobEvt = new LogJobEvent
+                        {
+                            LogJobs = new List<LogJobDto> { logJob },
+                            AccessToken = accessToken
+                        };
+                        // Outbox
+                        var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        {
+                            ExchangeName = nameof(LogJobEvent).ToLower(),
+                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                            Data = JsonConvert.SerializeObject(logJobEvt),
+                            LastModificationDate = DateTime.Now,
+                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                        });
+
+                        try
+                        {
+                            _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                        }
+                        catch (Exception exPublishEvent)
+                        {
+                            Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                            try
+                            {
+                                await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                            }
+                            catch (Exception exSaveDb)
+                            {
+                                Log.Error(exSaveDb, "Error save DB for event LogJobEvent");
+                            }
+                        }
                     }
 
                     var responseCode = 1; // Ghi nhận thành công
@@ -1690,22 +1730,31 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                    // Outbox OutboxIntegrationEvent
+                    var outboxEntity = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(AfterProcessQaCheckFinalEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessQaCheckFinalEvent).ToLower());
-                    if (isAck)
+                        Data = JsonConvert.SerializeObject(evt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        _eventBus.Publish(evt, nameof(AfterProcessQaCheckFinalEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error(exPublishEvent, "Error publish for event AfterProcessQaCheckFinalEvent");
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessQaCheckFinalEvent ");
+                        }
                     }
 
                     // Publish message sang DistributionJob
@@ -1715,24 +1764,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         LogJobs = new List<LogJobDto> { logJob },
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox logjob
+                    var outboxEntityLogJobEvent = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
+                        Data = JsonConvert.SerializeObject(logJobEvt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event LogJobEvent ");
+                        }
                     }
-
 
                     response = GenericResponse<int>.ResultWithData(1);
                 }
@@ -1744,10 +1801,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             catch (Exception ex)
             {
-
                 response = GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
                 Log.Error($"Error on ProcessQaCheckFinal => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
+
             return response;
         }
 
