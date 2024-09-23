@@ -143,7 +143,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<int>> UndoSkipJobDataCheck(string jobIdStr);
         Task<GenericResponse<PagedListExtension<JobProcessingStatistics>>> GetTotalJobProcessingStatistics_V2(PagingRequest request, bool hasPaging = true);
-        Task<GenericResponse> ResyncJobDistribution();
         Task<GenericResponse<int>> ProcessQaCheckFinal(JobResult result, string accessToken = null);
         Task<bool> PublishLogJobEvent(List<Job> jobs, string accessToken);
         Task<GenericResponse<JobDto>> GetByInstanceId(Guid instanceId);
@@ -151,5 +150,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<int>> BackIgnoreJobToCheckFinalProcess(JobResult result, string accessToken = null);
         Task<GenericResponse<int>> BackMultiIgnoreJobToCheckFinalProcess(List<JobResult> result, string accessToken = null);
         Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null);
+        Task<GenericResponse> ResyncJobDistribution(Guid projectInstanceId, string actionCode);
     }
 }
