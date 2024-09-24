@@ -342,22 +342,33 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                 };
                 // Outbox
-                var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                var outboxEntity = new OutboxIntegrationEvent
                 {
                     ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                     ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                });
-                var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                if (isAck)
+                    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
+                    LastModificationDate = DateTime.Now,
+                    Status = (short)EnumEventBus.PublishMessageStatus.Nack,
+                };
+
+                try // try to publish event
                 {
-                    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                    _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
                 }
-                else
+                catch (Exception exPublishEvent)
                 {
-                    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                    Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateMultiValueEvent");
+
+                    try // try to save event to DB for retry later
+                    {
+                        await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                    }
+                    catch (Exception exSaveDB)
+                    {
+                        Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent");
+                    }
                 }
+
             }
 
             // 4. Trigger bước tiếp theo
@@ -791,22 +802,35 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             bool isNextStepHeavyJob = WorkflowHelper.IsHeavyJob(nextWfsActionCode);
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var exchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower();
+            var outboxEntity = new OutboxIntegrationEvent
             {
-                ExchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower(),
+                ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(evt)
-            });
-            var isAck = _eventBus.Publish(evt, isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(evt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+
+            try // try to publish event
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(evt, exchangeName);
             }
-            else
+            catch (Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, $"Error publish for event {exchangeName}");
+
+                try // try to save event to DB for retry later
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, $"Error save DB for event {exchangeName}");
+                }
             }
+
         }
 
         private async Task<bool> TriggerNextStepHappened(Guid docInstanceId, Guid workflowStepInstanceId, Guid? docTypeFieldInstanceId = null, Guid? docFieldValueInstanceId = null)
