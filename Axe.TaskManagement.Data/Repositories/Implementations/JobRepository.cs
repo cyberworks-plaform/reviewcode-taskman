@@ -2526,5 +2526,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var jobs = DbSet.Find(filter);
             return await jobs.ToListAsync();
         }
+        public async Task<IAsyncCursor<Job>> GetCursorListJobAsync(FilterDefinition<Job> filter,FindOptions<Job> findOption)
+        {
+            var jobs = await DbSet.FindAsync(filter,findOption);
+            return jobs;
+        }
     }
 }
