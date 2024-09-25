@@ -390,6 +390,13 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.GetHistoryJobByUser(request, actionCode, GetBearerToken()));
         }
+        [HttpPost]
+        [Route("get-history-job-by-user-v2")]
+        public async Task<byte[]> ExportJobs(PagingRequest request, string actionCode)
+        {
+            var excelFile = await _service.ExportExcelHistoryJobByUser(request, actionCode, GetBearerToken());
+            return excelFile;
+        }
 
         [HttpPost]
         [Route("back-job-to-check-final-process")]
