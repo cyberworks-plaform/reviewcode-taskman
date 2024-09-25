@@ -32,6 +32,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<List<JobDto>>> GetListJob(string actionCode = null, string accessToken = null);
         Task<byte[]> ExportExcelHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);
+        Task<byte[]> ExportExcelHistoryJobByUserV2(PagingRequest request, string actionCode, string accessToken);
         Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path, Guid userInstanceId, string accessToken = null);
         Task<GenericResponse<CountJobDto>> GetListJobCheckFinalByPath(Guid projectInstanceId, string path);
 

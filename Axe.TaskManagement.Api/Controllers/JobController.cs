@@ -394,8 +394,8 @@ namespace Axe.TaskManagement.Api.Controllers
         [Route("get-history-job-by-user-v2")]
         public async Task<byte[]> ExportJobs(PagingRequest request, string actionCode)
         {
-            var excelFile = await _service.ExportExcelHistoryJobByUser(request, actionCode, GetBearerToken());
-            return excelFile;
+            var zipFile = await _service.ExportExcelHistoryJobByUserV2(request, actionCode, GetBearerToken());
+            return zipFile;
         }
 
         [HttpPost]
