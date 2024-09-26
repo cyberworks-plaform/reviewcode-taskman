@@ -620,79 +620,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             var result = false;
 
             // Lấy thông tin về luồng đang chạy
-            List<WorkflowStepInfo> wfsInfoes;
             if (string.IsNullOrEmpty(inputParam.WorkflowStepInfoes) || string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
             {
                 var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                wfsInfoes = wfInfoes.Item1;
+                var wfsInfoes = wfInfoes.Item1;
                 var wfSchemaInfoes = wfInfoes.Item2;
                 inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
                 inputParam.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
                 result = true;
             }
-            else
-            {
-                wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-            }
-
-            //// Lấy thông tin ItemInputParams
-            //if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
-            //{
-            //    var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
-            //    if (crrWfsInfo != null)
-            //    {
-            //        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(crrWfsInfo.ConfigStep,
-            //        ConfigStepPropertyConstants.IsPaidStep);
-            //        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
-            //        bool isPaid = !crrWfsInfo.IsAuto || (crrWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
-            //        decimal price = isPaid ? MoneyHelper.GetPriceByConfigPrice(crrWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
-
-            //        var itemInputParams = new List<ItemInputParam>();
-
-            //        var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
-            //            inputParam.ProjectInstanceId.GetValueOrDefault(),
-            //            inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-            //        if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data != null && docTypeFieldsRs.Data.Any())
-            //        {
-            //            var docTypeFields = docTypeFieldsRs.Data;
-            //            foreach (var dtf in docTypeFields)
-            //            {
-            //                var item = new ItemInputParam
-            //                {
-            //                    FilePartInstanceId = null,
-            //                    DocTypeFieldId = dtf.Id,
-            //                    DocTypeFieldInstanceId = dtf.InstanceId,
-            //                    DocTypeFieldCode = dtf.Code,
-            //                    DocTypeFieldName = dtf.Name,
-            //                    DocTypeFieldSortOrder = dtf.SortOrder.GetValueOrDefault(),
-            //                    InputType = dtf.InputType,
-            //                    MaxLength = dtf.MaxLength,
-            //                    MinLength = dtf.MinLength,
-            //                    MinValue = dtf.MinValue,
-            //                    MaxValue = dtf.MaxValue,
-            //                    PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
-            //                    IsMultipleSelection = dtf.IsMultipleSelection,
-            //                    CoordinateArea = dtf.CoordinateArea
-            //                };
-
-            //                var docFieldValuesRs = await _docFieldValueClientService.GetListByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-            //                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null && docFieldValuesRs.Data.Any())
-            //                {
-            //                    var docFieldValues = docFieldValuesRs.Data;
-            //                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
-            //                    item.DocFieldValueInstanceId = dfv?.InstanceId;
-            //                    item.Value = dfv?.Value;
-            //                    item.Price = crrWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
-            //                }
-
-            //                itemInputParams.Add(item);
-            //            }
-            //        }
-
-            //        inputParam.ItemInputParams = itemInputParams;
-            //        result = true;
-            //    }
-            //}
 
             return result;
         }
