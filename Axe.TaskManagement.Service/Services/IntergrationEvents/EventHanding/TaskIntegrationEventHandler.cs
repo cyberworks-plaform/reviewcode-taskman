@@ -42,6 +42,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IQueueLockRepository _queueLockRepository;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
@@ -73,6 +74,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IProjectStatisticClientService projectStatisticClientService,
             IQueueLockRepository queueLockRepository,
             IMapper mapper,
+            IDocTypeFieldClientService docTypeFieldClientService,
             IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
@@ -89,6 +91,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _projectStatisticClientService = projectStatisticClientService;
             _queueLockRepository = queueLockRepository;
             _mapper = mapper;
+            _docTypeFieldClientService = docTypeFieldClientService;
             _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
@@ -2321,6 +2324,72 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 result = true;
             }
 
+            if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
+            {
+                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                if (prevWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.Upload))
+                {
+                    var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
+                    if (crrWfsInfo != null)
+                    {
+                        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(crrWfsInfo.ConfigStep,
+                        ConfigStepPropertyConstants.IsPaidStep);
+                        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                        bool isPaid = !crrWfsInfo.IsAuto || (crrWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+                        decimal price = isPaid ? MoneyHelper.GetPriceByConfigPrice(crrWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+
+                        var itemInputParams = new List<ItemInputParam>();
+
+                        var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
+                            inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                        var docFieldValuesRs =
+                            await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
+                                inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
+                        {
+                            var docTypeFields = docTypeFieldsRs.Data;
+                            foreach (var dtf in docTypeFields)
+                            {
+                                var item = new ItemInputParam
+                                {
+                                    FilePartInstanceId = null,
+                                    DocTypeFieldId = dtf.Id,
+                                    DocTypeFieldInstanceId = dtf.InstanceId,
+                                    DocTypeFieldCode = dtf.Code,
+                                    DocTypeFieldName = dtf.Name,
+                                    DocTypeFieldSortOrder = dtf.SortOrder.GetValueOrDefault(),
+                                    InputType = dtf.InputType,
+                                    MaxLength = dtf.MaxLength,
+                                    MinLength = dtf.MinLength,
+                                    MinValue = dtf.MinValue,
+                                    MaxValue = dtf.MaxValue,
+                                    PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
+                                    IsMultipleSelection = dtf.IsMultipleSelection,
+                                    CoordinateArea = dtf.CoordinateArea
+                                };
+                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
+                                {
+                                    var docFieldValues = docFieldValuesRs.Data;
+                                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
+                                    item.DocFieldValueInstanceId = dfv?.InstanceId;
+                                    item.Value = dfv?.Value;
+                                    item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
+                                }
+
+                                itemInputParams.Add(item);
+                            }
+                        }
+
+                        if (itemInputParams.Any())
+                        {
+                            inputParam.ItemInputParams = itemInputParams;
+                            result = true;
+                        }
+                    }
+                }
+            }
+
             if (inputParam.InputParams != null && inputParam.InputParams.Any() && wfsInfoes != null && wfSchemaInfoes != null)
             {
                 foreach (var item in inputParam.InputParams)
@@ -2330,6 +2399,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     {
                         item.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
                         item.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
+                        result = true;
                     }
                 }
             }

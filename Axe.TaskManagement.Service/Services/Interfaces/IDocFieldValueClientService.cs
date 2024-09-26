@@ -13,6 +13,8 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<int>> GetCountOfExpectedByDocInstanceId(Guid docInstanceId, string accessToken = null);
 
+        Task<GenericResponse<IEnumerable<DocFieldValueDto>>> GetListDocTypeValueByDocInstanceId(Guid docInstanceId, string accessToken);
+
         Task<GenericResponse<int>> DeleteByDocTypeFieldInstanceIds(Guid docInstanceId, string docTypeFieldIntanceIds, string accessToken = null);
 
         Task<GenericResponse<DocFieldValueDto>> GetByInstanceId(Guid instanceId, string accessToken = null);
