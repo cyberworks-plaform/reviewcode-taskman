@@ -1419,22 +1419,35 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                                         };
                                         // Outbox
-                                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                        var outboxEntity = new OutboxIntegrationEvent
                                         {
                                             ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                                             ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                                        });
-                                        var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                        if (isAck)
+                                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
+                                            LastModificationDate = DateTime.Now,
+                                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                                        };
+
+                                        try // try to publish event
                                         {
-                                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                                            _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
                                         }
-                                        else
+                                        catch (Exception exPublishEvent)
                                         {
-                                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                                            Log.Error(exPublishEvent, $"Error publish for event DocFieldValueUpdateMultiValueEvent ");
+
+                                            try // try to save event to DB for retry later
+                                            {
+                                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                                            }
+                                            catch (Exception exSaveDB)
+                                            {
+                                                Log.Error(exSaveDB, $"Error save DB for event DocFieldValueUpdateMultiValueEvent ");
+                                                throw;
+                                            }
                                         }
+
+                                       
                                     }
 
 
@@ -2126,7 +2139,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 try // try to save event to DB for retry later
                 {
                     await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-
                 }
                 catch (Exception exSaveDB)
                 {
