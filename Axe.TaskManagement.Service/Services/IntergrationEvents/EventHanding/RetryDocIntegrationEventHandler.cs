@@ -1,4 +1,7 @@
-﻿using Axe.TaskManagement.Data.Repositories.Interfaces;
+﻿using AutoMapper;
+using Axe.TaskManagement.Data.Repositories.Interfaces;
+using Axe.TaskManagement.Model.Entities;
+using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
@@ -13,6 +16,7 @@ using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Serilog;
@@ -29,12 +33,16 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IJobRepository _jobRepository;
         private readonly ITaskRepository _taskRepository;
+        private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
+        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
         private readonly IConfiguration _configuration;
+        private readonly IMapper _mapper;
 
         private bool _isParallelStep;
 
@@ -44,31 +52,46 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IBaseHttpClientFactory clientFatory,
             IJobRepository jobRepository,
             ITaskRepository taskRepository,
+            IWorkflowClientService workflowClientService,
             IDocClientService docClientService,
+            IDocTypeFieldClientService docTypeFieldClientService,
+            IDocFieldValueClientService docFieldValueClientService,
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration)
+            IConfiguration configuration, IMapper mapper)
         {
             _eventBus = eventBus;
             _clientFatory = clientFatory;
             _jobRepository = jobRepository;
             _taskRepository = taskRepository;
+            _workflowClientService = workflowClientService;
             _docClientService = docClientService;
+            _docTypeFieldClientService = docTypeFieldClientService;
+            _docFieldValueClientService = docFieldValueClientService;
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
+            _mapper = mapper;
         }
 
         public async Task Handle(RetryDocEvent @event)
         {
-            if (@event != null && @event.Jobs != null && @event.Jobs.Any())
+            if (@event != null && ((@event.Jobs != null && @event.Jobs.Any()) || (@event.JobIds != null && @event.JobIds.Any())))
             {
-                Log.Logger.Information(
-                    $"Start handle integration event from {nameof(RetryDocIntegrationEventHandler)}: step {@event.Jobs.First().ActionCode}, WorkflowStepInstanceId: {@event.Jobs.First().WorkflowStepInstanceId} with DocInstanceId: {@event.DocInstanceId}");
+                if (@event.Jobs != null && @event.Jobs.Any())
+                {
+                    Log.Logger.Information(
+                        $"Start handle integration event from {nameof(RetryDocIntegrationEventHandler)}: step {@event.Jobs.First().ActionCode}, WorkflowStepInstanceId: {@event.Jobs.First().WorkflowStepInstanceId} with DocInstanceId: {@event.DocInstanceId}");
+                }
+                else if (@event.JobIds != null && @event.JobIds.Any())
+                {
+                    Log.Logger.Information(
+                        $"Start handle integration event from {nameof(RetryDocIntegrationEventHandler)}: jobId {@event.JobIds.First()} with DocInstanceId: {@event.DocInstanceId}");
+                }
 
                 await ProcessRetryDoc(@event);
             }
@@ -81,6 +104,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private async Task ProcessRetryDoc(RetryDocEvent @event)
         {
             var accessToken = @event.AccessToken;
+
+            await EnrichDataJob(@event);
+
+            if (@event.Jobs == null || @event.Jobs.Count == 0)
+            {
+                Log.Logger.Error("list job is null or empty!");
+                return;
+            }
+
             var input = @event.Jobs.First().Input;
             var inputParam = JsonConvert.DeserializeObject<InputParam>(input);
             if (inputParam == null)
@@ -88,6 +120,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 Log.Logger.Error("inputParam is null!");
                 return;
             }
+
+            await EnrichData(inputParam, accessToken);
 
             var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
             if (wfsInfoes == null)
@@ -568,5 +602,148 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return Guid.Empty;
         }
+
+        #region Enrich data for InputParam
+
+        private async Task EnrichDataJob(RetryDocEvent evt)
+        {
+            if (evt.Jobs == null || evt.Jobs.Count == 0)
+            {
+                if (evt.JobIds != null && evt.JobIds.Any())
+                {
+                    var jobs = await _jobRepository.GetByIdsAsync(JsonConvert.SerializeObject(evt.JobIds));
+                    evt.Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs.ToList());
+                }
+            }
+        }
+
+        #endregion
+
+        #region Enrich data for InputParam
+
+        private async Task<bool> EnrichData(InputParam inputParam, string accessToken = null)
+        {
+            var result = false;
+
+            // Lấy thông tin về luồng đang chạy
+            List<WorkflowStepInfo> wfsInfoes;
+            if (string.IsNullOrEmpty(inputParam.WorkflowStepInfoes) || string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
+            {
+                var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                wfsInfoes = wfInfoes.Item1;
+                var wfSchemaInfoes = wfInfoes.Item2;
+                inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
+                inputParam.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
+                result = true;
+            }
+            else
+            {
+                wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+            }
+
+            //// Lấy thông tin ItemInputParams
+            //if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
+            //{
+            //    var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
+            //    if (crrWfsInfo != null)
+            //    {
+            //        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(crrWfsInfo.ConfigStep,
+            //        ConfigStepPropertyConstants.IsPaidStep);
+            //        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+            //        bool isPaid = !crrWfsInfo.IsAuto || (crrWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+            //        decimal price = isPaid ? MoneyHelper.GetPriceByConfigPrice(crrWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+
+            //        var itemInputParams = new List<ItemInputParam>();
+
+            //        var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
+            //            inputParam.ProjectInstanceId.GetValueOrDefault(),
+            //            inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+            //        if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data != null && docTypeFieldsRs.Data.Any())
+            //        {
+            //            var docTypeFields = docTypeFieldsRs.Data;
+            //            foreach (var dtf in docTypeFields)
+            //            {
+            //                var item = new ItemInputParam
+            //                {
+            //                    FilePartInstanceId = null,
+            //                    DocTypeFieldId = dtf.Id,
+            //                    DocTypeFieldInstanceId = dtf.InstanceId,
+            //                    DocTypeFieldCode = dtf.Code,
+            //                    DocTypeFieldName = dtf.Name,
+            //                    DocTypeFieldSortOrder = dtf.SortOrder.GetValueOrDefault(),
+            //                    InputType = dtf.InputType,
+            //                    MaxLength = dtf.MaxLength,
+            //                    MinLength = dtf.MinLength,
+            //                    MinValue = dtf.MinValue,
+            //                    MaxValue = dtf.MaxValue,
+            //                    PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
+            //                    IsMultipleSelection = dtf.IsMultipleSelection,
+            //                    CoordinateArea = dtf.CoordinateArea
+            //                };
+
+            //                var docFieldValuesRs = await _docFieldValueClientService.GetListByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+            //                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null && docFieldValuesRs.Data.Any())
+            //                {
+            //                    var docFieldValues = docFieldValuesRs.Data;
+            //                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
+            //                    item.DocFieldValueInstanceId = dfv?.InstanceId;
+            //                    item.Value = dfv?.Value;
+            //                    item.Price = crrWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
+            //                }
+
+            //                itemInputParams.Add(item);
+            //            }
+            //        }
+
+            //        inputParam.ItemInputParams = itemInputParams;
+            //        result = true;
+            //    }
+            //}
+
+            return result;
+        }
+
+        private async Task<Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>> GetWfInfoes(Guid workflowInstanceId, string accessToken = null)
+        {
+            var wfResult = await _workflowClientService.GetByInstanceIdAsync(workflowInstanceId, accessToken);
+            if (wfResult.Success && wfResult.Data != null)
+            {
+                var wf = wfResult.Data;
+
+                var allWfStepInfoes = new List<WorkflowStepInfo>();
+                foreach (var wfs in wf.LstWorkflowStepDto)
+                {
+                    allWfStepInfoes.Add(new WorkflowStepInfo
+                    {
+                        Id = wfs.Id,
+                        InstanceId = wfs.InstanceId,
+                        Name = wfs.Name,
+                        ActionCode = wfs.ActionCode,
+                        ConfigPrice = wfs.ConfigPrice,
+                        ConfigStep = wfs.ConfigStep,
+                        ServiceCode = wfs.ServiceCode,
+                        ApiEndpoint = wfs.ApiEndpoint,
+                        HttpMethodType = wfs.HttpMethodType,
+                        IsAuto = wfs.IsAuto,
+                        ViewUrl = wfs.ViewUrl,
+                        Attribute = wfs.Attribute
+                    });
+                }
+
+                // Loại bỏ những bước bị ngưng xử lý
+                var wfsInfoes = WorkflowHelper.GetAvailableSteps(allWfStepInfoes);
+
+                var wfSchemaInfoes = wf.LstWorkflowSchemaConditionDto.Select(x => new WorkflowSchemaConditionInfo
+                {
+                    WorkflowStepFrom = x.WorkflowStepFrom,
+                    WorkflowStepTo = x.WorkflowStepTo
+                }).ToList();
+                return new Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>(wfsInfoes, wfSchemaInfoes);
+            }
+
+            return null;
+        }
+
+        #endregion
     }
 }

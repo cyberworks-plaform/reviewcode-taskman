@@ -24,6 +24,7 @@ using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -132,21 +133,40 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// </summary>
         /// <returns></returns>
         /// <exception cref="NotImplementedException"></exception>
-        public async Task<GenericResponse> ResyncJobDistribution()
+        public async Task<GenericResponse> ResyncJobDistribution(Guid projectInstanceId, string actionCode)
         {
             var response = new GenericResponse();
             string msg = string.Empty;
+            string cacheKey = $"ResyncJobDistribution_{projectInstanceId}_{actionCode}";
             try
             {
+                //Check runing status: kiểm tra xem có đang chạy job này không
+                var isRuning = _cachingHelper.TryGetFromCache<bool>(cacheKey);
+                if (isRuning)
+                {
+                    response = GenericResponse.ResultWithData(null, "Yêu cầu này đã được gửi trước đây và hệ thống đang thực hiện...");
+                    return response;
+                }
+
+                //Set runing statu: Nếu chưa chạy thì bắt đầu ghi nhận -> ghi vào cache -> tự expired trong thời gian 24h
+                isRuning = true;
+                _cachingHelper.TrySetCache(cacheKey, isRuning, 24 * 60 * 60);
+
                 var totalJob = 0;
-                //lấy các job đang ở trạng thái waiting
-                var filter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
+                //lấy các job của project đang ở trạng thái waiting
+                var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
+                filter = filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
+
+                if (!string.IsNullOrEmpty(actionCode))
+                {
+                    filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+                }
+
                 var findOption = new FindOptions<Job>()
                 {
                     BatchSize = 1000
                 };
 
-                //Todo: cần loại bỏ các Job auto và các project đã đóng
                 using (var jobCursor = await _repository.GetCursorListJobAsync(filter, findOption))
                 {
                     var jobs = new List<Job>();
@@ -173,8 +193,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             };
                             try
                             {
-                                var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                                totalJob += jobs.Count();
+                                var isAcked = false;
+                                try //try first time
+                                {
+                                    isAcked = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                                }
+                                catch (Exception ex) // wait 1 second then try again
+                                {
+                                    Task.Delay(1000).Wait();
+                                    isAcked = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                                }
+                                finally
+                                {
+                                    if (isAcked)
+                                    {
+                                        totalJob += jobs.Count;
+                                    }
+                                }
+
                             }
                             catch (Exception ex)
                             {
@@ -217,6 +253,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 response.Message = msg;
                 response.Error = ex.StackTrace;
                 Log.Logger.Error(ex, msg);
+            }
+            finally
+            {
+                //clear runing status
+                _cachingHelper.RemoveCache(cacheKey);
             }
 
             return response;
@@ -286,7 +327,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessSegmentLabelingEvent
                     {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        JobId = resultUpdateJob.Id.ToString(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -408,25 +450,38 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataEntryEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox AfterProcessDataEntryEvent
+                    var outboxEntity = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(AfterProcessDataEntryEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessDataEntryEvent).ToLower());
-                    if (isAck)
+                        Data = JsonConvert.SerializeObject(evt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        _eventBus.Publish(evt, nameof(AfterProcessDataEntryEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error(exPublishEvent, "Error publish for event AfterProcessDataEntryEvent");
+
+                        //save to DB for retry later
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessDataEntryEvent");
+                        }
                     }
 
                     // Publish message sang DistributionJob
@@ -435,22 +490,33 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox LogJob
+                    var outboxEntityLogJobEvent = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
+                        Data = JsonConvert.SerializeObject(logJobEvt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+
+                        //save to DB for retry later
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessDataEntryEvent");
+                        }
                     }
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
@@ -531,7 +597,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataEntryBoolEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -801,8 +868,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         WorkflowStepInstanceIds = isMultipleNextStep
                             ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                             : null,
-                        WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                        WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                         Value = value,
                         Price = price,
                         WorkflowStepPrices = wfsPrices,
@@ -894,7 +961,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataCheckEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -1014,7 +1082,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataConfirmEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -1339,8 +1408,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         WorkflowStepInstanceIds = isMultipleNextStep
                             ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                             : null,
-                        WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                        WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                         Value = value,
                         Price = price,
                         WorkflowStepPrices = wfsPrices,
@@ -1491,7 +1560,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         var evt = new AfterProcessCheckFinalEvent
                         {
-                            Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                            //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                            JobId = resultUpdateJob.Id.ToString(),
                             AccessToken = accessToken
                         };
                         // Outbox
@@ -1499,43 +1569,60 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             ExchangeName = nameof(AfterProcessCheckFinalEvent).ToLower(),
                             ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(evt)
+                            Data = JsonConvert.SerializeObject(evt),
+                            LastModificationDate = DateTime.Now,
+                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
                         });
-                        var isAck = _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
-                        if (isAck)
+                        try
                         {
-                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                            _eventBus.Publish(evt, nameof(AfterProcessCheckFinalEvent).ToLower());
                         }
-                        else
+                        catch (Exception exPublishEvent)
                         {
-                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                            Log.Error(exPublishEvent, "Error publish for event AfterProcessCheckFinalEvent");
+                            try
+                            {
+                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                            }
+                            catch (Exception exSaveDb)
+                            {
+                                Log.Error(exSaveDb, "Error save DB for event AfterProcessCheckFinalEvent");
+                            }
                         }
-                    }
 
-                    // Publish message to DistributionJob to sync job status
-                    var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
-                    var logJobEvt = new LogJobEvent
-                    {
-                        LogJobs = new List<LogJobDto> { logJob },
-                        AccessToken = accessToken
-                    };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(LogJobEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
-                    }
-                    else
-                    {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        // Publish message to DistributionJob to sync job status
+                        var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
+                        var logJobEvt = new LogJobEvent
+                        {
+                            LogJobs = new List<LogJobDto> { logJob },
+                            AccessToken = accessToken
+                        };
+                        // Outbox
+                        var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        {
+                            ExchangeName = nameof(LogJobEvent).ToLower(),
+                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                            Data = JsonConvert.SerializeObject(logJobEvt),
+                            LastModificationDate = DateTime.Now,
+                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                        });
+
+                        try
+                        {
+                            _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
+                        }
+                        catch (Exception exPublishEvent)
+                        {
+                            Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                            try
+                            {
+                                await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                            }
+                            catch (Exception exSaveDb)
+                            {
+                                Log.Error(exSaveDb, "Error save DB for event LogJobEvent");
+                            }
+                        }
                     }
 
                     var responseCode = 1; // Ghi nhận thành công
@@ -1658,25 +1745,35 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessQaCheckFinalEvent
                     {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        JobId = resultUpdateJob.Id.ToString(),
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                    // Outbox OutboxIntegrationEvent
+                    var outboxEntity = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(AfterProcessQaCheckFinalEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(AfterProcessQaCheckFinalEvent).ToLower());
-                    if (isAck)
+                        Data = JsonConvert.SerializeObject(evt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        _eventBus.Publish(evt, nameof(AfterProcessQaCheckFinalEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error(exPublishEvent, "Error publish for event AfterProcessQaCheckFinalEvent");
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event AfterProcessQaCheckFinalEvent ");
+                        }
                     }
 
                     // Publish message sang DistributionJob
@@ -1686,24 +1783,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         LogJobs = new List<LogJobDto> { logJob },
                         AccessToken = accessToken
                     };
-                    // Outbox
-                    var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+
+                    // Outbox logjob
+                    var outboxEntityLogJobEvent = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAckLogJobEvent)
+                        Data = JsonConvert.SerializeObject(logJobEvt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event LogJobEvent ");
+                        }
                     }
-
 
                     response = GenericResponse<int>.ResultWithData(1);
                 }
@@ -1715,10 +1820,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             catch (Exception ex)
             {
-
                 response = GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
                 Log.Error($"Error on ProcessQaCheckFinal => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
+
             return response;
         }
 
@@ -1849,7 +1954,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                                 WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                 WorkflowStepInstanceId = nextWfsInfo.InstanceId,
-                                WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
+                                //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
                                 ItemInputParams = new List<ItemInputParam>()
                             };
 
@@ -5451,10 +5556,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var evt = new RetryDocEvent
                     {
                         DocInstanceId = docInstanceId,
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
-                    await TriggerRetryDoc(evt);
+                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
                 }
 
                 return GenericResponse<bool>.ResultWithData(true);
@@ -5541,10 +5647,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var evt = new RetryDocEvent
                     {
                         DocInstanceId = docInstanceId,
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
-                    await TriggerRetryDoc(evt);
+                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
                 }
 
                 return GenericResponse<bool>.ResultWithData(true);
@@ -6710,9 +6817,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return null;
         }
 
-        private async Task TriggerRetryDoc(RetryDocEvent evt)
+        private async Task TriggerRetryDoc(RetryDocEvent evt, string retryWfsActionCode)
         {
-            bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(evt.Jobs.First().ActionCode);
+            bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(retryWfsActionCode);
             //bool isCrrStepHeavyJob = true;
 
             // Outbox

@@ -16,6 +16,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
 
 namespace Axe.TaskManagement.Data.Repositories.Implementations
 {
@@ -23,6 +24,13 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
     {
         public JobRepository(IMongoContext context) : base(context)
         {
+        }
+
+        public override async Task<IEnumerable<Job>> GetByIdsAsync(string ids)
+        {
+            var listStrId = JsonConvert.DeserializeObject<List<string>>(ids);
+            var listId = listStrId?.Select(x => new ObjectId(x));
+            return await DbSet.Find(Builders<Job>.Filter.In(x => x.Id, listId)).ToListAsync();
         }
 
         public async Task<List<Job>> UpSertMultiJobAsync(IEnumerable<Job> entities)
