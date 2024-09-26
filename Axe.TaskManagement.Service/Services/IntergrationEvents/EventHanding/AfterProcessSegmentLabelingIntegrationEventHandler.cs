@@ -16,12 +16,15 @@ using Ce.EventBus.Lib.Abstractions;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using MongoDB.Bson;
 using Newtonsoft.Json;
 using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Axe.TaskManagement.Model.Entities;
+using AutoMapper;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -39,6 +42,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IMoneyService _moneyService;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
         private readonly IConfiguration _configuration;
+        private readonly IMapper _mapper;
 
         private readonly ICachingHelper _cachingHelper;
         private readonly bool _useCache;
@@ -56,7 +60,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IMoneyService moneyService,
             IServiceProvider provider,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration)
+            IConfiguration configuration, IMapper mapper)
         {
             _repository = repository;
             _taskRepository = taskRepository;
@@ -70,19 +74,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _moneyService = moneyService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
+            _mapper = mapper;
             _cachingHelper = provider.GetService<ICachingHelper>();
             _useCache = _cachingHelper != null;
         }
 
         public async Task Handle(AfterProcessSegmentLabelingEvent @event)
         {
-            if (@event != null && @event.Job != null)
+            if (@event != null && (@event.Job != null || !string.IsNullOrEmpty(@event.JobId)))
             {
-                Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessSegmentLabelingEvent)} with JobCode: {@event.Job.Code}");
+                var jobId = @event.Job != null ? @event.Job?.Id : @event.JobId;
+                Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessSegmentLabelingEvent)} with JobId: {jobId}");
 
                 await ProcessAfterProcessSegmentLabeling(@event);
 
-                Log.Logger.Information($"Acked {nameof(AfterProcessSegmentLabelingEvent)} with JobCode: {@event.Job.Code}");
+                Log.Logger.Information($"Acked {nameof(AfterProcessSegmentLabelingEvent)} with JobId {jobId}");
             }
             else
             {
@@ -93,6 +99,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private async Task ProcessAfterProcessSegmentLabeling(AfterProcessSegmentLabelingEvent evt)
         {
             string accessToken = evt.AccessToken;
+
+            await EnrichDataJob(evt);
+
             var job = evt.Job;
             var userInstanceId = job.UserInstanceId.GetValueOrDefault();
             var jobEnds = new List<JobDto>();
@@ -477,8 +486,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 WorkflowInstanceId = job.WorkflowInstanceId,
                                 WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                 //WorkflowStepInstanceIds = null,
-                                WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
-                                WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                                //WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),        // Không truyền thông tin này để giảm dung lượng msg
+                                //WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes), // Không truyền thông tin này để giảm dung lượng msg
                                 Value = value,
                                 Price = price,
                                 ClientTollRatio = job.ClientTollRatio,
@@ -803,5 +812,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return null;
         }
+
+        #region Enrich data for InputParam
+
+        private async Task EnrichDataJob(AfterProcessSegmentLabelingEvent evt)
+        {
+            if (evt.Job == null)
+            {
+                if (!string.IsNullOrEmpty(evt.JobId))
+                {
+                    var crrJob = await _repository.GetByIdAsync(new ObjectId(evt.JobId));
+                    evt.Job = _mapper.Map<Job, JobDto>(crrJob);
+                }
+            }
+        }
+
+        #endregion
     }
 }

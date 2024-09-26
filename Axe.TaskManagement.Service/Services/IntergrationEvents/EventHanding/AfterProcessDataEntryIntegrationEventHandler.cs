@@ -81,14 +81,23 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         public async Task Handle(AfterProcessDataEntryEvent @event)
         {
-            if (@event != null && @event.Jobs != null && @event.Jobs.Any())
+            if (@event != null && ((@event.Jobs != null && @event.Jobs.Any()) || (@event.JobIds != null && @event.JobIds.Any())))
             {
-                var jobCodes = string.Join(',', @event.Jobs.Select(x => x.Code));
-                Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessDataEntryEvent)} with JobCodes: {jobCodes}");
+                string jobIds = null;
+                if (@event.Jobs != null && @event.Jobs.Any())
+                {
+                    jobIds = string.Join(',', @event.Jobs.Select(x => x.Id));
+                }
+                else if (@event.JobIds != null && @event.JobIds.Any())
+                {
+                    jobIds = string.Join(',', @event.JobIds);
+                }
+
+                Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessDataEntryEvent)} with JobIds: {jobIds}");
 
                 await ProcessAfterProcessDataEntry(@event);
 
-                Log.Logger.Information($"Acked {nameof(AfterProcessDataEntryEvent)} with JobCodes: {jobCodes}");
+                Log.Logger.Information($"Acked {nameof(AfterProcessDataEntryEvent)} with JobIds: {jobIds}");
             }
             else
             {
@@ -99,6 +108,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private async Task ProcessAfterProcessDataEntry(AfterProcessDataEntryEvent evt)
         {
             string accessToken = evt.AccessToken;
+
+            await EnrichDataJob(evt);
+
             var jobs = evt.Jobs;
             var userInstanceId = jobs.First().UserInstanceId.GetValueOrDefault();
             var jobEnds = new List<JobDto>();
@@ -471,8 +483,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 WorkflowInstanceId = job.WorkflowInstanceId,
                                 WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                 //WorkflowStepInstanceIds = null,
-                                WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
-                                WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                                //WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),        // Không truyền thông tin này để giảm dung lượng msg
+                                //WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes), // Không truyền thông tin này để giảm dung lượng msg
                                 Value = value,
                                 Price = price,
                                 //WorkflowStepPrices = null,
@@ -910,5 +922,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return null;
         }
+
+        #region Enrich data for InputParam
+
+        private async Task EnrichDataJob(AfterProcessDataEntryEvent evt)
+        {
+            if (evt.Jobs == null || evt.Jobs.Count == 0)
+            {
+                if (evt.JobIds != null && evt.JobIds.Any())
+                {
+                    var jobs = (await _repository.GetByIdsAsync(JsonConvert.SerializeObject(evt.JobIds))).ToList();
+                    evt.Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs);
+                }
+            }
+        }
+
+        #endregion
     }
 }

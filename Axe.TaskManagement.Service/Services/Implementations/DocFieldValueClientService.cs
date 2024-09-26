@@ -60,6 +60,22 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<IEnumerable<DocFieldValueDto>>> GetListByDocInstanceId(Guid docInstanceId, string accessToken)
+        {
+            GenericResponse<IEnumerable<DocFieldValueDto>> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-by-doc-instanceid/{docInstanceId}";
+                response = await client.GetAsync<GenericResponse<IEnumerable<DocFieldValueDto>>>(_serviceUri, apiEndpoint, null, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<IEnumerable<DocFieldValueDto>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
         public async Task<GenericResponse<int>> DeleteByDocTypeFieldInstanceIds(Guid docInstanceId, string docTypeFieldIntanceIds, string accessToken = null)
         {
             GenericResponse<int> response;

@@ -17,6 +17,7 @@ using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -39,7 +40,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly ISequenceJobRepository _sequenceJobRepository;
         private readonly ITaskRepository _taskRepository;
         private readonly IQueueLockRepository _queueLockRepository;
+        private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
@@ -63,6 +66,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IJobRepository jobRepository,
             ISequenceJobRepository sequenceJobRepository,
             ITaskRepository taskRepository,
+            IWorkflowClientService workflowClientService,
             IDocClientService docClientService,
             IServiceProvider provider,
             IUserProjectClientService userProjectClientService,
@@ -70,6 +74,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IProjectStatisticClientService projectStatisticClientService,
             IQueueLockRepository queueLockRepository,
             IMapper mapper,
+            IDocTypeFieldClientService docTypeFieldClientService,
             IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
@@ -79,12 +84,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _jobRepository = jobRepository;
             _sequenceJobRepository = sequenceJobRepository;
             _taskRepository = taskRepository;
+            _workflowClientService = workflowClientService;
             _docClientService = docClientService;
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
             _queueLockRepository = queueLockRepository;
             _mapper = mapper;
+            _docTypeFieldClientService = docTypeFieldClientService;
             _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
@@ -102,6 +109,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 {
                     Log.Logger.Error("inputParam is null!");
                     return;
+                }
+
+                var isEnrichData = await EnrichData(inputParam, accessToken);
+                if (isEnrichData)
+                {
+                    @event.Input = JsonConvert.SerializeObject(inputParam);
                 }
 
                 var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
@@ -221,8 +234,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                         WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                                         WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                                         //WorkflowStepInstanceIds = null,   // Sau bước ĐIỀU KIỆN không tồn tại MultipleNextStep
-                                                        WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                                                        WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                                                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                                                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                                                         Value = inputParam.Value,
                                                         Price = price,
                                                         //WorkflowStepPrices = null,    // Sau bước ĐIỀU KIỆN không tồn tại MultipleNextStep
@@ -389,8 +402,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                             WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                                             WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                                             //WorkflowStepInstanceIds = null,   // Sau bước ĐIỀU KIỆN không tồn tại MultipleNextStep
-                                                            WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                                                            WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                                                            //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                                                            //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                                                             Value = value,
                                                             Price = price,
                                                             //WorkflowStepPrices = null,    // Sau bước ĐIỀU KIỆN không tồn tại MultipleNextStep
@@ -495,8 +508,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                     WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                                     WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                                     //WorkflowStepInstanceIds = null,
-                                                    WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                                                    WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                                                    //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                                                    //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                                                     Value = inputParam.Value,
                                                     Price = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? priceJob : 0,
                                                     ClientTollRatio = inputParam.ClientTollRatio,
@@ -814,8 +827,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                         WorkflowStepInstanceId = nextWfsInfo.InstanceId,
                                         //WorkflowStepInstanceIds = null,
-                                        WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),
-                                        WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes),
+                                        //WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),        // Không truyền thông tin này để giảm dung lượng msg
+                                        //WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes), // Không truyền thông tin này để giảm dung lượng msg
                                         Value = value,
                                         Price = price,
                                         //WorkflowStepPrices = null,
@@ -1419,16 +1432,18 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                                     if (nextWfsInfoes != null && nextWfsInfoes.All(x => x.ActionCode != ActionCodeConstants.End))
                                     {
-                                        
-                                        var  currentJobResult=   JsonConvert.DeserializeObject<InputParam>(processJobResponse.Data); //@event.output ở đây chính là kết quả của ProcessJob thực hiện ở trên
+                                        // Xóa bỏ những dữ liệu không cần thiết
+                                        processJobResponse.Data = RemoveUnwantedData(processJobResponse.Data);
+
+                                        var currentJobResult = JsonConvert.DeserializeObject<InputParam>(processJobResponse.Data); //@event.output ở đây chính là kết quả của ProcessJob thực hiện ở trên
                                         var newListInputParam = new List<InputParam>();
 
                                         //Kiểm tra nếu bước hiện tại trả lại nhiều kết quả hay không 
                                         // ví dụ: OCR_A3 -> trả lại nhiều Doc-Copy cho 1 file-input -> thì cần tạo nhiều job
-                                        if (currentJobResult.InputParams!=null && currentJobResult.InputParams.Any())
+                                        if (currentJobResult.InputParams != null && currentJobResult.InputParams.Any())
                                         {
                                             newListInputParam.AddRange(currentJobResult.InputParams);
-                                        }    
+                                        }
                                         else
                                         {
                                             newListInputParam.Add(currentJobResult);
@@ -1625,7 +1640,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         }
                     }
                 }
-                
+
                 if (_isCreateMultiJobFile)
                 {
                     // Create multi jobs (File)
@@ -1949,25 +1964,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             }
         }
 
-        private List<PrevJobInfo> GetQaJobInfos(List<PrevJobInfo> prevJobInfos, int batchSize, int rateOfSampling)
-        {
-            if (prevJobInfos == null || prevJobInfos.Count == 0)
-            {
-                return new List<PrevJobInfo>();
-            }
-
-            // Trường hợp _batchSize = 0: Lấy theo lô mặc định (batch là thư mục cuối)
-            if (batchSize == 0)
-            {
-                return prevJobInfos;
-            }
-
-            // Trường hợp _batchSize > 1
-            int countOfJobsQa = batchSize * rateOfSampling / 100;
-            var rnd = new Random();
-            return prevJobInfos.OrderBy(_ => rnd.Next()).Take(countOfJobsQa).ToList();    // Random rateOfSampling (%) của batchSize
-        }
-
         private async Task<GenericResponse<string>> ProcessJob(string input, string serviceUri, string apiEndpoint, short httpMethodType = (short)HttpClientMethodType.POST, string accessToken = null)
         {
             GenericResponse<string> response;
@@ -2260,5 +2256,129 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             return Guid.Empty;
         }
+
+        #region Enrich data for InputParam
+
+        private async Task<bool> EnrichData(InputParam inputParam, string accessToken = null)
+        {
+            var result = false;
+
+            // Lấy thông tin về luồng đang chạy
+            List<WorkflowStepInfo> wfsInfoes = null;
+            List<WorkflowSchemaConditionInfo> wfSchemaInfoes = null;
+            if (string.IsNullOrEmpty(inputParam.WorkflowStepInfoes) || string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
+            {
+                var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                wfsInfoes = wfInfoes.Item1;
+                wfSchemaInfoes = wfInfoes.Item2;
+                inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
+                inputParam.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
+                result = true;
+            }
+
+            if (inputParam.InputParams != null && inputParam.InputParams.Any() && wfsInfoes != null && wfSchemaInfoes != null)
+            {
+                foreach (var item in inputParam.InputParams)
+                {
+                    if (string.IsNullOrEmpty(item.WorkflowStepInfoes) ||
+                        string.IsNullOrEmpty(item.WorkflowSchemaInfoes))
+                    {
+                        item.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
+                        item.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
+                    }
+                }
+            }
+
+            return result;
+        }
+
+        private async Task<Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>> GetWfInfoes(Guid workflowInstanceId, string accessToken = null)
+        {
+            var wfResult = await _workflowClientService.GetByInstanceIdAsync(workflowInstanceId, accessToken);
+            if (wfResult.Success && wfResult.Data != null)
+            {
+                var wf = wfResult.Data;
+
+                var allWfStepInfoes = new List<WorkflowStepInfo>();
+                foreach (var wfs in wf.LstWorkflowStepDto)
+                {
+                    allWfStepInfoes.Add(new WorkflowStepInfo
+                    {
+                        Id = wfs.Id,
+                        InstanceId = wfs.InstanceId,
+                        Name = wfs.Name,
+                        ActionCode = wfs.ActionCode,
+                        ConfigPrice = wfs.ConfigPrice,
+                        ConfigStep = wfs.ConfigStep,
+                        ServiceCode = wfs.ServiceCode,
+                        ApiEndpoint = wfs.ApiEndpoint,
+                        HttpMethodType = wfs.HttpMethodType,
+                        IsAuto = wfs.IsAuto,
+                        ViewUrl = wfs.ViewUrl,
+                        Attribute = wfs.Attribute
+                    });
+                }
+
+                // Loại bỏ những bước bị ngưng xử lý
+                var wfsInfoes = WorkflowHelper.GetAvailableSteps(allWfStepInfoes);
+
+                var wfSchemaInfoes = wf.LstWorkflowSchemaConditionDto.Select(x => new WorkflowSchemaConditionInfo
+                {
+                    WorkflowStepFrom = x.WorkflowStepFrom,
+                    WorkflowStepTo = x.WorkflowStepTo
+                }).ToList();
+                return new Tuple<List<WorkflowStepInfo>, List<WorkflowSchemaConditionInfo>>(wfsInfoes, wfSchemaInfoes);
+            }
+
+            return null;
+        }
+
+        #endregion
+
+        #region Remove unwanted data
+
+        private string RemoveUnwantedData(string processJobResponseData)
+        {
+            if (!string.IsNullOrEmpty(processJobResponseData))
+            {
+                var inputParam = JsonConvert.DeserializeObject<InputParam>(processJobResponseData);
+                if (inputParam != null)
+                {
+                    if (!string.IsNullOrEmpty(inputParam.WorkflowStepInfoes))
+                    {
+                        inputParam.WorkflowStepInfoes = null;
+                    }
+
+                    if (!string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
+                    {
+                        inputParam.WorkflowSchemaInfoes = null;
+                    }
+
+                    if (inputParam.InputParams != null && inputParam.InputParams.Any())
+                    {
+                        foreach (var item in inputParam.InputParams)
+                        {
+                            if (!string.IsNullOrEmpty(item.WorkflowStepInfoes))
+                            {
+                                item.WorkflowStepInfoes = null;
+                            }
+
+                            if (!string.IsNullOrEmpty(item.WorkflowSchemaInfoes))
+                            {
+                                item.WorkflowSchemaInfoes = null;
+                            }
+                        }
+                    }
+
+                    return JsonConvert.SerializeObject(inputParam);
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
+        #endregion
     }
 }

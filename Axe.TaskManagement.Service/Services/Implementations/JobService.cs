@@ -24,6 +24,7 @@ using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -315,7 +316,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessSegmentLabelingEvent
                     {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        JobId = resultUpdateJob.Id.ToString(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -437,7 +439,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataEntryEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
 
@@ -583,7 +586,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataEntryBoolEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -853,8 +857,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         WorkflowStepInstanceIds = isMultipleNextStep
                             ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                             : null,
-                        WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                        WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                         Value = value,
                         Price = price,
                         WorkflowStepPrices = wfsPrices,
@@ -946,7 +950,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataCheckEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -1066,7 +1071,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataConfirmEvent
                     {
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(jobs),
+                        JobIds = jobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
                     // Outbox
@@ -1391,8 +1397,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         WorkflowStepInstanceIds = isMultipleNextStep
                             ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                             : null,
-                        WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
-                        WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes,
+                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
                         Value = value,
                         Price = price,
                         WorkflowStepPrices = wfsPrices,
@@ -1543,7 +1549,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         var evt = new AfterProcessCheckFinalEvent
                         {
-                            Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                            //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                            JobId = resultUpdateJob.Id.ToString(),
                             AccessToken = accessToken
                         };
                         // Outbox
@@ -1727,7 +1734,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit
                     var evt = new AfterProcessQaCheckFinalEvent
                     {
-                        Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        JobId = resultUpdateJob.Id.ToString(),
                         AccessToken = accessToken
                     };
                     // Outbox OutboxIntegrationEvent
@@ -1935,7 +1943,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                                 WorkflowInstanceId = inputParam.WorkflowInstanceId,
                                 WorkflowStepInstanceId = nextWfsInfo.InstanceId,
-                                WorkflowStepInfoes = inputParam.WorkflowStepInfoes,
+                                //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
                                 ItemInputParams = new List<ItemInputParam>()
                             };
 
@@ -4582,10 +4590,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var evt = new RetryDocEvent
                     {
                         DocInstanceId = docInstanceId,
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
-                    await TriggerRetryDoc(evt);
+                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
                 }
 
                 return GenericResponse<bool>.ResultWithData(true);
@@ -4672,10 +4681,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var evt = new RetryDocEvent
                     {
                         DocInstanceId = docInstanceId,
-                        Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
+                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
                         AccessToken = accessToken
                     };
-                    await TriggerRetryDoc(evt);
+                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
                 }
 
                 return GenericResponse<bool>.ResultWithData(true);
@@ -5841,9 +5851,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return null;
         }
 
-        private async Task TriggerRetryDoc(RetryDocEvent evt)
+        private async Task TriggerRetryDoc(RetryDocEvent evt, string retryWfsActionCode)
         {
-            bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(evt.Jobs.First().ActionCode);
+            bool isCrrStepHeavyJob = WorkflowHelper.IsHeavyJob(retryWfsActionCode);
             //bool isCrrStepHeavyJob = true;
 
             // Outbox

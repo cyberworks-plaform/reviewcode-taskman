@@ -8,6 +8,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Event
     {
         public List<JobDto> Jobs { get; set; }
 
+        public List<string> JobIds { get; set; }
+
         public string AccessToken { get; set; }
     }
 }
