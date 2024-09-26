@@ -35,6 +35,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly ITaskRepository _taskRepository;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
+        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -52,11 +54,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             ITaskRepository taskRepository,
             IWorkflowClientService workflowClientService,
             IDocClientService docClientService,
+            IDocTypeFieldClientService docTypeFieldClientService,
+            IDocFieldValueClientService docFieldValueClientService,
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration, IMapper mapper)
+            IConfiguration configuration, IMapper mapper
+            )
         {
             _eventBus = eventBus;
             _clientFatory = clientFatory;
@@ -64,6 +69,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _taskRepository = taskRepository;
             _workflowClientService = workflowClientService;
             _docClientService = docClientService;
+            _docTypeFieldClientService = docTypeFieldClientService;
+            _docFieldValueClientService = docFieldValueClientService;
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
@@ -620,14 +627,81 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             var result = false;
 
             // Lấy thông tin về luồng đang chạy
+            List<WorkflowStepInfo> wfsInfoes = null;
+            List<WorkflowSchemaConditionInfo> wfSchemaInfoes = null;
             if (string.IsNullOrEmpty(inputParam.WorkflowStepInfoes) || string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
             {
                 var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes.Item1;
-                var wfSchemaInfoes = wfInfoes.Item2;
+                wfsInfoes = wfInfoes.Item1;
+                wfSchemaInfoes = wfInfoes.Item2;
                 inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
                 inputParam.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
                 result = true;
+            }
+
+            if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
+            {
+                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                if (prevWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.Upload))
+                {
+                    var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
+                    if (crrWfsInfo != null)
+                    {
+                        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(crrWfsInfo.ConfigStep,
+                        ConfigStepPropertyConstants.IsPaidStep);
+                        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                        bool isPaid = !crrWfsInfo.IsAuto || (crrWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+                        decimal price = isPaid ? MoneyHelper.GetPriceByConfigPrice(crrWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                        var itemInputParams = new List<ItemInputParam>();
+
+                        var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
+                            inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                        var docFieldValuesRs =
+                            await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
+                                inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
+                        {
+                            var docTypeFields = docTypeFieldsRs.Data;
+                            foreach (var dtf in docTypeFields)
+                            {
+                                var item = new ItemInputParam
+                                {
+                                    FilePartInstanceId = null,
+                                    DocTypeFieldId = dtf.Id,
+                                    DocTypeFieldInstanceId = dtf.InstanceId,
+                                    DocTypeFieldCode = dtf.Code,
+                                    DocTypeFieldName = dtf.Name,
+                                    DocTypeFieldSortOrder = dtf.SortOrder.GetValueOrDefault(),
+                                    InputType = dtf.InputType,
+                                    MaxLength = dtf.MaxLength,
+                                    MinLength = dtf.MinLength,
+                                    MinValue = dtf.MinValue,
+                                    MaxValue = dtf.MaxValue,
+                                    PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
+                                    IsMultipleSelection = dtf.IsMultipleSelection,
+                                    CoordinateArea = dtf.CoordinateArea
+                                };
+                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
+                                {
+                                    var docFieldValues = docFieldValuesRs.Data;
+                                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
+                                    item.DocFieldValueInstanceId = dfv?.InstanceId;
+                                    item.Value = dfv?.Value;
+                                    item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
+                                }
+
+                                itemInputParams.Add(item);
+                            }
+                        }
+
+                        if (itemInputParams.Any())
+                        {
+                            inputParam.ItemInputParams = itemInputParams;
+                            result = true;
+                        }
+                    }
+                }
             }
 
             return result;
