@@ -23,12 +23,14 @@ namespace Axe.TaskManagement.Api.Controllers
     public class JobController : MongoBaseController<IJobService, Job, JobDto>
     {
         private readonly ICachingHelper _cachingHelper;
+        private readonly IReportService _reportService;
 
         #region Initialize
 
-        public JobController(IJobService service, ICachingHelper cachingHelper) : base(service)
+        public JobController(IJobService service, ICachingHelper cachingHelper, IReportService reportService) : base(service)
         {
             _cachingHelper = cachingHelper;
+            _reportService = reportService;
         }
 
         #endregion
@@ -389,10 +391,10 @@ namespace Axe.TaskManagement.Api.Controllers
             return ResponseResult(await _service.GetHistoryJobByUser(request, actionCode, GetBearerToken()));
         }
         [HttpPost]
-        [Route("get-history-job-by-user-v2")]
+        [Route("export-excel-history-job-by-user")]
         public async Task<byte[]> ExportJobs(PagingRequest request, string actionCode)
         {
-            var zipFile = await _service.ExportExcelHistoryJobByUserV2(request, actionCode, GetBearerToken());
+            var zipFile = await _reportService.ExportExcelHistoryJobByUserV2(request, actionCode, GetBearerToken());
             return zipFile;
         }
 

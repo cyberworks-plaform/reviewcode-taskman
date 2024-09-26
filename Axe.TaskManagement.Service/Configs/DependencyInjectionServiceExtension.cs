@@ -12,6 +12,7 @@ namespace Axe.TaskManagement.Service.Configs
             // Add scope service
             services.AddScoped<ITaskService, TaskService>();
             services.AddScoped<IJobService, JobService>();
+            services.AddScoped<IReportService, ReportService>();
             services.AddScoped<ISequenceJobService, SequenceJobService>();
             services.AddScoped<IRecallJobWorkerService, RecallJobWorkerService>();
             services.AddScoped<IQueueLockService, QueueLockService>();
