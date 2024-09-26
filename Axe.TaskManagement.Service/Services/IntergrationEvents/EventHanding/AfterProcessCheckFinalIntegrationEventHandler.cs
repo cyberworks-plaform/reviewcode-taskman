@@ -367,6 +367,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     catch (Exception exSaveDB)
                     {
                         Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent");
+                        throw;
                     }
                 }
             }
@@ -862,6 +863,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             catch (Exception exSaveDB)
                             {
                                 Log.Error(exSaveDB, "Error save DB for event DocUpdateFinalValueEvent");
+                                throw;
                             }
                         }
 
@@ -896,6 +898,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             catch (Exception exSaveDB)
                             {
                                 Log.Error(exSaveDB, "Error save DB for event docFieldValueUpdateStatusCompleteEvt");
+                                throw;
                             }
                         }
 
@@ -980,6 +983,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 catch (Exception exSaveDB)
                 {
                     Log.Error(exSaveDB, $"Error save DB for event {exchangeName}");
+                    throw;
                 }
             }
         }
