@@ -655,7 +655,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
             {
-                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), includeUploadStep: true);
                 if (prevWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.Upload))
                 {
                     var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
