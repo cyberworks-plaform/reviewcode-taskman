@@ -35,8 +35,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly ITaskRepository _taskRepository;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
-        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -54,8 +52,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             ITaskRepository taskRepository,
             IWorkflowClientService workflowClientService,
             IDocClientService docClientService,
-            IDocTypeFieldClientService docTypeFieldClientService,
-            IDocFieldValueClientService docFieldValueClientService,
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
@@ -68,8 +64,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _taskRepository = taskRepository;
             _workflowClientService = workflowClientService;
             _docClientService = docClientService;
-            _docTypeFieldClientService = docTypeFieldClientService;
-            _docFieldValueClientService = docFieldValueClientService;
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;

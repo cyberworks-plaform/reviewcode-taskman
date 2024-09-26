@@ -42,7 +42,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IQueueLockRepository _queueLockRepository;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
-        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
@@ -74,7 +73,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IProjectStatisticClientService projectStatisticClientService,
             IQueueLockRepository queueLockRepository,
             IMapper mapper,
-            IDocTypeFieldClientService docTypeFieldClientService,
             IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
@@ -91,7 +89,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _projectStatisticClientService = projectStatisticClientService;
             _queueLockRepository = queueLockRepository;
             _mapper = mapper;
-            _docTypeFieldClientService = docTypeFieldClientService;
             _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;

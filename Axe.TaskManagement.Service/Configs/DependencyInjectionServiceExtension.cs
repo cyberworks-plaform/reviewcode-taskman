@@ -26,7 +26,6 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddSingleton<IProjectClientService, ProjectClientService>();
             services.AddSingleton<IUserProjectClientService, UserProjectClientService>();
             services.AddSingleton<IDocClientService, DocClientService>();
-            services.AddSingleton<IDocTypeFieldClientService, DocTypeFieldClientService>();
             services.AddSingleton<IDocFieldValueClientService, DocFieldValueClientService>();
             services.AddSingleton<IBatchClientService, BatchClientService>();
             services.AddSingleton<IBussinessConfigClientService, BussinessConfigClientService>();
