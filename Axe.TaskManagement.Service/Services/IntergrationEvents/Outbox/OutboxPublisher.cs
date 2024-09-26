@@ -125,6 +125,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                         var evt = JsonConvert.DeserializeObject<AfterProcessQaCheckFinalEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
+                                    else if (outboxEvent.ExchangeName == nameof(QueueLockEvent).ToLower())
+                                    {
+                                        var evt = JsonConvert.DeserializeObject<QueueLockEvent>(outboxEvent.Data);
+                                        isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
+                                    }
                                     else if (outboxEvent.ExchangeName == RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC || outboxEvent.ExchangeName == nameof(RetryDocEvent).ToLower())
                                     {
                                         var evt = JsonConvert.DeserializeObject<RetryDocEvent>(outboxEvent.Data);
@@ -135,6 +140,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                         var evt = JsonConvert.DeserializeObject<TaskEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
+                                   
                                     else
                                     {
                                         Log.Error($"Can not publish: {outboxEvent.ExchangeName}");
