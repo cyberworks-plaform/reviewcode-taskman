@@ -298,7 +298,31 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             return response;
         }
+        public async Task<GenericResponse<Dictionary<string, string>>> GetMultiPathNameByMultiDocPath(string docPaths, string accessToken = null)
+        {
+            GenericResponse<Dictionary<string, string>> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-multi-path-name-by-multi-doc-path";
+                var requestParam = new Dictionary<string, string>
+                {
+                    { "docPaths", docPaths }
+                };
+                response = await client.GetAsync<GenericResponse<Dictionary<string, string>>>(_serviceUri, apiEndpoint, requestParam, null, accessToken);
+                if (!response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<Dictionary<string, string>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+                Log.Error(ex, ex.Message);
+            }
+            return response;
+        }
 
-	
     }
 }

@@ -29,5 +29,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<string>> GetPathName(string docPath, string accessToken = null);
         Task<GenericResponse<DocDto>> GetByInstanceIdAsync(Guid instanceId, string accessToken = null);
         Task<GenericResponse<int>> UpdateFinalValue(DocUpdateFinalValueEvent model, string accessToken = null);
+        Task<GenericResponse<Dictionary<string, string>>> GetMultiPathNameByMultiDocPath(string docPaths, string accessToken = null);
     }
 }
