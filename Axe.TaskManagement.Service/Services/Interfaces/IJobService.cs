@@ -6,6 +6,8 @@ using Axe.Utility.Enums;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.MongoDbBase.Interfaces;
 using Ce.Constant.Lib.Dtos;
+using Microsoft.AspNetCore.Mvc;
+using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -29,6 +31,8 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<JobDto>> GetProcessingJobQACheckFinalByFileInstanceId(Guid fileInstanceId);
 
         Task<GenericResponse<List<JobDto>>> GetListJob(string actionCode = null, string accessToken = null);
+        Task<byte[]> ExportExcelHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);
+        Task<byte[]> ExportExcelHistoryJobByUserV2(PagingRequest request, string actionCode, string accessToken);
         Task<GenericResponse<int>> DistributeJobCheckFinalBouncedToNewUser(Guid projectInstanceId, string path, Guid userInstanceId, string accessToken = null);
         Task<GenericResponse<CountJobDto>> GetListJobCheckFinalByPath(Guid projectInstanceId, string path);
 

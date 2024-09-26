@@ -5,11 +5,9 @@ using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Ce.Common.Lib.Abstractions;
-using Ce.Common.Lib.Caching.Implementations;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
-using DocumentFormat.OpenXml.Bibliography;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -693,6 +691,13 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetByInstanceIds(List<Guid> instanceIds)
         {
             return ResponseResult(await _service.GetByInstanceIds(instanceIds));
+        }
+
+        [HttpPost]
+        [Route("get-by-ids")]
+        public async Task<IActionResult> GetByIds([FromBody] IdsDto model)
+        {
+            return ResponseResult(await _service.GetByIdsAsync(model.Ids));
         }
     }
 }
