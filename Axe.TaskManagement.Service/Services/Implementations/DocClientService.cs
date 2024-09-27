@@ -323,6 +323,26 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
+        public async Task<GenericResponse<List<DocPathDto>>> GetListPath(int projectId, string accessToken = null)
+        {
+            GenericResponse<List<DocPathDto>> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = $"get-list-path/{projectId}";
+                response = await client.GetAsync<GenericResponse<List<DocPathDto>>>(_serviceUri, apiEndpoint, null, null, accessToken);
+                if (!response.Success)
+                {
+                    Log.Error(response.Message);
+                    Log.Error(response.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<List<DocPathDto>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+                Log.Error(ex, ex.Message);
+            }
+            return response;
+        }
     }
 }
