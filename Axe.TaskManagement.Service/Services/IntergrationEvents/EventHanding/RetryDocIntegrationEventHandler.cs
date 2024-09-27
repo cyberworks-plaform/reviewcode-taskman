@@ -574,22 +574,36 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             bool isNextStepHeavyJob = WorkflowHelper.IsHeavyJob(nextWfsActionCode);
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var exchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower();
+            var outboxEntity = new OutboxIntegrationEvent
             {
-                ExchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower(),
+                ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(evt)
-            });
-            var isAck = _eventBus.Publish(evt, isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(evt),
+                LastModificationDate = DateTime.Now,    
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+
+            try // try to publish event
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(evt, exchangeName);
             }
-            else
+            catch (Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, $"Error publish for event {exchangeName}");
+
+                try // try to save event to DB for retry later
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, $"Error save DB for event {exchangeName}");
+                    throw;
+                }
             }
+
         }
 
         private async Task<Guid> GetClientInstanceIdByProject(Guid projectInstanceId, string accessToken = null)
@@ -641,7 +655,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
             if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
             {
-                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), includeUploadStep: true);
                 if (prevWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.Upload))
                 {
                     var crrWfsInfo = wfsInfoes?.FirstOrDefault(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
