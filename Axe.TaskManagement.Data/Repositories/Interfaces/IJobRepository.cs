@@ -58,7 +58,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<PagedList<DocErrorExtension>> GetPagingDocErrorAsync(FilterDefinition<Job> filter, int index = 1, int size = 10);
         Task<PagedListExtension<Job>> GetPagingExtensionAsync(FilterDefinition<Job> filter, SortDefinition<Job> sort = null, int index = 1, int size = 10);
-        Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter);
+        Task<double> GetFalsePercentAsync(Guid userInstanceId);
 
 
         //GET VALUE CHART 
