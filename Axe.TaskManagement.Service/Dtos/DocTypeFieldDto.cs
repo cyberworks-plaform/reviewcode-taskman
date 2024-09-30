@@ -95,5 +95,9 @@ namespace Axe.TaskManagement.Service.Dtos
         public int TenantId { get; set; }
 
         public bool IsActive { get; set; } = true;
+        [DefaultValue(true)]
+        public bool ShowForInput { get; set; } = true; //Cho phép thiết lập ẩn / hiện thị để nhập liệu
+
+        public string InputShortNote { get; set; }
     }
 }

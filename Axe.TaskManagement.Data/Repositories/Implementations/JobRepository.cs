@@ -1591,16 +1591,16 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             };
         }
 
-        public async Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter)
+        public async Task<double> GetFalsePercentAsync(Guid userInstanceId)
         {
-            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            var filter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
+            filter = filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+            var totalfilter = await DbSet.Find(filter).CountDocumentsAsync();
+
             if (totalfilter == 0) return 0;
 
-            var totalWrong = await DbSet.CountDocumentsAsync(filter &
-                                                             Builders<Job>.Filter.Eq(x => x.Status,
-                                                                 (short)EnumJob.Status.Complete) &
-                                                             Builders<Job>.Filter.Eq(x => x.RightStatus,
-                                                                 (int)EnumJob.RightStatus.Wrong));
+            var filterWrong = filter & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong);
+            var totalWrong = await DbSet.Find(filterWrong).CountDocumentsAsync();
             return Math.Round(totalWrong * 100.0 / totalfilter, 2);
         }
 

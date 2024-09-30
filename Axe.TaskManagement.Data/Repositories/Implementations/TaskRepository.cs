@@ -46,10 +46,6 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         public async Task<TaskEntity> UpdateProgressValue(string id, TaskStepProgress changeTaskStepProgress, short? newStatus = null)
         {
             var objectId = new ObjectId(id);
-            // Cheating: avoid multiple update in a document at the same time
-            Random rnd = new Random();
-            int delayUpdateTask = rnd.Next(200, 1000);
-            await Task.Delay(delayUpdateTask);
             var task = await GetByIdAsync(objectId);
 
             if (task == null)

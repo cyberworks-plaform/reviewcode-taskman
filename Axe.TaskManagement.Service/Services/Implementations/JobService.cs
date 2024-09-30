@@ -68,6 +68,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IProjectStatisticClientService _projectStatisticClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IMoneyService _moneyService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IExternalProviderServiceConfigClientService _providerConfig;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
@@ -98,6 +99,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
             IMoneyService moneyService,
+            IDocTypeFieldClientService docTypeFieldClientService,
             ISequenceJobRepository sequenceJobRepository,
             IBaseHttpClientFactory clientFatory,
             IExternalProviderServiceConfigClientService externalProviderServiceConfigClientService,
@@ -120,6 +122,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _projectStatisticClientService = projectStatisticClientService;
             _transactionClientService = transactionClientService;
             _moneyService = moneyService;
+            _docTypeFieldClientService = docTypeFieldClientService;
             _useCache = _cachingHelper != null;
             _clientFatory = clientFatory;
             _providerConfig = externalProviderServiceConfigClientService;
@@ -5038,18 +5041,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             try
             {
                 string cacheKey = $"$@${userInstanceId}$@$FalsePercent";
-                var minutesExpired = 1;
+                var minutesExpired = 1*60*60; // 1 hours 
 
                 var result = _cachingHelper.TryGetFromCache<double?>(cacheKey);
                 if (result == null)
                 {
-                    var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+                    result = await _repository.GetFalsePercentAsync(userInstanceId);
 
-                    var lastFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
-
-                    result = await _repository.GetFalsePercentAsync(lastFilter);
-
-                    await _cachingHelper.TrySetCacheAsync<double>(cacheKey, result.GetValueOrDefault(), minutesExpired * 60);
+                    await _cachingHelper.TrySetCacheAsync<double>(cacheKey, result.GetValueOrDefault(), minutesExpired);
                 }
                 response = GenericResponse<double>.ResultWithData(result.GetValueOrDefault());
             }
@@ -7182,29 +7181,39 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
 
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
+            Dictionary<Guid, List<DocTypeFieldDto>> dicDocTypeField = new Dictionary<Guid, List<DocTypeFieldDto>>();
+            Dictionary<string, string> dicDocPath = new Dictionary<string, string>();
             foreach (var job in updatedJobs)
             {
                 //get PathName
-                job.PathName = await GetPathName(job.DocPath, accessToken);
-
-                List<DocItem> listDocItem = null;
-                var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
-                var cacheTime = 5 * 60;
-                listDocItem = _cachingHelper.TryGetFromCache<List<DocItem>>(cacheKey);
-                if (listDocItem == null || listDocItem.Count == 0)
+                string pathName = string.Empty;
+                if (!dicDocPath.ContainsKey(job.DocPath))
                 {
-                    var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
-                    listDocItem = listDocItemRes.Data;
+                    pathName = await GetPathName(job.DocPath, accessToken);
+                    dicDocPath.Add(job.DocPath, pathName);
+                }
+                else
+                {
+                    pathName = dicDocPath[job.DocPath];
+                }
+                job.PathName = pathName;
 
-                    //save to cache => do mỗi Job -> Doc -> DigitizedTemplateId => mặc dù lấy DocItem theo DocID nhưng có thể save theo TemplateID
-                    // lưu ý nếu sau này dùng các thuộc tính khác ngoài TemplateID thì phải sửa logic cacheKey
-                    await _cachingHelper.TrySetCacheAsync(cacheKey, listDocItem, cacheTime);
+                List<DocTypeFieldDto> listDocTypeField = null;
+                if (!dicDocTypeField.ContainsKey(job.DigitizedTemplateInstanceId.GetValueOrDefault()))
+                {
+                    var listdocTypeFieldRes = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    listDocTypeField = listdocTypeFieldRes.Data;
+                    dicDocTypeField.Add(job.DigitizedTemplateInstanceId.GetValueOrDefault(), listDocTypeField);
+                }
+                else
+                {
+                    listDocTypeField = dicDocTypeField[job.DigitizedTemplateInstanceId.GetValueOrDefault()];
                 }
 
                 //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
                 if (job.DocTypeFieldInstanceId != null)
                 {
-                    var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == job.DocTypeFieldInstanceId);
 
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
@@ -7212,8 +7221,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.MaxLength = docItem?.MaxLength ?? 0;
                     job.Format = docItem?.Format;
                     job.InputShortNote = docItem?.InputShortNote;
-                    job.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                    job.DocTypeFieldName = docItem?.DocTypeFieldName;
+                    job.DocTypeFieldCode = docItem?.Code;
+                    job.DocTypeFieldName = docItem?.Name;
                     job.InputType = docItem?.InputType ?? 0;
                     job.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                     job.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7241,7 +7250,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         foreach (var item in jobValue)
                         {
-                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
@@ -7250,8 +7259,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
-                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.DocTypeFieldCode = docItem?.Code;
+                            item.DocTypeFieldName = docItem?.Name;
                             item.InputType = docItem?.InputType ?? 0;
                             item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                             item.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7267,7 +7276,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         foreach (var item in jobOldValue)
                         {
-                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
@@ -7276,8 +7285,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
-                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.DocTypeFieldCode = docItem?.Code;
+                            item.DocTypeFieldName = docItem?.Name;
                             item.InputType = docItem?.InputType ?? 0;
                             item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                             item.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7287,6 +7296,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
             }
+            dicDocPath.Clear();
+            dicDocTypeField.Clear();
             return updatedJobs;
         }
 
