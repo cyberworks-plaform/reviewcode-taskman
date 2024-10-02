@@ -45,6 +45,7 @@ using MiniExcelLibs;
 using SharpCompress.Common;
 using System.IO.Compression;
 using SharpCompress.Compressors.Xz;
+using System.Collections;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -75,6 +76,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         private readonly ICachingHelper _cachingHelper;
+        private readonly IRecallJobWorkerService _recallJobWorkerService;
         private readonly bool _useCache;
         private const string DataProcessing = "DataProcessing";
         private const int TimeOut = 600;   // Default HttpClient timeout is 100s
@@ -104,7 +106,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             IBaseHttpClientFactory clientFatory,
             IExternalProviderServiceConfigClientService externalProviderServiceConfigClientService,
             Microsoft.Extensions.Configuration.IConfiguration configuration,
-            IOutboxIntegrationEventRepository outboxIntegrationEventRepository) : base(repos, mapper, userPrincipalService)
+            IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
+            IRecallJobWorkerService recallJobWorkerService
+            ) : base(repos, mapper, userPrincipalService)
         {
             _repository = repos;
             _cachingHelper = cachingHelper;
@@ -309,7 +313,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
@@ -426,8 +430,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
-
+                    var userId_turnIDHashSet = new HashSet<string>(); 
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
                 }
@@ -571,9 +584,18 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
-                {
-                    await ReCallJobByIds(lstId, accessToken);
-
+                {                    
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
                 }
@@ -936,7 +958,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }                   
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
@@ -1061,8 +1093,18 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
-
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
+                    
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -1485,8 +1527,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
-
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -1696,8 +1737,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
-
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -2223,7 +2263,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (data.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(data.Select(x => x.Id).ToList(), accessToken);
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in data)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
 
                     response = GenericResponse<List<JobDto>>.ResultWithData(new List<JobDto>());
                     return response;
@@ -2832,83 +2882,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             // Cập nhật LastModificationDate để đẩy thứ tự ưu tiên của những việc thu hồi lên
             var jobs = await _repository.FindAsync(fitlerUser & fitlerStatus & fitlerDudeDate);
+            var userId_turnIDHashSet = new HashSet<string>();
             foreach (var job in jobs)
             {
-                if (job.ActionCode == nameof(ActionCodeConstants.DataEntry))
+                //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                if (!userId_turnIDHashSet.Contains(hashkey))
                 {
-                    job.IsIgnore = false;
-                    job.ReasonIgnore = null;
-                    job.IsWarning = false;
-                    job.ReasonWarning = null;
-                }
-                job.TurnInstanceId = null;
-                job.Status = (short)EnumJob.Status.Waiting;
-                job.UserInstanceId = null;
-                if (job.StartWaitingDate.HasValue)
-                {
-                    job.LastModificationDate = job.StartWaitingDate;
-                }
-            }
-
-            var resultUpdate = 0;
-            var docInstanceIds = new List<Guid>();
-            if (jobs.Count > 0)
-            {
-                docInstanceIds = jobs.Where(x => x.DocInstanceId.HasValue).Select(x => x.DocInstanceId.Value).ToList();
-                resultUpdate = await _repos.UpdateMultiAsync(jobs);
-                await UnLockDeleteDoc(docInstanceIds);
-                await UpdateDocFieldValueStatus(jobs.Where(x => x.DocFieldValueInstanceId.HasValue).Select(x => x.DocFieldValueInstanceId.Value).Distinct().ToList());
-            }
-
-            // Update ProjectStatistic
-            if (resultUpdate > 0 && jobs.Any() && docInstanceIds.Any())
-            {
-                var job = jobs.First();
-                var projectInstanceId = job.ProjectInstanceId.GetValueOrDefault();
-                var actionCode = job.ActionCode;
-                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes.Item1;
-                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
-
-                foreach (var docInstanceId in docInstanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = 0,
-                        ProcessingFile = 0,
-                        CompleteFile = 0,
-                        TotalFile = 0
-                    };
-                    var changeProjectStepProgress = new List<ProjectStepProgress>();
-                    // Nếu tồn tại job Complete thì ko chuyển trạng thái về Processing
-                    var hasJobComplete =
-                        await _repository.CheckHasJobCompleteByWfs(docInstanceId, actionCode, crrWfsInfo.InstanceId);
-                    if (!hasJobComplete)
-                    {
-                        changeProjectStepProgress = crrJobs.GroupBy(x => new { x.ProjectInstanceId, x.WorkflowInstanceId, x.WorkflowStepInstanceId, x.ActionCode }).Select(grp => new ProjectStepProgress
-                        {
-                            InstanceId = grp.Key.WorkflowStepInstanceId.GetValueOrDefault(),
-                            Name = string.Empty,
-                            ActionCode = grp.Key.ActionCode,
-                            ProcessingFile = -grp.Select(i => i.DocInstanceId.GetValueOrDefault()).Distinct().Count(),
-                            CompleteFile = 0,
-                            TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                        }).ToList();
-                    }
-
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
-                    {
-                        ProjectInstanceId = projectInstanceId,
-                        StatisticDate = Int32.Parse(crrJobs.First().DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = string.Empty,
-                        TenantId = crrJobs.First().TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                    userId_turnIDHashSet.Add(hashkey);
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                 }
             }
 
@@ -3317,21 +3299,29 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
             };
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var outboxEntity = new OutboxIntegrationEvent
             {
                 ExchangeName = nameof(LogJobEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(logJobEvt)
-            });
-            var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(logJobEvt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            else
+            catch(Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                }
+                catch(Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, "Error save db for event");
+                }
             }
         }
 
@@ -6592,182 +6582,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
     /// </summary>
     public partial class JobService
     {
-        private async Task ReCallJobByIds(List<ObjectId> lstId, string accessToken = null)
-        {
-            var fitler = Builders<Job>.Filter.In(x => x.Id, lstId);
 
-            // Cập nhật LastModificationDate để đẩy thứ tự ưu tiên của những việc thu hồi lên
-            var jobs = await _repos.FindAsync(fitler);
-            foreach (var job in jobs)
-            {
-                job.TurnInstanceId = null;
-                job.Status = (short)EnumJob.Status.Waiting;
-                job.UserInstanceId = null;
-                if (job.ActionCode == nameof(ActionCodeConstants.DataEntry)) //=> thu hồi reset lý do bỏ qua
-                {
-                    job.IsIgnore = false;
-                    job.ReasonIgnore = null;
-                    job.IsWarning = false;
-                    job.ReasonWarning = null;
-                }
-                if (job.StartWaitingDate.HasValue)
-                {
-                    job.LastModificationDate = job.StartWaitingDate;
-                }
-            }
-            var resultUpdate = 0;
-            var docInstanceIds = new List<Guid>();
-            if (jobs.Count > 0)
-            {
-                docInstanceIds = jobs.Where(x => x.DocInstanceId != null).Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct().ToList();
-                resultUpdate = await _repos.UpdateMultiAsync(jobs);
-                await UnLockDeleteDoc(docInstanceIds);
-                await UpdateDocFieldValueStatus(jobs.Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).Distinct().ToList());
-            }
-
-            // Update ProjectStatistic
-            if (resultUpdate > 0 && jobs.Any() && docInstanceIds.Any())
-            {
-                var job = jobs.First();
-                var projectTypeInstanceId = job.ProjectTypeInstanceId;
-                var projectInstanceId = job.ProjectInstanceId.GetValueOrDefault();
-                var actionCode = job.ActionCode;
-                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes.Item1;
-                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
-
-                foreach (var docInstanceId in docInstanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-
-                    // Nếu tồn tại job Complete thì ko chuyển trạng thái về Processing
-                    var hasJobComplete =
-                        await _repository.CheckHasJobCompleteByWfs(docInstanceId, actionCode, crrWfsInfo.InstanceId);
-                    if (!hasJobComplete)
-                    {
-                        var changeProjectFileProgress = new ProjectFileProgress
-                        {
-                            UnprocessedFile = 0,
-                            ProcessingFile = 0,
-                            CompleteFile = 0,
-                            TotalFile = 0
-                        };
-                        var changeProjectStepProgress = crrJobs.GroupBy(x => new { x.ProjectInstanceId, x.WorkflowInstanceId, x.WorkflowStepInstanceId, x.ActionCode }).Select(grp => new ProjectStepProgress
-                        {
-                            InstanceId = grp.Key.WorkflowStepInstanceId.GetValueOrDefault(),
-                            Name = string.Empty,
-                            ActionCode = grp.Key.ActionCode,
-                            ProcessingFile = -grp.Select(i => i.DocInstanceId.GetValueOrDefault()).Distinct().Count(),
-                            CompleteFile = 0,
-                            TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                        }).ToList();
-                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
-                        {
-                            ProjectTypeInstanceId = projectTypeInstanceId,
-                            ProjectInstanceId = projectInstanceId,
-                            WorkflowInstanceId = job.WorkflowInstanceId,
-                            WorkflowStepInstanceId = crrWfsInfo.InstanceId,
-                            ActionCode = job.ActionCode,
-                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
-                            StatisticDate = Int32.Parse(crrJobs.First().DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                            ChangeUserStatistic = string.Empty,
-                            TenantId = crrJobs.First().TenantId
-                        };
-                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
-
-                        int increaseProcessingFile = changeProjectStepProgress.Sum(s => s.ProcessingFile);
-                        Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: -{increaseProcessingFile} ProcessingFile for StepProgressStatistic with DocInstanceId: {docInstanceId}");
-                    }
-                }
-            }
-        }
-
-        private async Task UnLockDeleteDoc(List<Guid> lstDocId)
-        {
-            if (lstDocId != null && lstDocId.Count > 0)
-            {
-                var castList = lstDocId.ConvertAll<Guid?>(i => i).ToList();
-                var fitler = Builders<Job>.Filter.In(x => x.DocInstanceId, castList);
-                var lstJob = await _repository.FindAsync(fitler);
-                var lstDocCantDelete = lstJob.Where(x => x.UserInstanceId != null).Select(x => x.DocInstanceId).ToList();
-                var lstDocUnlock = lstJob.Where(x => !lstDocCantDelete.Contains(x.DocInstanceId)).Where
-                    (x => x.DocInstanceId.HasValue).Select(x => x.DocInstanceId.Value).Distinct().ToList();
-                if (lstDocUnlock != null && lstDocUnlock.Count > 0)
-                {
-                    // Publish DocEvent to EventBus
-                    var evt = new DocChangeDeleteableEvent
-                    {
-                        DocInstanceIds = lstDocUnlock
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(DocChangeDeleteableEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(DocChangeDeleteableEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                    }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
-                }
-            }
-        }
-
-        private async Task UpdateDocFieldValueStatus(List<Guid> lstDocFieldValue)
-        {
-            if (lstDocFieldValue != null && lstDocFieldValue.Count > 0)
-            {
-                var lstDocFieldValueUpdate = new List<Guid>();
-                foreach (var item in lstDocFieldValue)
-                {
-                    var fitler = Builders<Job>.Filter.Eq(x => x.DocFieldValueInstanceId, item);
-
-                    var filterWaiting = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
-
-                    var countOfAll = await _repository.CountAsync(fitler);
-                    var countOfWaiting = await _repository.CountAsync(fitler & filterWaiting);
-                    if (countOfAll == countOfWaiting)
-                    {
-                        lstDocFieldValueUpdate.Add(item);
-                    }
-                }
-
-                if (lstDocFieldValueUpdate.Count > 0)
-                {
-                    var evt = new DocFieldValueUpdateStatusWaitingEvent
-                    {
-                        DocFieldValueInstanceIds = lstDocFieldValueUpdate
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                    }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
-                }
-            }
-        }
 
         private async Task SetCacheRecall(Guid userInstanceId, Guid turnInstanceId, int minutesExpired, string accessToken)
         {
@@ -6822,22 +6637,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //bool isCrrStepHeavyJob = true;
 
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var exchangeName = isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower();
+            var outboxEntity = new OutboxIntegrationEvent
             {
-                ExchangeName = isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower(),
+                ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(evt)
-            });
-            var isAck = _eventBus.Publish(evt, isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(evt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(evt, exchangeName);
             }
-            else
+            catch(Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, $"Error publish for event {exchangeName}");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                }
+                catch(Exception ex)
+                {
+                    Log.Error(ex, $"Error save DB for event {exchangeName}");
+                    throw;
+                }
             }
+            
         }
 
         private bool IsValidCheckFinalValue(List<DocItem> oldValue, List<DocItem> newValue)
@@ -7060,22 +6887,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 AccessToken = accessToken
             };
             // Outbox
-            var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var isAckLogJobEvent = false;
+            var outboxEntityLogJobEvent = new OutboxIntegrationEvent
             {
                 ExchangeName = nameof(LogJobEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(logJobEvt)
-            });
-            var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-            if (isAckLogJobEvent)
+                Data = JsonConvert.SerializeObject(logJobEvt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            else
+            catch(Exception exPublishEvent)
             {
-                outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                }
+                catch(Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, "Error save DB for evnet LogJobEvent");
+                }
             }
+           
             return isAckLogJobEvent;
         }
 

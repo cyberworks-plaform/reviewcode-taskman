@@ -9,5 +9,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
     {
         Task DoWork(Guid userInstanceId, Guid turnInstanceId, string accessToken);
         Task<string> ReCallAllJob();
+        Task RecallJobByTurn(Guid userInstanceId, Guid turnInstanceId, string accessToken = null);
     }
 }
