@@ -387,18 +387,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 var findOptions = new FindOptions<Job> { BatchSize = 1000 };
                 var cursor = await _jobRepository.GetCursorListJobAsync(lastFilter, findOptions);
+                var resultDocPathName = await _docClientService.GetListPath(project.Data.Id, accessToken);
+                var lstDocPathName = new List<DocPathDto>();
+                if (resultDocPathName != null && resultDocPathName.Data.Count() > 0)
+                {
+                    lstDocPathName = resultDocPathName.Data;
+                }
                 var data = new List<Dictionary<string, object>>();
                 while (await cursor.MoveNextAsync())
                 {
                     var currentBatch = cursor.Current;
-                    var lstDocPathName = new Dictionary<string, string>();
-                    var lstDocPath = currentBatch.Select(x => x.DocPath).ToList().Distinct();
-                    var requestLstDocPath = JsonConvert.SerializeObject(lstDocPath);
-                    var resultDocPathName = await _docClientService.GetMultiPathNameByMultiDocPath(requestLstDocPath, accessToken);
-                    if (resultDocPathName != null)
-                    {
-                        lstDocPathName = resultDocPathName.Data;
-                    }
                     foreach (var job in currentBatch)
                     {
                         try
@@ -469,7 +467,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             }
                             #endregion
                             #region pathName
-                            var pathName = lstDocPathName != null ? lstDocPathName.GetValueOrDefault(job.DocPath) + "/" + job.DocName ?? "" : "";
+                            var pathName = lstDocPathName.FirstOrDefault(x => x.SyncMetaIdPath == job.DocPath);
+                            var pathNameValue = pathName != null ? pathName.SyncMetaValuePath : string.Empty;
                             #endregion
                             var wfStepName = lstActionCode.Where(x => x.Value == job.ActionCode).FirstOrDefault()?.Text;
                             string price = "0";
@@ -494,7 +493,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             var row = new Dictionary<string, object>
                             {
                                 ["Mã công việc"] = GetSafeValue(job.Code),
-                                ["Đường dẫn"] = GetSafeValue(pathName),
+                                ["Đường dẫn"] = GetSafeValue(pathNameValue),
                                 ["Nội dung"] = GetSafeValue(value),
                                 ["Loại công việc"] = GetSafeValue(wfStepName),
                                 ["Nhân sự"] = GetSafeValue(userFullName + " - " + userName),
@@ -527,10 +526,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             throw new Exception(ex.Message);
                         }
                     }
-                    if (lstDocPathName != null)
-                    {
-                        lstDocPathName.Clear();
-                    }
                     //data.Clear();
 
                 }
@@ -541,6 +536,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         await MiniExcel.SaveAsAsync(fileStream, data);
                         fileStream.Dispose();
                     }
+                }
+                if (lstDocPathName != null)
+                {
+                    lstDocPathName.Clear();
                 }
                 string zipFilePath = Path.Combine(Path.GetTempPath(), "JobHistoryFiles.zip");
                 if (File.Exists(zipFilePath))
