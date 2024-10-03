@@ -5414,16 +5414,72 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return GenericResponse<List<ErrorDocReportSummary>>.ResultWithData(result);
         }
 
-        public async Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderId, string accessToken = null)
+        public async Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderIds, string accessToken = null)
         {
+            var pathFilters = request.Filters.Where(_ => _.Field != null && _.Field.Equals("slTreeFolder") && !string.IsNullOrWhiteSpace(_.Value)).ToList();
             // Filter by projectInstanceId
             var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
 
-            // Filter by folderId
-            if (!string.IsNullOrEmpty(folderId))
+            if (pathFilters.Count > 0)
             {
-                folderId = $"{folderId}/$";
-                filter = filter & Builders<Job>.Filter.Regex(x => x.DocPath, folderId);
+                var folderIdFilters = new List<FilterDefinition<Job>>();
+                foreach (var pathFlter in pathFilters)
+                {
+                    folderIdFilters.Add(Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFlter.Value.ToString()}")));
+                }
+                if (folderIdFilters.Any())
+                {
+                    filter &= Builders<Job>.Filter.Or(folderIdFilters);
+                }
+            }
+
+            // Filter by folderId
+            if (!string.IsNullOrEmpty(folderIds))
+            {
+                if (folderIds.Contains(','))
+                {
+                    var folderIdFilters = new List<FilterDefinition<Job>>();
+                    var lstFolderId = folderIds.Split(',');
+                    foreach (var folderId in lstFolderId)
+                    {
+                        folderIdFilters.Add(Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{folderId}")));
+                    }
+
+                    if (folderIdFilters.Any())
+                    {
+                        filter &= Builders<Job>.Filter.Or(folderIdFilters);
+                    }
+                }
+            }
+            // Filter by ActionCode 
+            var actionCodeFilterValue = request.Filters.Where(_ => _.Field != null && _.Field.Equals("ActionCode") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+            if (actionCodeFilterValue != null)
+            {
+                filter &= Builders<Job>.Filter.Eq(x => x.ActionCode, actionCodeFilterValue.Value);
+            }
+
+            // Filter by DocName 
+            var docNameFilterValue = request.Filters.Where(_ => _.Field != null && _.Field.Equals("DocName") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+            if (docNameFilterValue != null)
+            {
+                filter &= Builders<Job>.Filter.Regex(x => x.DocName, new BsonRegularExpression(docNameFilterValue.Value, "i"));
+            }
+
+            var nullFilters = request.Filters.Where(_ => _.Field == null).ToList();
+            if (nullFilters.Count > 0)
+            {
+                foreach (var ft in nullFilters)
+                {
+                    // Filter by DocName
+                    var docNFilterValue = ft.Filters.Where(_ => _.Field != null && _.Field.Equals("DocName") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+                    if (docNFilterValue != null)
+                    {
+                        filter &= Builders<Job>.Filter.Regex(x => x.DocName, new BsonRegularExpression(docNFilterValue.Value, "i"));
+                    }
+                }
             }
 
             if (request.PageInfo == null)
