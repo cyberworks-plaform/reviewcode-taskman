@@ -6565,7 +6565,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 return GenericResponse<List<CountJobEntity>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
         }
-
+        /// <summary>
+        /// Thống kê số lượng job theo từng step
+        /// Được call từ web menu: Thống kê dự án
+        /// </summary>
+        /// <param name="projectInstanceId"></param>
+        /// <param name="wfInstanceId"></param>
+        /// <param name="fromDate"></param>
+        /// <param name="toDate"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         public async Task<GenericResponse<List<CountJobEntity>>> GetSummaryDocByAction(Guid projectInstanceId,
             Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null)
         {
