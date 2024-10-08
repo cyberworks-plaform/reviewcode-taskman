@@ -139,7 +139,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<bool>> UnLockJobByPath(Guid projectInstanceId, string pathRelationId, string accessToken = null);
         Task<GenericResponse<List<CountJobEntity>>> GetCountAllJobByStatus();
         Task<GenericResponse<List<CountJobEntity>>> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate);
-        Task<GenericResponse<List<CountJobEntity>>> GetSummaryDocByAction(Guid projectInstanceId, Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null);
+        Task<GenericResponse<List<CountJobEntity>>> GetSummaryJobCompleteByAction(Guid projectInstanceId);
         Task<GenericResponse<WorkSpeedReportEntity>> GetWorkSpeed(Guid? projectInstanceId, Guid? userInstanceId);
         Task<GenericResponse<List<JobByDocDoneEntity>>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);
         Task<GenericResponse<List<JobOfFileEntity>>> GetSummaryJobOfFile(Guid? docInstanceId);

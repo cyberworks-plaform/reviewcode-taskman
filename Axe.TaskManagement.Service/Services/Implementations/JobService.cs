@@ -430,7 +430,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    var userId_turnIDHashSet = new HashSet<string>(); 
+                    var userId_turnIDHashSet = new HashSet<string>();
                     foreach (var job in jobs)
                     {
                         //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
@@ -584,7 +584,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
-                {                    
+                {
                     var userId_turnIDHashSet = new HashSet<string>();
                     foreach (var job in jobs)
                     {
@@ -968,7 +968,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             userId_turnIDHashSet.Add(hashkey);
                             await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                         }
-                    }                   
+                    }
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
@@ -1104,7 +1104,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                         }
                     }
-                    
+
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -3311,14 +3311,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            catch(Exception exPublishEvent)
+            catch (Exception exPublishEvent)
             {
                 Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
                 try
                 {
                     await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
                 }
-                catch(Exception exSaveDB)
+                catch (Exception exSaveDB)
                 {
                     Log.Error(exSaveDB, "Error save db for event");
                 }
@@ -3478,7 +3478,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         #endregion
 
         #region History Job
-        
+
         public async Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUser(PagingRequest request, string actionCode, string accessToken)
         {
             GenericResponse<HistoryJobDto> response;
@@ -4329,7 +4329,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 throw new Exception(ex.Message);
             }
             finally
-            { 
+            {
                 //Xóa thư mục temp
                 Directory.Delete(tempDirectory, true);
             }
@@ -4641,7 +4641,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     while (await cursor.MoveNextAsync())
                     {
                         var currentBatch = cursor.Current;
-                        
+
                         totalRow += currentBatch.Count();
                         var lstDocPathName = new Dictionary<string, string>();
                         var lstDocPath = currentBatch.Select(x => x.DocPath).ToList().Distinct();
@@ -4786,7 +4786,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return result;
         }
-        
+
         void SaveAsFile(FileStream fileStream, List<Dictionary<string, object>> data)
         {
             try
@@ -5031,7 +5031,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             try
             {
                 string cacheKey = $"$@${userInstanceId}$@$FalsePercent";
-                var minutesExpired = 1*60*60; // 1 hours 
+                var minutesExpired = 1 * 60 * 60; // 1 hours 
 
                 var result = _cachingHelper.TryGetFromCache<double?>(cacheKey);
                 if (result == null)
@@ -6570,21 +6570,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// Được call từ web menu: Thống kê dự án
         /// </summary>
         /// <param name="projectInstanceId"></param>
-        /// <param name="wfInstanceId"></param>
-        /// <param name="fromDate"></param>
-        /// <param name="toDate"></param>
-        /// <param name="accessToken"></param>
         /// <returns></returns>
-        public async Task<GenericResponse<List<CountJobEntity>>> GetSummaryDocByAction(Guid projectInstanceId,
-            Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null)
+        public async Task<GenericResponse<List<CountJobEntity>>> GetSummaryJobCompleteByAction(Guid projectInstanceId)
         {
             try
             {
-                var wfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes != null ? wfInfoes.Item1 : null;
-                var wfSchemaInfoes = wfInfoes != null ? wfInfoes.Item2 : null;
-
-                var data = await _repository.GetSummaryDocByAction(projectInstanceId, wfsInfoes, wfSchemaInfoes, fromDate, toDate);
+                var data = await _repository.GetSummaryJobCompleteByAction(projectInstanceId);
                 if (data != null && data.Any())
                 {
                     foreach (var item in data)
@@ -6716,20 +6707,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 _eventBus.Publish(evt, exchangeName);
             }
-            catch(Exception exPublishEvent)
+            catch (Exception exPublishEvent)
             {
                 Log.Error(exPublishEvent, $"Error publish for event {exchangeName}");
                 try
                 {
                     await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
                 }
-                catch(Exception ex)
+                catch (Exception ex)
                 {
                     Log.Error(ex, $"Error save DB for event {exchangeName}");
                     throw;
                 }
             }
-            
+
         }
 
         private bool IsValidCheckFinalValue(List<DocItem> oldValue, List<DocItem> newValue)
@@ -6965,19 +6956,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            catch(Exception exPublishEvent)
+            catch (Exception exPublishEvent)
             {
                 Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
                 try
                 {
                     await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
                 }
-                catch(Exception exSaveDB)
+                catch (Exception exSaveDB)
                 {
                     Log.Error(exSaveDB, "Error save DB for evnet LogJobEvent");
                 }
             }
-           
+
             return isAckLogJobEvent;
         }
 

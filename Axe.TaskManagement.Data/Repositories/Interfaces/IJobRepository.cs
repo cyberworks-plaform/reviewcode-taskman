@@ -73,8 +73,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<List<CountJobEntity>> GetCountAllJobByStatus();
         Task<List<CountJobEntity>> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate);
-        Task<List<CountJobEntity>> GetSummaryDocByAction(Guid projectInstanceId, List<WorkflowStepInfo> wfsInfoes,
-            List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string fromDate, string toDate);
+        Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId);
         Task<WorkSpeedReportEntity> GetWorkSpeed(Guid? projectInstanceId, Guid? userInstanceId);
         Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V2(FilterDefinition<Job> filter);
         Task<List<JobByDocDoneEntity>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);

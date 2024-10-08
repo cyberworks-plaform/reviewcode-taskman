@@ -2033,13 +2033,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         /// Thống kê số lượng job hoàn thành / chưa hoàn thành theo từng step
         /// </summary>
         /// <param name="projectInstanceId"></param>
-        /// <param name="wfsInfoes"></param>
-        /// <param name="wfSchemaInfoes"></param>
-        /// <param name="fromDate"></param>
-        /// <param name="toDate"></param>
         /// <returns></returns>
-        public async Task<List<CountJobEntity>> GetSummaryDocByAction(Guid projectInstanceId, List<WorkflowStepInfo> wfsInfoes,
-            List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string fromDate, string toDate)
+        public async Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId)
         {
             
             Stopwatch sw = Stopwatch.StartNew();
