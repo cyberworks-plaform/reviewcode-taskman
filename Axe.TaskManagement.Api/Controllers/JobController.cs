@@ -564,7 +564,7 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetCountAllJobByStatus()
         {
             GenericResponse<List<CountJobEntity>> response;
-            var cacheTimeOut = 60; // 60 second
+            var cacheTimeOut = 5*60; // 5 minutes second
             var cacheKey = $"{this.GetType().Name}_get-count-all-job-by-status";
             //try to get data from cache
             var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
@@ -590,7 +590,7 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate)
         {
             GenericResponse<List<CountJobEntity>> response;
-            var cacheTimeOut = 60; // 60 second
+            var cacheTimeOut = 5*60; // 60 second
             var cacheKey = $"{this.GetType().Name}_get-summary-job-by-action_{projectInstanceId}_{fromDate}_{toDate}";
             //try to get data from cache
             var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
@@ -612,19 +612,19 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpGet]
-        [Route("get-summary-doc-by-action")]
-        public async Task<IActionResult> GetSummaryDocByAction(Guid projectInstanceId, Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null)
+        [Route("get-summary-job-complete-by-action")]
+        public async Task<IActionResult> GetSummaryDocByAction(Guid projectInstanceId)
         {
             GenericResponse<List<CountJobEntity>> response;
-            var cacheTimeOut = 60; // 60 second
-            var cacheKey = $"{this.GetType().Name}_get-summary-doc-by-action_{projectInstanceId}_{wfInstanceId.GetValueOrDefault()}_{fromDate}_{toDate}";
+            var cacheTimeOut = 5*60; // 5 minutes
+            var cacheKey = $"{this.GetType().Name}_get-summary-job-complete-by-action_{projectInstanceId}";
             //try to get data from cache
             var reportData = await _cachingHelper.TryGetFromCacheAsync<List<CountJobEntity>>(cacheKey);
-
+            
             // no data in cache
             if (reportData == null)
             {
-                var serviceResponse = await _service.GetSummaryDocByAction(projectInstanceId, wfInstanceId, fromDate, toDate, accessToken);
+                var serviceResponse = await _service.GetSummaryJobCompleteByAction(projectInstanceId);
                 if (serviceResponse.Success)
                 {
                     reportData = serviceResponse.Data;
