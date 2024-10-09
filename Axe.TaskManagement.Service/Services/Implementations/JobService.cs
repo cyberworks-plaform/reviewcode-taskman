@@ -46,6 +46,7 @@ using SharpCompress.Common;
 using System.IO.Compression;
 using SharpCompress.Compressors.Xz;
 using System.Collections;
+using Ce.Common.Lib.Interfaces;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -5524,185 +5525,218 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         public async Task<GenericResponse<bool>> RetryAllErrorDocs(Guid projectInstanceId, string accessToken)
         {
             var fitler = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
-            var jobs = await _repos.FindAsync(fitler);
-            if (jobs != null && jobs.Count > 0)
+            var findOption = new FindOptions<Job>()
             {
-                var instanceIds = jobs.Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct().ToList();
+                BatchSize = 1000
+            };
+            var findJobCursor = await _repository.GetCursorListJobAsync(fitler, findOption);
+            var jobs = new List<Job>();
+            var totalError = 0;
+            var totalSuccess = 0;
+            while (findJobCursor.MoveNext())
+            {
+                jobs.AddRange(findJobCursor.Current);
 
-                // 1. Mark doc, task processing & update progress statistic
-                foreach (var docInstanceId in instanceIds)
+                // 1. Mark doc, task processing & update progress statistic -> 2. Mark job processing -> 3. Send Event message
+                foreach (var job in jobs)
                 {
-                    var job = jobs.First(x => x.DocInstanceId == docInstanceId);
-                    var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                    var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(docInstanceId, accessToken: accessToken);
-                    if (!resultDocChangeProcessingStatus.Success)
+                    try
                     {
-                        Log.Logger.Error($"RetryErrorDocs: Error change doc status with DocInstanceId: {docInstanceId} failure!");
-                    }
-
-                    var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
-                    if (!resultTaskChangeProcessingStatus)
-                    {
-                        Log.Logger.Error($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
-                    }
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = -1,
-                        ProcessingFile = 1,
-                        CompleteFile = 0,
-                        TotalFile = 0,
-                        UnprocessedDocInstanceIds = new List<Guid> { docInstanceId },
-                        ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                    };
-                    var changeProjectStepProgress = wfsInfoes
-                        .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
-                        .Select(x => new ProjectStepProgress
+                        var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
+                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
+                        if (!resultDocChangeProcessingStatus.Success)
                         {
-                            InstanceId = x.InstanceId,
-                            Name = x.Name,
-                            ActionCode = x.ActionCode,
+                            throw new Exception($"RetryErrorDocs: Error change doc status with DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} failure!");
+                        }
+
+                        var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
+                        if (!resultTaskChangeProcessingStatus)
+                        {
+                            throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                        }
+
+                        var changeProjectFileProgress = new ProjectFileProgress
+                        {
+                            UnprocessedFile = -1,
                             ProcessingFile = 1,
                             CompleteFile = 0,
                             TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
-                        }).ToList();
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                            UnprocessedDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() },
+                            ProcessingDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() }
+                        };
+                        var changeProjectStepProgress = wfsInfoes
+                            .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
+                            .Select(x => new ProjectStepProgress
+                            {
+                                InstanceId = x.InstanceId,
+                                Name = x.Name,
+                                ActionCode = x.ActionCode,
+                                ProcessingFile = 1,
+                                CompleteFile = 0,
+                                TotalFile = 0,
+                                ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
+                            }).ToList();
+                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                        {
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                            ActionCode = inputParam.ActionCode,
+                            DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
+                            StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
+                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
+                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
+                            ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
+                            TenantId = inputParam.TenantId
+                        };
+                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+
+                        // 2. Mark jobs processing
+                        job.Status = (short)EnumJob.Status.Processing; //Todo: need refactor to set Status = Waiting instead of Processing
+                        job.RetryCount += 1;
+
+
+                        await _repos.UpdateAsync(job);
+
+                        // 3. Trigger retry docs
+                        var evt = new RetryDocEvent
+                        {
+                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                            JobIds = new List<string>() { job.Id.ToString() }, //Todo: need refactor to user single jobId instead of list id
+                            AccessToken = accessToken
+                        };
+                        await TriggerRetryDoc(evt, job.ActionCode);
+                        totalSuccess += 1;
+                    }
+                    catch (Exception ex)
                     {
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        ActionCode = inputParam.ActionCode,
-                        DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
-                        StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
-                        TenantId = inputParam.TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                        Log.Error(ex, $"Error when retry job id {job.Id.ToString()}");
+                        totalError += 1;
+                    }
+
                 }
 
-                // 2. Mark jobs processing
-                foreach (var job in jobs)
-                {
-                    job.Status = (short)EnumJob.Status.Processing;
-                    job.RetryCount += 1;
-                }
+                jobs.Clear();
 
-                await _repos.UpdateMultiAsync(jobs);
-
-                // 3. Trigger retry docs
-                foreach (var docInstanceId in instanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-                    var evt = new RetryDocEvent
-                    {
-                        DocInstanceId = docInstanceId,
-                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
-                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
-                        AccessToken = accessToken
-                    };
-                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
-                }
-
-                return GenericResponse<bool>.ResultWithData(true);
             }
-            return GenericResponse<bool>.ResultWithData(false);
+            var result = true;
+            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            if (totalSuccess <= 0)
+            {
+                result = false;
+                msg = "Tổng số job bị lỗi khi retry: " + totalError.ToString();
+            }
+            return GenericResponse<bool>.ResultWithData(result, msg);
+
         }
 
         public async Task<GenericResponse<bool>> RetryErrorDocs(List<Guid> instanceIds, string accessToken)
         {
             List<Guid?> docInstanceIds = instanceIds.Select(x => (Guid?)x).ToList();
             var fitler = Builders<Job>.Filter.In(x => x.DocInstanceId, docInstanceIds) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
-            var jobs = await _repos.FindAsync(fitler);
-            if (jobs != null && jobs.Count > 0)
+            var findOption = new FindOptions<Job>()
             {
-                // 1. Mark doc, task processing & update progress statistic
-                foreach (var docInstanceId in instanceIds)
+                BatchSize = 1000
+            };
+            var findJobCursor = await _repository.GetCursorListJobAsync(fitler, findOption);
+            var jobs = new List<Job>();
+            var totalError = 0;
+            var totalSuccess = 0;
+            while (findJobCursor.MoveNext())
+            {
+                //fetch job entity from mongo to memory
+                jobs.AddRange(findJobCursor.Current);
+
+                // 1. Mark doc, task processing & update progress statistic -> 2. Update job retry count -> 3. send event message
+                foreach (var job in jobs)
                 {
-                    var job = jobs.First(x => x.DocInstanceId == docInstanceId);
-                    var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                    var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(docInstanceId, accessToken: accessToken);
-                    if (!resultDocChangeProcessingStatus.Success)
+                    try
                     {
-                        Log.Logger.Error($"RetryErrorDocs: Error change doc status with DocInstanceId: {docInstanceId} failure!");
-                    }
-
-                    var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
-                    if (!resultTaskChangeProcessingStatus)
-                    {
-                        Log.Logger.Error($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
-                    }
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = -1,
-                        ProcessingFile = 1,
-                        CompleteFile = 0,
-                        TotalFile = 0,
-                        UnprocessedDocInstanceIds = new List<Guid> { docInstanceId },
-                        ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                    };
-                    var changeProjectStepProgress = wfsInfoes
-                        .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
-                        .Select(x => new ProjectStepProgress
+                        var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
+                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
+                        if (!resultDocChangeProcessingStatus.Success)
                         {
-                            InstanceId = x.InstanceId,
-                            Name = x.Name,
-                            ActionCode = x.ActionCode,
+                            throw new Exception($"RetryErrorDocs: Error change doc status with DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} failure!");
+                        }
+
+                        var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
+                        if (!resultTaskChangeProcessingStatus)
+                        {
+                            throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                        }
+
+                        var changeProjectFileProgress = new ProjectFileProgress
+                        {
+                            UnprocessedFile = -1,
                             ProcessingFile = 1,
                             CompleteFile = 0,
                             TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
-                        }).ToList();
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                            UnprocessedDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() },
+                            ProcessingDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() }
+                        };
+                        var changeProjectStepProgress = wfsInfoes
+                            .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
+                            .Select(x => new ProjectStepProgress
+                            {
+                                InstanceId = x.InstanceId,
+                                Name = x.Name,
+                                ActionCode = x.ActionCode,
+                                ProcessingFile = 1,
+                                CompleteFile = 0,
+                                TotalFile = 0,
+                                ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
+                            }).ToList();
+                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                        {
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                            ActionCode = inputParam.ActionCode,
+                            DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
+                            StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
+                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
+                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
+                            ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
+                            TenantId = inputParam.TenantId
+                        };
+                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+                        // 2. Mark jobs processing
+                        job.Status = (short)EnumJob.Status.Processing; //Todo: Cần refactor để chuyển status = Waiting -> đến lúc xử lý retry mới chuyển thành processing
+                        job.RetryCount += 1;
+                        await _repos.UpdateAsync(job);
+
+                        // 3. Trigger retry docs
+                        var evt = new RetryDocEvent
+                        {
+                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                            JobIds = new List<string> { job.Id.ToString() }, // Todo: Cần refactor chỗ này -> mỗi retry event chỉ cho 1 job vì các hàm handle chỉ xử lý 1 job cho 1 message
+                            AccessToken = accessToken
+                        };
+                        await TriggerRetryDoc(evt, job.ActionCode);
+                        totalSuccess += 1;
+                    }
+                    catch (Exception ex)
                     {
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        ActionCode = inputParam.ActionCode,
-                        DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
-                        StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
-                        TenantId = inputParam.TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                        Log.Error(ex, $"Error when retry job id: {job.Id.ToString()}");
+                    }
                 }
 
-                // 2. Mark jobs processing
-                foreach (var job in jobs)
-                {
-                    job.Status = (short)EnumJob.Status.Processing;
-                    job.RetryCount += 1;
-                }
-
-                await _repos.UpdateMultiAsync(jobs);
-
-                // 3. Trigger retry docs
-                foreach (var docInstanceId in instanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-                    var evt = new RetryDocEvent
-                    {
-                        DocInstanceId = docInstanceId,
-                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
-                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
-                        AccessToken = accessToken
-                    };
-                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
-                }
-
-                return GenericResponse<bool>.ResultWithData(true);
+                jobs.Clear();
             }
-
-            return GenericResponse<bool>.ResultWithData(false);
+            var result = true;
+            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            if (totalSuccess <= 0)
+            {
+                result = false;
+                msg = "Tổng số job bị lỗi khi retry: " + totalError.ToString();
+            }
+            return GenericResponse<bool>.ResultWithData(result, msg);
         }
 
         #endregion
