@@ -117,6 +117,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     msg = "Không có Job nào ở trạng thái cần thu hồi";
                 }
+                Log.Information(msg);
             }
             catch (Exception ex)
             {
@@ -126,9 +127,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return msg;
         }
 
-        #region Private
 
-        private async Task RecallJobByTurn(Guid userInstanceId, Guid turnInstanceId, string accessToken = null)
+
+        public async Task RecallJobByTurn(Guid userInstanceId, Guid turnInstanceId, string accessToken = null)
         {
             var filterUser = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
             var filterTurn = Builders<Job>.Filter.Eq(x => x.TurnInstanceId, turnInstanceId);
@@ -177,9 +178,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             if (jobs.Count > 0 && docInstanceIds.Count > 0)
             {
                 resultUpdate = await _repository.UpdateMultiAsync(jobs);
-                await UnLockDeleteDoc(docInstanceIds);
-                await UpdateDocFieldValueStatus(jobs.Where(x => x.DocFieldValueInstanceId.HasValue)
-                    .Select(x => x.DocFieldValueInstanceId).Distinct().ToList());
+                //await UnLockDeleteDoc(docInstanceIds);
+                //await UpdateDocFieldValueStatus(jobs.Where(x => x.DocFieldValueInstanceId.HasValue)
+                //    .Select(x => x.DocFieldValueInstanceId).Distinct().ToList());
             }
 
             // Update ProjectStatistic
@@ -195,21 +196,30 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                    var outboxEntity = new OutboxIntegrationEvent
                     {
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt)
-                    });
-                    var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    if (isAck)
+                        Data = JsonConvert.SerializeObject(logJobEvt),
+                        LastModificationDate = DateTime.Now,
+                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
+                    };
+                    try
                     {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
                     }
-                    else
+                    catch (Exception exPublishEvent)
                     {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                        try
+                        {
+                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                        }
+                        catch (Exception exSaveDB)
+                        {
+                            Log.Error(exSaveDB, "Error save DB for event LogJobEvent");
+                            //do nothing 
+                        }
                     }
                 }
 
@@ -278,6 +288,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
         }
 
+        #region Private
         private async Task UnLockDeleteDoc(List<Guid> lstDocId)
         {
             if (lstDocId != null && lstDocId.Count > 0)
@@ -319,6 +330,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
         }
 
+        /// <summary>
+        /// This function extreamly slow -> if using need to refactor
+        /// </summary>
+        /// <param name="lstDocFieldValue"></param>
+        /// <returns></returns>
         private async Task UpdateDocFieldValueStatus(List<Guid?> lstDocFieldValue)
         {
             if (lstDocFieldValue != null && lstDocFieldValue.Count > 0)

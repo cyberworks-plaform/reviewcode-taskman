@@ -495,6 +495,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 ["Mã công việc"] = GetSafeValue(job.Code),
                                 ["Đường dẫn"] = GetSafeValue(pathNameValue),
                                 ["Nội dung"] = GetSafeValue(value),
+                                ["Tên trường"] = GetSafeValue(job.DocTypeFieldName),
                                 ["Loại công việc"] = GetSafeValue(wfStepName),
                                 ["Nhân sự"] = GetSafeValue(userFullName + " - " + userName),
                                 ["Thời gian nhận dữ liệu"] = GetSafeValue(start),

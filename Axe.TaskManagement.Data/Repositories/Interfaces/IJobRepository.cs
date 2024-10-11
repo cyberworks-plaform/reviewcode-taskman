@@ -58,7 +58,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<PagedList<DocErrorExtension>> GetPagingDocErrorAsync(FilterDefinition<Job> filter, int index = 1, int size = 10);
         Task<PagedListExtension<Job>> GetPagingExtensionAsync(FilterDefinition<Job> filter, SortDefinition<Job> sort = null, int index = 1, int size = 10);
-        Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter);
+        Task<double> GetFalsePercentAsync(Guid userInstanceId);
 
 
         //GET VALUE CHART 
@@ -73,8 +73,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<List<CountJobEntity>> GetCountAllJobByStatus();
         Task<List<CountJobEntity>> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate);
-        Task<List<CountJobEntity>> GetSummaryDocByAction(Guid projectInstanceId, List<WorkflowStepInfo> wfsInfoes,
-            List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string fromDate, string toDate);
+        Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId);
         Task<WorkSpeedReportEntity> GetWorkSpeed(Guid? projectInstanceId, Guid? userInstanceId);
         Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V2(FilterDefinition<Job> filter);
         Task<List<JobByDocDoneEntity>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);

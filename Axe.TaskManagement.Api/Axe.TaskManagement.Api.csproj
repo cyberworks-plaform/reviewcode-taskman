@@ -21,6 +21,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="appsettings.HuydinhUAT.json">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
     <Content Update="appsettings.Huydinh.Huynv.json">
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </Content>

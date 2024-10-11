@@ -45,6 +45,8 @@ using MiniExcelLibs;
 using SharpCompress.Common;
 using System.IO.Compression;
 using SharpCompress.Compressors.Xz;
+using System.Collections;
+using Ce.Common.Lib.Interfaces;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -68,12 +70,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IProjectStatisticClientService _projectStatisticClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IMoneyService _moneyService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IExternalProviderServiceConfigClientService _providerConfig;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         private readonly ICachingHelper _cachingHelper;
+        private readonly IRecallJobWorkerService _recallJobWorkerService;
         private readonly bool _useCache;
         private const string DataProcessing = "DataProcessing";
         private const int TimeOut = 600;   // Default HttpClient timeout is 100s
@@ -98,11 +102,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
             IMoneyService moneyService,
+            IDocTypeFieldClientService docTypeFieldClientService,
             ISequenceJobRepository sequenceJobRepository,
             IBaseHttpClientFactory clientFatory,
             IExternalProviderServiceConfigClientService externalProviderServiceConfigClientService,
             Microsoft.Extensions.Configuration.IConfiguration configuration,
-            IOutboxIntegrationEventRepository outboxIntegrationEventRepository) : base(repos, mapper, userPrincipalService)
+            IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
+            IRecallJobWorkerService recallJobWorkerService
+            ) : base(repos, mapper, userPrincipalService)
         {
             _repository = repos;
             _cachingHelper = cachingHelper;
@@ -120,6 +127,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _projectStatisticClientService = projectStatisticClientService;
             _transactionClientService = transactionClientService;
             _moneyService = moneyService;
+            _docTypeFieldClientService = docTypeFieldClientService;
             _useCache = _cachingHelper != null;
             _clientFatory = clientFatory;
             _providerConfig = externalProviderServiceConfigClientService;
@@ -306,7 +314,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
@@ -423,8 +431,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
-
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
                 }
@@ -569,8 +586,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
-
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời hạn");
                     return response;
                 }
@@ -933,7 +959,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
@@ -1058,7 +1094,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 if (jobs.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(lstId, accessToken);
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in jobs)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
 
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
@@ -1482,8 +1528,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
-
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -1693,8 +1738,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (job.DueDate < DateTime.UtcNow)
                 {
-                    await ReCallJobByIds(new List<ObjectId> { id }, accessToken);
-
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                     response = GenericResponse<int>.ResultWithData(-1, "Hết thời gian");
                     return response;
                 }
@@ -2220,7 +2264,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (data.Exists(x => x.DueDate < DateTime.UtcNow))
                 {
-                    await ReCallJobByIds(data.Select(x => x.Id).ToList(), accessToken);
+                    var userId_turnIDHashSet = new HashSet<string>();
+                    foreach (var job in data)
+                    {
+                        //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                        var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                        if (!userId_turnIDHashSet.Contains(hashkey))
+                        {
+                            userId_turnIDHashSet.Add(hashkey);
+                            await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
+                        }
+                    }
 
                     response = GenericResponse<List<JobDto>>.ResultWithData(new List<JobDto>());
                     return response;
@@ -2829,83 +2883,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             // Cập nhật LastModificationDate để đẩy thứ tự ưu tiên của những việc thu hồi lên
             var jobs = await _repository.FindAsync(fitlerUser & fitlerStatus & fitlerDudeDate);
+            var userId_turnIDHashSet = new HashSet<string>();
             foreach (var job in jobs)
             {
-                if (job.ActionCode == nameof(ActionCodeConstants.DataEntry))
+                //lọc ra các cặp khóa UserID và TurnID để xử lý Recall Job
+                var hashkey = string.Format("{0}_{1}", job.UserInstanceId.ToString(), job.TurnInstanceId.ToString());
+                if (!userId_turnIDHashSet.Contains(hashkey))
                 {
-                    job.IsIgnore = false;
-                    job.ReasonIgnore = null;
-                    job.IsWarning = false;
-                    job.ReasonWarning = null;
-                }
-                job.TurnInstanceId = null;
-                job.Status = (short)EnumJob.Status.Waiting;
-                job.UserInstanceId = null;
-                if (job.StartWaitingDate.HasValue)
-                {
-                    job.LastModificationDate = job.StartWaitingDate;
-                }
-            }
-
-            var resultUpdate = 0;
-            var docInstanceIds = new List<Guid>();
-            if (jobs.Count > 0)
-            {
-                docInstanceIds = jobs.Where(x => x.DocInstanceId.HasValue).Select(x => x.DocInstanceId.Value).ToList();
-                resultUpdate = await _repos.UpdateMultiAsync(jobs);
-                await UnLockDeleteDoc(docInstanceIds);
-                await UpdateDocFieldValueStatus(jobs.Where(x => x.DocFieldValueInstanceId.HasValue).Select(x => x.DocFieldValueInstanceId.Value).Distinct().ToList());
-            }
-
-            // Update ProjectStatistic
-            if (resultUpdate > 0 && jobs.Any() && docInstanceIds.Any())
-            {
-                var job = jobs.First();
-                var projectInstanceId = job.ProjectInstanceId.GetValueOrDefault();
-                var actionCode = job.ActionCode;
-                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes.Item1;
-                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
-
-                foreach (var docInstanceId in docInstanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = 0,
-                        ProcessingFile = 0,
-                        CompleteFile = 0,
-                        TotalFile = 0
-                    };
-                    var changeProjectStepProgress = new List<ProjectStepProgress>();
-                    // Nếu tồn tại job Complete thì ko chuyển trạng thái về Processing
-                    var hasJobComplete =
-                        await _repository.CheckHasJobCompleteByWfs(docInstanceId, actionCode, crrWfsInfo.InstanceId);
-                    if (!hasJobComplete)
-                    {
-                        changeProjectStepProgress = crrJobs.GroupBy(x => new { x.ProjectInstanceId, x.WorkflowInstanceId, x.WorkflowStepInstanceId, x.ActionCode }).Select(grp => new ProjectStepProgress
-                        {
-                            InstanceId = grp.Key.WorkflowStepInstanceId.GetValueOrDefault(),
-                            Name = string.Empty,
-                            ActionCode = grp.Key.ActionCode,
-                            ProcessingFile = -grp.Select(i => i.DocInstanceId.GetValueOrDefault()).Distinct().Count(),
-                            CompleteFile = 0,
-                            TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                        }).ToList();
-                    }
-
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
-                    {
-                        ProjectInstanceId = projectInstanceId,
-                        StatisticDate = Int32.Parse(crrJobs.First().DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = string.Empty,
-                        TenantId = crrJobs.First().TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                    userId_turnIDHashSet.Add(hashkey);
+                    await _recallJobWorkerService.RecallJobByTurn(job.UserInstanceId.GetValueOrDefault(), job.TurnInstanceId.GetValueOrDefault(), accessToken);
                 }
             }
 
@@ -3314,21 +3300,29 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
             };
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var outboxEntity = new OutboxIntegrationEvent
             {
                 ExchangeName = nameof(LogJobEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(logJobEvt)
-            });
-            var isAck = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(logJobEvt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            else
+            catch (Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, "Error save db for event");
+                }
             }
         }
 
@@ -3485,7 +3479,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         #endregion
 
         #region History Job
-        
+
         public async Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUser(PagingRequest request, string actionCode, string accessToken)
         {
             GenericResponse<HistoryJobDto> response;
@@ -4336,7 +4330,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 throw new Exception(ex.Message);
             }
             finally
-            { 
+            {
                 //Xóa thư mục temp
                 Directory.Delete(tempDirectory, true);
             }
@@ -4648,7 +4642,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     while (await cursor.MoveNextAsync())
                     {
                         var currentBatch = cursor.Current;
-                        
+
                         totalRow += currentBatch.Count();
                         var lstDocPathName = new Dictionary<string, string>();
                         var lstDocPath = currentBatch.Select(x => x.DocPath).ToList().Distinct();
@@ -4793,7 +4787,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return result;
         }
-        
+
         void SaveAsFile(FileStream fileStream, List<Dictionary<string, object>> data)
         {
             try
@@ -5038,18 +5032,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             try
             {
                 string cacheKey = $"$@${userInstanceId}$@$FalsePercent";
-                var minutesExpired = 1;
+                var minutesExpired = 1 * 60 * 60; // 1 hours 
 
                 var result = _cachingHelper.TryGetFromCache<double?>(cacheKey);
                 if (result == null)
                 {
-                    var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+                    result = await _repository.GetFalsePercentAsync(userInstanceId);
 
-                    var lastFilter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
-
-                    result = await _repository.GetFalsePercentAsync(lastFilter);
-
-                    await _cachingHelper.TrySetCacheAsync<double>(cacheKey, result.GetValueOrDefault(), minutesExpired * 60);
+                    await _cachingHelper.TrySetCacheAsync<double>(cacheKey, result.GetValueOrDefault(), minutesExpired);
                 }
                 response = GenericResponse<double>.ResultWithData(result.GetValueOrDefault());
             }
@@ -5425,16 +5415,72 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return GenericResponse<List<ErrorDocReportSummary>>.ResultWithData(result);
         }
 
-        public async Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderId, string accessToken = null)
+        public async Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderIds, string accessToken = null)
         {
+            var pathFilters = request.Filters.Where(_ => _.Field != null && _.Field.Equals("slTreeFolder") && !string.IsNullOrWhiteSpace(_.Value)).ToList();
             // Filter by projectInstanceId
             var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
 
-            // Filter by folderId
-            if (!string.IsNullOrEmpty(folderId))
+            if (pathFilters.Count > 0)
             {
-                folderId = $"{folderId}/$";
-                filter = filter & Builders<Job>.Filter.Regex(x => x.DocPath, folderId);
+                var folderIdFilters = new List<FilterDefinition<Job>>();
+                foreach (var pathFlter in pathFilters)
+                {
+                    folderIdFilters.Add(Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFlter.Value.ToString()}")));
+                }
+                if (folderIdFilters.Any())
+                {
+                    filter &= Builders<Job>.Filter.Or(folderIdFilters);
+                }
+            }
+
+            // Filter by folderId
+            if (!string.IsNullOrEmpty(folderIds))
+            {
+                if (folderIds.Contains(','))
+                {
+                    var folderIdFilters = new List<FilterDefinition<Job>>();
+                    var lstFolderId = folderIds.Split(',');
+                    foreach (var folderId in lstFolderId)
+                    {
+                        folderIdFilters.Add(Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{folderId}")));
+                    }
+
+                    if (folderIdFilters.Any())
+                    {
+                        filter &= Builders<Job>.Filter.Or(folderIdFilters);
+                    }
+                }
+            }
+            // Filter by ActionCode 
+            var actionCodeFilterValue = request.Filters.Where(_ => _.Field != null && _.Field.Equals("ActionCode") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+            if (actionCodeFilterValue != null)
+            {
+                filter &= Builders<Job>.Filter.Eq(x => x.ActionCode, actionCodeFilterValue.Value);
+            }
+
+            // Filter by DocName 
+            var docNameFilterValue = request.Filters.Where(_ => _.Field != null && _.Field.Equals("DocName") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+            if (docNameFilterValue != null)
+            {
+                filter &= Builders<Job>.Filter.Regex(x => x.DocName, new BsonRegularExpression(docNameFilterValue.Value, "i"));
+            }
+
+            var nullFilters = request.Filters.Where(_ => _.Field == null).ToList();
+            if (nullFilters.Count > 0)
+            {
+                foreach (var ft in nullFilters)
+                {
+                    // Filter by DocName
+                    var docNFilterValue = ft.Filters.Where(_ => _.Field != null && _.Field.Equals("DocName") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+
+                    if (docNFilterValue != null)
+                    {
+                        filter &= Builders<Job>.Filter.Regex(x => x.DocName, new BsonRegularExpression(docNFilterValue.Value, "i"));
+                    }
+                }
             }
 
             if (request.PageInfo == null)
@@ -5479,185 +5525,218 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         public async Task<GenericResponse<bool>> RetryAllErrorDocs(Guid projectInstanceId, string accessToken)
         {
             var fitler = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
-            var jobs = await _repos.FindAsync(fitler);
-            if (jobs != null && jobs.Count > 0)
+            var findOption = new FindOptions<Job>()
             {
-                var instanceIds = jobs.Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct().ToList();
+                BatchSize = 1000
+            };
+            var findJobCursor = await _repository.GetCursorListJobAsync(fitler, findOption);
+            var jobs = new List<Job>();
+            var totalError = 0;
+            var totalSuccess = 0;
+            while (findJobCursor.MoveNext())
+            {
+                jobs.AddRange(findJobCursor.Current);
 
-                // 1. Mark doc, task processing & update progress statistic
-                foreach (var docInstanceId in instanceIds)
+                // 1. Mark doc, task processing & update progress statistic -> 2. Mark job processing -> 3. Send Event message
+                foreach (var job in jobs)
                 {
-                    var job = jobs.First(x => x.DocInstanceId == docInstanceId);
-                    var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                    var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(docInstanceId, accessToken: accessToken);
-                    if (!resultDocChangeProcessingStatus.Success)
+                    try
                     {
-                        Log.Logger.Error($"RetryErrorDocs: Error change doc status with DocInstanceId: {docInstanceId} failure!");
-                    }
-
-                    var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
-                    if (!resultTaskChangeProcessingStatus)
-                    {
-                        Log.Logger.Error($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
-                    }
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = -1,
-                        ProcessingFile = 1,
-                        CompleteFile = 0,
-                        TotalFile = 0,
-                        UnprocessedDocInstanceIds = new List<Guid> { docInstanceId },
-                        ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                    };
-                    var changeProjectStepProgress = wfsInfoes
-                        .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
-                        .Select(x => new ProjectStepProgress
+                        var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
+                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
+                        if (!resultDocChangeProcessingStatus.Success)
                         {
-                            InstanceId = x.InstanceId,
-                            Name = x.Name,
-                            ActionCode = x.ActionCode,
+                            throw new Exception($"RetryErrorDocs: Error change doc status with DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} failure!");
+                        }
+
+                        var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
+                        if (!resultTaskChangeProcessingStatus)
+                        {
+                            throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                        }
+
+                        var changeProjectFileProgress = new ProjectFileProgress
+                        {
+                            UnprocessedFile = -1,
                             ProcessingFile = 1,
                             CompleteFile = 0,
                             TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
-                        }).ToList();
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                            UnprocessedDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() },
+                            ProcessingDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() }
+                        };
+                        var changeProjectStepProgress = wfsInfoes
+                            .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
+                            .Select(x => new ProjectStepProgress
+                            {
+                                InstanceId = x.InstanceId,
+                                Name = x.Name,
+                                ActionCode = x.ActionCode,
+                                ProcessingFile = 1,
+                                CompleteFile = 0,
+                                TotalFile = 0,
+                                ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
+                            }).ToList();
+                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                        {
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                            ActionCode = inputParam.ActionCode,
+                            DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
+                            StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
+                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
+                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
+                            ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
+                            TenantId = inputParam.TenantId
+                        };
+                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+
+                        // 2. Mark jobs processing
+                        job.Status = (short)EnumJob.Status.Processing; //Todo: need refactor to set Status = Waiting instead of Processing
+                        job.RetryCount += 1;
+
+
+                        await _repos.UpdateAsync(job);
+
+                        // 3. Trigger retry docs
+                        var evt = new RetryDocEvent
+                        {
+                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                            JobIds = new List<string>() { job.Id.ToString() }, //Todo: need refactor to user single jobId instead of list id
+                            AccessToken = accessToken
+                        };
+                        await TriggerRetryDoc(evt, job.ActionCode);
+                        totalSuccess += 1;
+                    }
+                    catch (Exception ex)
                     {
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        ActionCode = inputParam.ActionCode,
-                        DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
-                        StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
-                        TenantId = inputParam.TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                        Log.Error(ex, $"Error when retry job id {job.Id.ToString()}");
+                        totalError += 1;
+                    }
+
                 }
 
-                // 2. Mark jobs processing
-                foreach (var job in jobs)
-                {
-                    job.Status = (short)EnumJob.Status.Processing;
-                    job.RetryCount += 1;
-                }
+                jobs.Clear();
 
-                await _repos.UpdateMultiAsync(jobs);
-
-                // 3. Trigger retry docs
-                foreach (var docInstanceId in instanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-                    var evt = new RetryDocEvent
-                    {
-                        DocInstanceId = docInstanceId,
-                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
-                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
-                        AccessToken = accessToken
-                    };
-                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
-                }
-
-                return GenericResponse<bool>.ResultWithData(true);
             }
-            return GenericResponse<bool>.ResultWithData(false);
+            var result = true;
+            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            if (totalSuccess <= 0)
+            {
+                result = false;
+                msg = "Tổng số job bị lỗi khi retry: " + totalError.ToString();
+            }
+            return GenericResponse<bool>.ResultWithData(result, msg);
+
         }
 
         public async Task<GenericResponse<bool>> RetryErrorDocs(List<Guid> instanceIds, string accessToken)
         {
             List<Guid?> docInstanceIds = instanceIds.Select(x => (Guid?)x).ToList();
             var fitler = Builders<Job>.Filter.In(x => x.DocInstanceId, docInstanceIds) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
-            var jobs = await _repos.FindAsync(fitler);
-            if (jobs != null && jobs.Count > 0)
+            var findOption = new FindOptions<Job>()
             {
-                // 1. Mark doc, task processing & update progress statistic
-                foreach (var docInstanceId in instanceIds)
+                BatchSize = 1000
+            };
+            var findJobCursor = await _repository.GetCursorListJobAsync(fitler, findOption);
+            var jobs = new List<Job>();
+            var totalError = 0;
+            var totalSuccess = 0;
+            while (findJobCursor.MoveNext())
+            {
+                //fetch job entity from mongo to memory
+                jobs.AddRange(findJobCursor.Current);
+
+                // 1. Mark doc, task processing & update progress statistic -> 2. Update job retry count -> 3. send event message
+                foreach (var job in jobs)
                 {
-                    var job = jobs.First(x => x.DocInstanceId == docInstanceId);
-                    var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                    var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(docInstanceId, accessToken: accessToken);
-                    if (!resultDocChangeProcessingStatus.Success)
+                    try
                     {
-                        Log.Logger.Error($"RetryErrorDocs: Error change doc status with DocInstanceId: {docInstanceId} failure!");
-                    }
-
-                    var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
-                    if (!resultTaskChangeProcessingStatus)
-                    {
-                        Log.Logger.Error($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
-                    }
-
-                    var changeProjectFileProgress = new ProjectFileProgress
-                    {
-                        UnprocessedFile = -1,
-                        ProcessingFile = 1,
-                        CompleteFile = 0,
-                        TotalFile = 0,
-                        UnprocessedDocInstanceIds = new List<Guid> { docInstanceId },
-                        ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                    };
-                    var changeProjectStepProgress = wfsInfoes
-                        .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
-                        .Select(x => new ProjectStepProgress
+                        var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
+                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
+                        if (!resultDocChangeProcessingStatus.Success)
                         {
-                            InstanceId = x.InstanceId,
-                            Name = x.Name,
-                            ActionCode = x.ActionCode,
+                            throw new Exception($"RetryErrorDocs: Error change doc status with DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} failure!");
+                        }
+
+                        var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
+                        if (!resultTaskChangeProcessingStatus)
+                        {
+                            throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                        }
+
+                        var changeProjectFileProgress = new ProjectFileProgress
+                        {
+                            UnprocessedFile = -1,
                             ProcessingFile = 1,
                             CompleteFile = 0,
                             TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
-                        }).ToList();
-                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                            UnprocessedDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() },
+                            ProcessingDocInstanceIds = new List<Guid> { job.DocInstanceId.GetValueOrDefault() }
+                        };
+                        var changeProjectStepProgress = wfsInfoes
+                            .Where(x => x.InstanceId == inputParam.WorkflowStepInstanceId)
+                            .Select(x => new ProjectStepProgress
+                            {
+                                InstanceId = x.InstanceId,
+                                Name = x.Name,
+                                ActionCode = x.ActionCode,
+                                ProcessingFile = 1,
+                                CompleteFile = 0,
+                                TotalFile = 0,
+                                ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
+                            }).ToList();
+                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                        {
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                            ActionCode = inputParam.ActionCode,
+                            DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
+                            StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
+                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
+                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
+                            ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
+                            TenantId = inputParam.TenantId
+                        };
+                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+                        // 2. Mark jobs processing
+                        job.Status = (short)EnumJob.Status.Processing; //Todo: Cần refactor để chuyển status = Waiting -> đến lúc xử lý retry mới chuyển thành processing
+                        job.RetryCount += 1;
+                        await _repos.UpdateAsync(job);
+
+                        // 3. Trigger retry docs
+                        var evt = new RetryDocEvent
+                        {
+                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                            JobIds = new List<string> { job.Id.ToString() }, // Todo: Cần refactor chỗ này -> mỗi retry event chỉ cho 1 job vì các hàm handle chỉ xử lý 1 job cho 1 message
+                            AccessToken = accessToken
+                        };
+                        await TriggerRetryDoc(evt, job.ActionCode);
+                        totalSuccess += 1;
+                    }
+                    catch (Exception ex)
                     {
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        ActionCode = inputParam.ActionCode,
-                        DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
-                        StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                        ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                        ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                        ChangeUserStatistic = JsonConvert.SerializeObject(new ProjectUser()),
-                        TenantId = inputParam.TenantId
-                    };
-                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+                        Log.Error(ex, $"Error when retry job id: {job.Id.ToString()}");
+                    }
                 }
 
-                // 2. Mark jobs processing
-                foreach (var job in jobs)
-                {
-                    job.Status = (short)EnumJob.Status.Processing;
-                    job.RetryCount += 1;
-                }
-
-                await _repos.UpdateMultiAsync(jobs);
-
-                // 3. Trigger retry docs
-                foreach (var docInstanceId in instanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-                    var evt = new RetryDocEvent
-                    {
-                        DocInstanceId = docInstanceId,
-                        //Jobs = _mapper.Map<List<Job>, List<JobDto>>(crrJobs),
-                        JobIds = crrJobs.Select(x => x.Id.ToString()).ToList(),
-                        AccessToken = accessToken
-                    };
-                    await TriggerRetryDoc(evt, crrJobs.First().ActionCode);
-                }
-
-                return GenericResponse<bool>.ResultWithData(true);
+                jobs.Clear();
             }
-
-            return GenericResponse<bool>.ResultWithData(false);
+            var result = true;
+            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            if (totalSuccess <= 0)
+            {
+                result = false;
+                msg = "Tổng số job bị lỗi khi retry: " + totalError.ToString();
+            }
+            return GenericResponse<bool>.ResultWithData(result, msg);
         }
 
         #endregion
@@ -6520,17 +6599,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 return GenericResponse<List<CountJobEntity>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
         }
-
-        public async Task<GenericResponse<List<CountJobEntity>>> GetSummaryDocByAction(Guid projectInstanceId,
-            Guid? wfInstanceId, string fromDate, string toDate, string accessToken = null)
+        /// <summary>
+        /// Thống kê số lượng job theo từng step
+        /// Được call từ web menu: Thống kê dự án
+        /// </summary>
+        /// <param name="projectInstanceId"></param>
+        /// <returns></returns>
+        public async Task<GenericResponse<List<CountJobEntity>>> GetSummaryJobCompleteByAction(Guid projectInstanceId)
         {
             try
             {
-                var wfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes != null ? wfInfoes.Item1 : null;
-                var wfSchemaInfoes = wfInfoes != null ? wfInfoes.Item2 : null;
-
-                var data = await _repository.GetSummaryDocByAction(projectInstanceId, wfsInfoes, wfSchemaInfoes, fromDate, toDate);
+                var data = await _repository.GetSummaryJobCompleteByAction(projectInstanceId);
                 if (data != null && data.Any())
                 {
                     foreach (var item in data)
@@ -6593,182 +6672,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
     /// </summary>
     public partial class JobService
     {
-        private async Task ReCallJobByIds(List<ObjectId> lstId, string accessToken = null)
-        {
-            var fitler = Builders<Job>.Filter.In(x => x.Id, lstId);
 
-            // Cập nhật LastModificationDate để đẩy thứ tự ưu tiên của những việc thu hồi lên
-            var jobs = await _repos.FindAsync(fitler);
-            foreach (var job in jobs)
-            {
-                job.TurnInstanceId = null;
-                job.Status = (short)EnumJob.Status.Waiting;
-                job.UserInstanceId = null;
-                if (job.ActionCode == nameof(ActionCodeConstants.DataEntry)) //=> thu hồi reset lý do bỏ qua
-                {
-                    job.IsIgnore = false;
-                    job.ReasonIgnore = null;
-                    job.IsWarning = false;
-                    job.ReasonWarning = null;
-                }
-                if (job.StartWaitingDate.HasValue)
-                {
-                    job.LastModificationDate = job.StartWaitingDate;
-                }
-            }
-            var resultUpdate = 0;
-            var docInstanceIds = new List<Guid>();
-            if (jobs.Count > 0)
-            {
-                docInstanceIds = jobs.Where(x => x.DocInstanceId != null).Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct().ToList();
-                resultUpdate = await _repos.UpdateMultiAsync(jobs);
-                await UnLockDeleteDoc(docInstanceIds);
-                await UpdateDocFieldValueStatus(jobs.Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).Distinct().ToList());
-            }
-
-            // Update ProjectStatistic
-            if (resultUpdate > 0 && jobs.Any() && docInstanceIds.Any())
-            {
-                var job = jobs.First();
-                var projectTypeInstanceId = job.ProjectTypeInstanceId;
-                var projectInstanceId = job.ProjectInstanceId.GetValueOrDefault();
-                var actionCode = job.ActionCode;
-                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
-                var wfsInfoes = wfInfoes.Item1;
-                var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
-
-                foreach (var docInstanceId in docInstanceIds)
-                {
-                    var crrJobs = jobs.Where(x => x.DocInstanceId == docInstanceId).ToList();
-
-                    // Nếu tồn tại job Complete thì ko chuyển trạng thái về Processing
-                    var hasJobComplete =
-                        await _repository.CheckHasJobCompleteByWfs(docInstanceId, actionCode, crrWfsInfo.InstanceId);
-                    if (!hasJobComplete)
-                    {
-                        var changeProjectFileProgress = new ProjectFileProgress
-                        {
-                            UnprocessedFile = 0,
-                            ProcessingFile = 0,
-                            CompleteFile = 0,
-                            TotalFile = 0
-                        };
-                        var changeProjectStepProgress = crrJobs.GroupBy(x => new { x.ProjectInstanceId, x.WorkflowInstanceId, x.WorkflowStepInstanceId, x.ActionCode }).Select(grp => new ProjectStepProgress
-                        {
-                            InstanceId = grp.Key.WorkflowStepInstanceId.GetValueOrDefault(),
-                            Name = string.Empty,
-                            ActionCode = grp.Key.ActionCode,
-                            ProcessingFile = -grp.Select(i => i.DocInstanceId.GetValueOrDefault()).Distinct().Count(),
-                            CompleteFile = 0,
-                            TotalFile = 0,
-                            ProcessingDocInstanceIds = new List<Guid> { docInstanceId }
-                        }).ToList();
-                        var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
-                        {
-                            ProjectTypeInstanceId = projectTypeInstanceId,
-                            ProjectInstanceId = projectInstanceId,
-                            WorkflowInstanceId = job.WorkflowInstanceId,
-                            WorkflowStepInstanceId = crrWfsInfo.InstanceId,
-                            ActionCode = job.ActionCode,
-                            DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
-                            StatisticDate = Int32.Parse(crrJobs.First().DocCreatedDate.GetValueOrDefault().Date.ToString("yyyyMMdd")),
-                            ChangeFileProgressStatistic = JsonConvert.SerializeObject(changeProjectFileProgress),
-                            ChangeStepProgressStatistic = JsonConvert.SerializeObject(changeProjectStepProgress),
-                            ChangeUserStatistic = string.Empty,
-                            TenantId = crrJobs.First().TenantId
-                        };
-                        await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
-
-                        int increaseProcessingFile = changeProjectStepProgress.Sum(s => s.ProcessingFile);
-                        Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: -{increaseProcessingFile} ProcessingFile for StepProgressStatistic with DocInstanceId: {docInstanceId}");
-                    }
-                }
-            }
-        }
-
-        private async Task UnLockDeleteDoc(List<Guid> lstDocId)
-        {
-            if (lstDocId != null && lstDocId.Count > 0)
-            {
-                var castList = lstDocId.ConvertAll<Guid?>(i => i).ToList();
-                var fitler = Builders<Job>.Filter.In(x => x.DocInstanceId, castList);
-                var lstJob = await _repository.FindAsync(fitler);
-                var lstDocCantDelete = lstJob.Where(x => x.UserInstanceId != null).Select(x => x.DocInstanceId).ToList();
-                var lstDocUnlock = lstJob.Where(x => !lstDocCantDelete.Contains(x.DocInstanceId)).Where
-                    (x => x.DocInstanceId.HasValue).Select(x => x.DocInstanceId.Value).Distinct().ToList();
-                if (lstDocUnlock != null && lstDocUnlock.Count > 0)
-                {
-                    // Publish DocEvent to EventBus
-                    var evt = new DocChangeDeleteableEvent
-                    {
-                        DocInstanceIds = lstDocUnlock
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(DocChangeDeleteableEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(DocChangeDeleteableEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                    }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
-                }
-            }
-        }
-
-        private async Task UpdateDocFieldValueStatus(List<Guid> lstDocFieldValue)
-        {
-            if (lstDocFieldValue != null && lstDocFieldValue.Count > 0)
-            {
-                var lstDocFieldValueUpdate = new List<Guid>();
-                foreach (var item in lstDocFieldValue)
-                {
-                    var fitler = Builders<Job>.Filter.Eq(x => x.DocFieldValueInstanceId, item);
-
-                    var filterWaiting = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
-
-                    var countOfAll = await _repository.CountAsync(fitler);
-                    var countOfWaiting = await _repository.CountAsync(fitler & filterWaiting);
-                    if (countOfAll == countOfWaiting)
-                    {
-                        lstDocFieldValueUpdate.Add(item);
-                    }
-                }
-
-                if (lstDocFieldValueUpdate.Count > 0)
-                {
-                    var evt = new DocFieldValueUpdateStatusWaitingEvent
-                    {
-                        DocFieldValueInstanceIds = lstDocFieldValueUpdate
-                    };
-                    // Outbox
-                    var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt)
-                    });
-                    var isAck = _eventBus.Publish(evt, nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower());
-                    if (isAck)
-                    {
-                        await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                    }
-                    else
-                    {
-                        outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                        await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                    }
-                }
-            }
-        }
 
         private async Task SetCacheRecall(Guid userInstanceId, Guid turnInstanceId, int minutesExpired, string accessToken)
         {
@@ -6823,22 +6727,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //bool isCrrStepHeavyJob = true;
 
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var exchangeName = isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower();
+            var outboxEntity = new OutboxIntegrationEvent
             {
-                ExchangeName = isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower(),
+                ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(evt)
-            });
-            var isAck = _eventBus.Publish(evt, isCrrStepHeavyJob ? RabbitMqExchangeConstants.EXCHANGE_HEAVY_RETRY_DOC : nameof(RetryDocEvent).ToLower());
-            if (isAck)
+                Data = JsonConvert.SerializeObject(evt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(evt, exchangeName);
             }
-            else
+            catch (Exception exPublishEvent)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Error(exPublishEvent, $"Error publish for event {exchangeName}");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex, $"Error save DB for event {exchangeName}");
+                    throw;
+                }
             }
+
         }
 
         private bool IsValidCheckFinalValue(List<DocItem> oldValue, List<DocItem> newValue)
@@ -7061,22 +6977,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 AccessToken = accessToken
             };
             // Outbox
-            var outboxEntityLogJobEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var isAckLogJobEvent = false;
+            var outboxEntityLogJobEvent = new OutboxIntegrationEvent
             {
                 ExchangeName = nameof(LogJobEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(logJobEvt)
-            });
-            var isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-            if (isAckLogJobEvent)
+                Data = JsonConvert.SerializeObject(logJobEvt),
+                LastModificationDate = DateTime.Now,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityLogJobEvent);
+                isAckLogJobEvent = _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
             }
-            else
+            catch (Exception exPublishEvent)
             {
-                outboxEntityLogJobEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityLogJobEvent);
+                Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, "Error save DB for evnet LogJobEvent");
+                }
             }
+
             return isAckLogJobEvent;
         }
 
@@ -7182,29 +7108,39 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
 
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung
+            Dictionary<Guid, List<DocTypeFieldDto>> dicDocTypeField = new Dictionary<Guid, List<DocTypeFieldDto>>();
+            Dictionary<string, string> dicDocPath = new Dictionary<string, string>();
             foreach (var job in updatedJobs)
             {
                 //get PathName
-                job.PathName = await GetPathName(job.DocPath, accessToken);
-
-                List<DocItem> listDocItem = null;
-                var cacheKey = $"ListDocItem_ByTemplateId_{job.DigitizedTemplateInstanceId.GetValueOrDefault().ToString()}";
-                var cacheTime = 5 * 60;
-                listDocItem = _cachingHelper.TryGetFromCache<List<DocItem>>(cacheKey);
-                if (listDocItem == null || listDocItem.Count == 0)
+                string pathName = string.Empty;
+                if (!dicDocPath.ContainsKey(job.DocPath))
                 {
-                    var listDocItemRes = await _docClientService.GetDocItemByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
-                    listDocItem = listDocItemRes.Data;
+                    pathName = await GetPathName(job.DocPath, accessToken);
+                    dicDocPath.Add(job.DocPath, pathName);
+                }
+                else
+                {
+                    pathName = dicDocPath[job.DocPath];
+                }
+                job.PathName = pathName;
 
-                    //save to cache => do mỗi Job -> Doc -> DigitizedTemplateId => mặc dù lấy DocItem theo DocID nhưng có thể save theo TemplateID
-                    // lưu ý nếu sau này dùng các thuộc tính khác ngoài TemplateID thì phải sửa logic cacheKey
-                    await _cachingHelper.TrySetCacheAsync(cacheKey, listDocItem, cacheTime);
+                List<DocTypeFieldDto> listDocTypeField = null;
+                if (!dicDocTypeField.ContainsKey(job.DigitizedTemplateInstanceId.GetValueOrDefault()))
+                {
+                    var listdocTypeFieldRes = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    listDocTypeField = listdocTypeFieldRes.Data;
+                    dicDocTypeField.Add(job.DigitizedTemplateInstanceId.GetValueOrDefault(), listDocTypeField);
+                }
+                else
+                {
+                    listDocTypeField = dicDocTypeField[job.DigitizedTemplateInstanceId.GetValueOrDefault()];
                 }
 
                 //nếu job thuộc dạng xử lý đơn lẻ từng meta (ví dụ DataEntry)
                 if (job.DocTypeFieldInstanceId != null)
                 {
-                    var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == job.DocTypeFieldInstanceId);
+                    var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == job.DocTypeFieldInstanceId);
 
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
@@ -7212,8 +7148,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.MaxLength = docItem?.MaxLength ?? 0;
                     job.Format = docItem?.Format;
                     job.InputShortNote = docItem?.InputShortNote;
-                    job.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                    job.DocTypeFieldName = docItem?.DocTypeFieldName;
+                    job.DocTypeFieldCode = docItem?.Code;
+                    job.DocTypeFieldName = docItem?.Name;
                     job.InputType = docItem?.InputType ?? 0;
                     job.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                     job.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7241,7 +7177,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         foreach (var item in jobValue)
                         {
-                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
@@ -7250,8 +7186,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
-                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.DocTypeFieldCode = docItem?.Code;
+                            item.DocTypeFieldName = docItem?.Name;
                             item.InputType = docItem?.InputType ?? 0;
                             item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                             item.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7267,7 +7203,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         foreach (var item in jobOldValue)
                         {
-                            var docItem = listDocItem.FirstOrDefault(x => x.DocTypeFieldInstanceId == item.DocTypeFieldInstanceId);
+                            var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
                             item.MinValue = docItem?.MinValue;
@@ -7276,8 +7212,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             item.MaxLength = docItem?.MaxLength ?? 0;
                             item.Format = docItem?.Format;
                             item.InputShortNote = docItem?.InputShortNote;
-                            item.DocTypeFieldCode = docItem?.DocTypeFieldCode;
-                            item.DocTypeFieldName = docItem?.DocTypeFieldName;
+                            item.DocTypeFieldCode = docItem?.Code;
+                            item.DocTypeFieldName = docItem?.Name;
                             item.InputType = docItem?.InputType ?? 0;
                             item.PrivateCategoryInstanceId = docItem?.PrivateCategoryInstanceId;
                             item.IsMultipleSelection = docItem?.IsMultipleSelection;
@@ -7287,6 +7223,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
 
             }
+            dicDocPath.Clear();
+            dicDocTypeField.Clear();
             return updatedJobs;
         }
 

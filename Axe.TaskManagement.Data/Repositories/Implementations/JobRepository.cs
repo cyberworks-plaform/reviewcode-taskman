@@ -1591,16 +1591,16 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             };
         }
 
-        public async Task<double> GetFalsePercentAsync(FilterDefinition<Job> filter)
+        public async Task<double> GetFalsePercentAsync(Guid userInstanceId)
         {
-            var totalfilter = await DbSet.CountDocumentsAsync(filter);
+            var filter = Builders<Job>.Filter.Eq(x => x.UserInstanceId, userInstanceId);
+            filter = filter & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Complete);
+            var totalfilter = await DbSet.Find(filter).CountDocumentsAsync();
+
             if (totalfilter == 0) return 0;
 
-            var totalWrong = await DbSet.CountDocumentsAsync(filter &
-                                                             Builders<Job>.Filter.Eq(x => x.Status,
-                                                                 (short)EnumJob.Status.Complete) &
-                                                             Builders<Job>.Filter.Eq(x => x.RightStatus,
-                                                                 (int)EnumJob.RightStatus.Wrong));
+            var filterWrong = filter & Builders<Job>.Filter.Eq(x => x.RightStatus, (int)EnumJob.RightStatus.Wrong);
+            var totalWrong = await DbSet.Find(filterWrong).CountDocumentsAsync();
             return Math.Round(totalWrong * 100.0 / totalfilter, 2);
         }
 
@@ -1974,6 +1974,13 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return result;
         }
 
+        /// <summary>
+        /// Thống kê số lượng Job theo từng bước 
+        /// </summary>
+        /// <param name="projectInstanceId">Lọc theo dự án</param>
+        /// <param name="fromDate">Lọc từ ngày</param>
+        /// <param name="toDate">Lọc đến ngày</param>
+        /// <returns></returns>
         public async Task<List<CountJobEntity>> GetSummaryJobByAction(Guid projectInstanceId, string fromDate, string toDate)
         {
 
@@ -2022,223 +2029,52 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return result.ToList();
         }
 
-        public async Task<List<CountJobEntity>> GetSummaryDocByAction(Guid projectInstanceId, List<WorkflowStepInfo> wfsInfoes,
-            List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string fromDate, string toDate)
+        /// <summary>
+        /// Thống kê số lượng job hoàn thành / chưa hoàn thành theo từng step
+        /// </summary>
+        /// <param name="projectInstanceId"></param>
+        /// <returns></returns>
+        public async Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId)
         {
-            #region Count total Doc
-            var aggregateTotal = DbSet.Aggregate();
-            var lstTotal = await aggregateTotal
-                .Match(x => x.ProjectInstanceId == projectInstanceId && x.Status != (short)EnumJob.Status.Ignore)
-                .Group(x => new { x.ActionCode, x.DocInstanceId, x.WorkflowStepInstanceId },
+            
+            Stopwatch sw = Stopwatch.StartNew();
+            
+            var lstTotal =await DbSet.Aggregate()
+                .Match(x => x.ProjectInstanceId == projectInstanceId)
+              //  .SortBy(x => x.WorkflowStepInstanceId).ThenBy(x=>x.Status)
+                .Group(x => new { x.WorkflowStepInstanceId,x.Status },
                 l => new CountJobEntity
                 {
+                    Status = (Axe.Utility.Enums.EnumJob.Status)l.First().Status,
                     ActionCode = l.First().ActionCode,
                     DocInstanceId = l.First().DocInstanceId,
                     WorkflowStepInstanceId = l.First().WorkflowStepInstanceId,
                     Total = l.Count()
-                })
-                .ToListAsync();
+                }).ToListAsync();
 
-            var lstCountTotal = lstTotal.GroupBy(x => new { x.ActionCode, x.WorkflowStepInstanceId })
-                .Select(x => new CountJobEntity
-                {
-                    ActionCode = x.Key.ActionCode,
-                    WorkflowStepInstanceId = x.Key.WorkflowStepInstanceId,
-                    Total = x.Count()
-                }).ToList();
-            #endregion
+            sw.Stop();
+            Log.Debug($"GetSummaryDocByAction- GroupJobByStep - Elapsed time: {sw.ElapsedMilliseconds} ms");
 
-            #region Count Complete Doc
-            var aggregate = DbSet.Aggregate();
-            if (!string.IsNullOrEmpty(fromDate))
+         
+            sw.Restart();
+            var result = new List<CountJobEntity>();
+           
+            foreach (var item in lstTotal.GroupBy(x => x.WorkflowStepInstanceId))
             {
-                DateTime fDate = DateTime.ParseExact(fromDate, "yyyyMMdd", null);
-                aggregate = aggregate.Match(x => x.CreatedDate >= fDate);
-            }
-            if (!string.IsNullOrEmpty(toDate))
-            {
-                DateTime tDate = DateTime.ParseExact(toDate, "yyyyMMdd", null);
-                aggregate = aggregate.Match(x => x.CreatedDate < tDate);
-            }
-            //var lstJobDone = await aggregate
-            //    .Match(x => x.ProjectInstanceId == projectInstanceId && x.Status == (short)EnumJob.Status.Complete)
-            //    .Group(x => new { x.ActionCode, x.DocInstanceId, x.WorkflowStepInstanceId },
-            //    l => new
-            //    {
-            //        ActionCode = l.First().ActionCode,
-            //        DocInstanceId = l.First().DocInstanceId,
-            //        WorkflowStepInstanceId = l.First().WorkflowStepInstanceId,
-            //        Complete = l.Count(),
-            //    })
-            //    .ToListAsync();
-            #endregion
-
-            #region Old code
-            //#region Count UnComplete Doc
-            //var lstNotDone = await aggregate
-            //    .Match(x => x.ProjectInstanceId == projectInstanceId && x.Status != (short)EnumJob.Status.Complete)
-            //    .Group(x => new { x.ActionCode, x.DocInstanceId, x.WorkflowStepInstanceId },
-            //    l => new
-            //    {
-            //        ActionCode = l.First().ActionCode,
-            //        DocInstanceId = l.First().DocInstanceId,
-            //        WorkflowStepInstanceId = l.First().WorkflowStepInstanceId,
-            //        Total = l.Count()
-            //    })
-            //    .ToListAsync();
-            //#endregion
-
-            ////Remove doc in Complete list if exit job in UnComplete list
-            //foreach (var item in lstDone)
-            //{
-            //    var uDone = lstNotDone.Where(x => x.DocInstanceId == item.DocInstanceId &&
-            //                                      x.ActionCode == item.ActionCode &&
-            //                                      x.WorkflowStepInstanceId == item.WorkflowStepInstanceId).FirstOrDefault();
-            //    if(uDone == null)
-            //    {
-            //        var uTotal = lstTotal.Where(x => x.DocInstanceId == item.DocInstanceId &&
-            //                                      x.ActionCode == item.ActionCode &&
-            //                                      x.WorkflowStepInstanceId == item.WorkflowStepInstanceId).FirstOrDefault();
-            //    }
-            //}
-
-            ////Summary complete Doc
-            //var lstCountDone = lstDone.GroupBy(x => new { x.ActionCode, x.WorkflowStepInstanceId })
-            //    .Select(x => new CountJobEntity
-            //    {
-            //        ActionCode = x.Key.ActionCode,
-            //        WorkflowStepInstanceId = x.Key.WorkflowStepInstanceId,
-            //        Complete = x.Count()
-            //    }).ToList();
-
-            //var result = (from t in lstCountTotal
-            //              join d in lstCountDone on new { t.ActionCode, t.WorkflowStepInstanceId } equals new { d.ActionCode, d.WorkflowStepInstanceId } into gj
-            //              from gr in gj.DefaultIfEmpty()
-            //              select new CountJobEntity
-            //              {
-            //                  ActionCode = t.ActionCode,
-            //                  WorkflowStepInstanceId = t.WorkflowStepInstanceId,
-            //                  Total = t.Total,
-            //                  Complete = gr?.Complete ?? 0
-            //              }).ToList();
-            #endregion
-
-            //var lst = (from t in lstTotal
-            //           join d in lstJobDone on new { t.ActionCode, t.WorkflowStepInstanceId, t.DocInstanceId }
-            //                                    equals new { d.ActionCode, d.WorkflowStepInstanceId, d.DocInstanceId } into gj
-            //           from gr in gj.DefaultIfEmpty()
-            //           select new
-            //           {
-            //               ActionCode = t.ActionCode,
-            //               WorkflowStepInstanceId = t.WorkflowStepInstanceId,
-            //               DocInstanceId = t.DocInstanceId,
-            //               Total = t.Total,
-            //               Complete = gr?.Complete ?? 0
-            //           }).ToList();
-
-            #region Check xem file có còn job chưa hoàn thành ở các bước trước hay không
-            //Get list step 
-            List<WfStep> lstStep = aggregate
-                .Match(x => x.ProjectInstanceId == projectInstanceId)
-                .Group(x => x.WorkflowStepInstanceId,
-                l => new WfStep
+                var resultItem = new CountJobEntity()
                 {
-                    WorkflowStepInstanceId = l.First().WorkflowStepInstanceId,
-                    ActionCode = l.First().ActionCode
-                })
-                .ToList();
+                    ActionCode = item.FirstOrDefault().ActionCode,
+                    WorkflowStepInstanceId = item.FirstOrDefault().WorkflowStepInstanceId,
+                    Total = item.Sum(x => x.Total),
+                    Complete = item.Where(x => x.Status == EnumJob.Status.Complete || x.Status == EnumJob.Status.Ignore).Sum(x => x.Total)
 
-            //Create list All before step off the step
-            List<WfStepOrder> lstWfStepOrder = new List<WfStepOrder>();
-            foreach (var step in lstStep)
-            {
-                var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, step.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                WfStepOrder obj = new WfStepOrder();
-                obj.WorkflowStepInstanceId = step.WorkflowStepInstanceId;
-                obj.wfStepBefore = beforeWfsInfoIncludeCurrentStep;
-                lstWfStepOrder.Add(obj);
+                };
+
+                result.Add(resultItem);
+
             }
-
-            //Get list file not done by Step
-            #region Count UnComplete Doc
-            var lstNotDone = await aggregate
-                .Match(x => x.ProjectInstanceId == projectInstanceId &&
-                            x.Status != (short)EnumJob.Status.Ignore &&
-                            x.Status != (short)EnumJob.Status.Complete)
-                .Group(x => new { x.ActionCode, x.DocInstanceId, x.WorkflowStepInstanceId },
-                l => new
-                {
-                    ActionCode = l.First().ActionCode,
-                    DocInstanceId = l.First().DocInstanceId,
-                    WorkflowStepInstanceId = l.First().WorkflowStepInstanceId,
-                    Total = l.Count()
-                })
-                .ToListAsync();
-
-            List<DocByWfStep> lstDocNotDoneByWfStep = new List<DocByWfStep>();
-            foreach (var step in lstStep)
-            {
-                List<Guid?> docs = lstNotDone.Where(x => x.WorkflowStepInstanceId == step.WorkflowStepInstanceId).Select(x => x.DocInstanceId).ToList();
-                DocByWfStep obj = new DocByWfStep();
-                obj.WorkflowStepInstanceId = step.WorkflowStepInstanceId;
-                obj.DocInstanceIds = docs;
-                lstDocNotDoneByWfStep.Add(obj);
-            }
-
-            #endregion
-
-            List<CountJobEntity> lstDocDone = new List<CountJobEntity>();
-            foreach (var fileItem in lstTotal)
-            {
-                //Get list step for fileItem
-                WfStepOrder stepOder = lstWfStepOrder.Where(x => x.WorkflowStepInstanceId == fileItem.WorkflowStepInstanceId).FirstOrDefault();
-                bool hasJobNotDone = false;
-                if (stepOder != null)
-                {
-
-                    if (stepOder.wfStepBefore.Any())
-                    {
-                        foreach (var step in stepOder.wfStepBefore)
-                        {
-                            var obj = lstDocNotDoneByWfStep.Where(x => x.WorkflowStepInstanceId == step.InstanceId).FirstOrDefault();
-                            if (obj != null && obj.DocInstanceIds.Any())
-                            {
-                                if (obj.DocInstanceIds.Contains(fileItem.DocInstanceId))
-                                {
-                                    hasJobNotDone = true;
-                                    break;
-                                }
-                            }
-                        }
-                    }
-                }
-                if (!hasJobNotDone)
-                {
-                    lstDocDone.Add(fileItem);
-                }
-            }
-
-            #endregion
-
-            var lstCountDone = lstDocDone
-                .GroupBy(g => new { g.ActionCode, g.WorkflowStepInstanceId })
-                          .Select(t => new CountJobEntity
-                          {
-                              ActionCode = t.Key.ActionCode,
-                              WorkflowStepInstanceId = t.Key.WorkflowStepInstanceId,
-                              Complete = t.Count()
-                          }).ToList();
-
-            var result = (from t in lstCountTotal
-                          join d in lstCountDone on new { t.ActionCode, t.WorkflowStepInstanceId } equals new { d.ActionCode, d.WorkflowStepInstanceId } into gj
-                          from gr in gj.DefaultIfEmpty()
-                          select new CountJobEntity
-                          {
-                              ActionCode = t.ActionCode,
-                              WorkflowStepInstanceId = t.WorkflowStepInstanceId,
-                              Total = t.Total,
-                              Complete = gr?.Complete ?? 0
-                          }).ToList();
+            sw.Stop();
+            Log.Debug($"GetSummaryDocByAction- Prepare result - Elapsed time: {sw.ElapsedMilliseconds} ms");
 
             return result;
         }
