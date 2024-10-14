@@ -5666,7 +5666,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var resultTaskChangeProcessingStatus = await _taskRepository.ChangeStatus(job.TaskId.ToString());
                         if (!resultTaskChangeProcessingStatus)
                         {
-                            throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                            //kiểm tra thêm nếu có task.status = 2 thì ok => status !=2 => throw exception
+                            var currentTask = await _taskRepository.GetByIdAsync(job.TaskId);
+                            if (currentTask == null || currentTask.Status != (short)EnumTask.Status.Processing)
+                            {
+                                throw new Exception($"RetryErrorDocs: Error change task status with TaskId: {job.TaskId} failure!!");
+                            }
                         }
 
                         var changeProjectFileProgress = new ProjectFileProgress
