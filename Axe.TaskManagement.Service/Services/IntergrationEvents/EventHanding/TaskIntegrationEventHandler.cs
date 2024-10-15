@@ -2323,6 +2323,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 inputParam.WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes);
                 result = true;
             }
+            else
+            {
+                wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
+            }
 
             if (inputParam.ItemInputParams == null || inputParam.ItemInputParams.Count == 0)
             {
