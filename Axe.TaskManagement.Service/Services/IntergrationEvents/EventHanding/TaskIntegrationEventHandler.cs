@@ -26,6 +26,7 @@ using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -103,6 +104,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null)
             {
+               
                 var accessToken = @event.AccessToken;
                 var inputParam = JsonConvert.DeserializeObject<InputParam>(@event.Input);
                 if (inputParam == null)
@@ -110,6 +112,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     Log.Logger.Error("inputParam is null!");
                     return;
                 }
+
+                Stopwatch sw = Stopwatch.StartNew();
+                Log.Information($"Start handle TaskEvent Id: {@event.EventBusIntergrationEventId.ToString()} - ActionCode: {inputParam.ActionCode} - DocId: {inputParam.DocInstanceId.GetValueOrDefault().ToString()}");
 
                 var isEnrichData = await EnrichData(inputParam, accessToken);
                 if (isEnrichData)
@@ -1650,6 +1655,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         Log.Logger.Information($"Acked {nameof(TaskEvent)} step {inputParam.ActionCode}, WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
                     }
                 }
+
+                sw.Stop();
+                Log.Information($"End handle TaskEvent Id {@event.EventBusIntergrationEventId.ToString()}- Elapsed time: {sw.ElapsedMilliseconds} ms ");
             }
             else
             {
@@ -1991,6 +1999,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     Log.Logger.Error(ex, ex.Message);
                     throw ex;
                 }
+
                 return jobs;
             }
             else

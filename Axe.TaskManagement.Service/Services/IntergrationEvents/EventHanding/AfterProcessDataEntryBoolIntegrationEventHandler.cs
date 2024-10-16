@@ -24,6 +24,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Configuration;
 using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
+using System.Diagnostics;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -80,6 +81,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null && ((@event.Jobs != null && @event.Jobs.Any()) || (@event.JobIds != null && @event.JobIds.Any())))
             {
+                var sw = Stopwatch.StartNew();
+
                 string jobIds = null;
                 if (@event.Jobs != null && @event.Jobs.Any())
                 {
@@ -93,8 +96,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessDataEntryBoolEvent)} with JobIds: {jobIds}");
 
                 await ProcessAfterProcessDataEntryBool(@event);
-
-                Log.Logger.Information($"Acked {nameof(AfterProcessDataEntryBoolEvent)} with JobIds: {jobIds}");
+                sw.Stop();
+                Log.Logger.Information($"Acked {nameof(AfterProcessDataEntryBoolEvent)} with JobIds: {jobIds} - Elapsed time {sw.ElapsedMilliseconds} ms");
             }
             else
             {

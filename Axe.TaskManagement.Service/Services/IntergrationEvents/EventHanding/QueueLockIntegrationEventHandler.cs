@@ -12,6 +12,7 @@ using MongoDB.Driver;
 using Newtonsoft.Json;
 using Serilog;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -38,10 +39,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null && @event.ProjectInstanceId != null)
             {
+                var sw = Stopwatch.StartNew();
+
                 Log.Logger.Information(
                     $"Start handle integration event from {nameof(QueueLockIntegrationEventHandler)}: ProjectInstanceId: {@event.ProjectInstanceId} with DocPath: {@event.DocPath}");
 
                 await ProcessQueueLock(@event);
+
+                sw.Stop();
+                Log.Information($"End handle event {nameof(QueueLockIntegrationEventHandler)} Id {@event.EventBusIntergrationEventId} - Elapsed time {sw.ElapsedMilliseconds} ms ");
             }
             else
             {
