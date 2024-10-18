@@ -26,6 +26,7 @@ using System.Threading.Tasks;
 using Axe.TaskManagement.Model.Entities;
 using MongoDB.Bson;
 using AutoMapper;
+using System.Diagnostics;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -84,12 +85,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null && (@event.Job != null || !string.IsNullOrEmpty(@event.JobId)))
             {
+                var sw = Stopwatch.StartNew();
+
                 var jobId = @event.Job != null ? @event.Job?.Id : @event.JobId;
                 Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessQaCheckFinalEvent)} with JobId: {jobId}");
 
                 await ProcessAfterProcessQaCheckFinal(@event);
-
-                Log.Logger.Information($"Acked {nameof(AfterProcessQaCheckFinalEvent)} with JobId {jobId}");
+                sw.Stop();
+                Log.Logger.Information($"Acked {nameof(AfterProcessQaCheckFinalEvent)} with JobId {jobId} - Elapsed time {sw.ElapsedMilliseconds} ms");
             }
             else
             {

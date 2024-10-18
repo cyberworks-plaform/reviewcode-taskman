@@ -22,6 +22,7 @@ using Newtonsoft.Json;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -83,6 +84,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null && ((@event.Jobs != null && @event.Jobs.Any()) || (@event.JobIds != null && @event.JobIds.Any())))
             {
+                var sw = Stopwatch.StartNew();
+
                 string jobIds = null;
                 if (@event.Jobs != null && @event.Jobs.Any())
                 {
@@ -96,8 +99,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 Log.Logger.Information($"Start handle integration event from {nameof(AfterProcessDataCheckEvent)} with JobIds: {jobIds}");
 
                 await ProcessAfterProcessDataCheck(@event);
-
-                Log.Logger.Information($"Acked {nameof(AfterProcessDataCheckEvent)} with JobIds: {jobIds}");
+                sw.Stop();
+                Log.Logger.Information($"Acked {nameof(AfterProcessDataCheckEvent)} with JobIds: {jobIds} - Elapsed time {sw.ElapsedMilliseconds} ms");
             }
             else
             {

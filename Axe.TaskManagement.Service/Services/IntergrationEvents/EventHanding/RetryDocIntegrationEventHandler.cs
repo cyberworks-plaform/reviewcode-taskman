@@ -22,6 +22,7 @@ using Newtonsoft.Json;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -83,6 +84,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null && ((@event.Jobs != null && @event.Jobs.Any()) || (@event.JobIds != null && @event.JobIds.Any())))
             {
+                var sw = Stopwatch.StartNew();
+
                 if (@event.Jobs != null && @event.Jobs.Any())
                 {
                     Log.Logger.Information(
@@ -95,6 +98,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 }
 
                 await ProcessRetryDoc(@event);
+                sw.Stop();
+                Log.Information($"End handle event {nameof(RetryDocIntegrationEventHandler)} Id {@event.EventBusIntergrationEventId} - Elapsed time {sw.ElapsedMilliseconds} ms ");
             }
             else
             {
