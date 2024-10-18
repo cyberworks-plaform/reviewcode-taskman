@@ -100,6 +100,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         private async Task ProcessAfterProcessCheckFinal(AfterProcessCheckFinalEvent evt)
         {
+            var methodName = "ProcessAfterProcessCheckFinal"; 
+            var sw = Stopwatch.StartNew();
             string accessToken = evt.AccessToken;
 
             await EnrichDataJob(evt);
@@ -639,13 +641,16 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 if (job.NumOfRound == 0 && job.BatchJobInstanceId.GetValueOrDefault()==Guid.Empty)
                                 {
                                     // Lấy tất cả các jobs CheckFinal Complete tại Round=0 và chưa có lô
+                                    sw.Restart();
                                     var allCompleteJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
                                                                         job.ActionCode,
                                                                         job.WorkflowStepInstanceId,
                                                                         (short)EnumJob.Status.Complete,
                                                                         job.DocPath, null, 0);
                                     
-                                    
+                                    sw.Stop();
+                                    Log.Debug($"{methodName} - allCompleteJobs-GetAllJobByWfs - Elapsed time {sw.ElapsedMilliseconds} ms ");
+
                                     var total_Job_Round_0_has_batch = allCompleteJobs.Where(x=>x.BatchJobInstanceId.GetValueOrDefault()!=Guid.Empty).Count();
 
                                     allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
