@@ -133,6 +133,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _providerConfig = externalProviderServiceConfigClientService;
             _configuration = configuration;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
+            _recallJobWorkerService = recallJobWorkerService;
         }
 
         /// <summary>
@@ -5543,7 +5544,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     try
                     {
                         var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        List<WorkflowStepInfo> wfsInfoes = null;
+                        if (inputParam.WorkflowStepInfoes == null)
+                        {
+                            var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                            wfsInfoes = wfInfoes.Item1;
+                            inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
+                        }
+                        wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                         if (!resultDocChangeProcessingStatus.Success)
                         {
@@ -5632,7 +5641,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             }
             var result = true;
-            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            string msg = $"Đã retry thành công {totalSuccess}";
+            if (totalError > 0)
+            {
+                msg += $" - Không thành công: {totalError}";
+            }
+
             if (totalSuccess <= 0)
             {
                 result = false;
@@ -5665,7 +5679,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     try
                     {
                         var inputParam = JsonConvert.DeserializeObject<InputParam>(job.Input);
-                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        
+                        List<WorkflowStepInfo> wfsInfoes = null;
+                        if (inputParam.WorkflowStepInfoes == null)
+                        {
+                            var wfInfoes = await GetWfInfoes(inputParam.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                            wfsInfoes = wfInfoes.Item1;
+                            inputParam.WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes);
+                        }
+
+                        wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                         if (!resultDocChangeProcessingStatus.Success)
                         {
@@ -5749,7 +5773,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 jobs.Clear();
             }
             var result = true;
-            string msg = $"Đã retry thành công {totalSuccess} - Không thành công: {totalError}";
+            string msg = $"Đã retry thành công {totalSuccess}";
+            if(totalError>0)
+            {
+                msg += $" - Không thành công: {totalError}";
+            }    
             if (totalSuccess <= 0)
             {
                 result = false;
