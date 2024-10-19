@@ -27,6 +27,7 @@ using Axe.TaskManagement.Model.Entities;
 using MongoDB.Bson;
 using AutoMapper;
 using System.Diagnostics;
+using DocumentFormat.OpenXml.Math;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -102,6 +103,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         private async Task ProcessAfterProcessQaCheckFinal(AfterProcessQaCheckFinalEvent evt)
         {
+            string methodName = "ProcessAfterProcessQaCheckFinal";
+            Log.Debug($"Start {methodName} - EventId: {evt.EventBusIntergrationEventId}");
+            var swTotal = Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();
             string accessToken = evt.AccessToken;
 
             await EnrichDataJob(evt);
@@ -430,15 +435,25 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                          */
 
                                         // Lấy danh sách jobs bước HIỆN TẠI (QACheckFinal) vòng hiện tại
+                                        sw.Restart();
+                                        
                                         var allJobsInBatchAndRound = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
                                             crrWfsInfo.ActionCode, crrWfsInfo.InstanceId, null, job.DocPath, job.BatchJobInstanceId, job.NumOfRound);
+                                        
+                                        sw.Stop();
+                                        Log.Debug($"{methodName} - EventId: {evt.EventBusIntergrationEventId} - allJobsInBatchAndRound-GetAllJobByWfs - Elasped time: {sw.ElapsedMilliseconds} ms");
 
                                         // Lấy danh sách jobs Complete bước TRƯỚC (CheckFinal)
+                                        sw.Restart();
+
                                         var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
                                         var preWfsInfo = prevWfsInfoes.FirstOrDefault();
                                         var completePrevJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(), preWfsInfo?.ActionCode,
                                                 preWfsInfo?.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
                                                 job.BatchJobInstanceId, job.NumOfRound);
+
+                                        sw.Stop();
+                                        Log.Debug($"{methodName} - EventId: {evt.EventBusIntergrationEventId} - completePrevJobs-GetAllJobByWfs - Elasped time: {sw.ElapsedMilliseconds} ms");
 
                                         //int numOfFileInBatch = completePrevJobs.Count;
                                         var configQa = WorkflowHelper.GetConfigQa(crrWfsInfo.ConfigStep);
@@ -546,22 +561,29 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                                                     isTriggerNextStep = true;
                                                 }
-                                                else // 1.2 pass cả lô 
+                                                else // 1.2 pass cả lô nếu lô đã hoàn thành xong
                                                 {
-                                                    isQAPass = true;
-                                                    //lấy bước theo nhánh true
-                                                    var stepCondition_pass_case = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
-                                                    nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
-                                                    var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
-
-                                                    inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
-                                                    inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
-                                                    inputParamsForQAPass.ForEach(x =>
+                                                    if (allJobsInBatchAndRound.All(x => x.Status == (short)EnumJob.Status.Complete))
                                                     {
-                                                        x.Note = string.Empty;
-                                                        x.QaStatus = isQAPass;
-                                                    });
-                                                    isTriggerNextStep = true;
+                                                        isQAPass = true;
+                                                        //lấy bước theo nhánh true
+                                                        var stepCondition_pass_case = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
+                                                        nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
+                                                        var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
+
+                                                        inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
+                                                        inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
+                                                        inputParamsForQAPass.ForEach(x =>
+                                                        {
+                                                            x.Note = string.Empty;
+                                                            x.QaStatus = isQAPass;
+                                                        });
+                                                        isTriggerNextStep = true;
+                                                    }
+                                                    else // lô chưa hoàn thành QA
+                                                    {
+                                                        // do nothing here
+                                                    }    
                                                 }
                                             }
                                             else // 2. nếu lô QA chưa hoàn thành hoặc Job.QAStatus=true -> xử lý đơn lẻ phiếu: Pass ->next step / False :do nothing
@@ -569,7 +591,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                                 if (job.QaStatus == true)
                                                 {
                                                     isQAPass = true;
-                                                    inputParamsForQAPass = null;
+                                                    var currentJob = await _repository.GetByIdAsync(ObjectId.Parse(job.Id));
+                                                    inputParamsForQAPass = CreateInputParamForNextJob(new List<Job>() { currentJob }, wfsInfoes, wfSchemaInfoes, nextWfsInfo);
+                                                    inputParamsForQAPass.ForEach(x =>
+                                                    {
+                                                        x.Note = string.Empty;
+                                                        x.QaStatus = isQAPass;
+                                                    });
                                                     isTriggerNextStep = true;
                                                 }
                                                 else
@@ -580,7 +608,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         }
 
                                         // Cập nhật trạng thái QAStatus cho các bước TRƯỚC (CheckFinal)
+                                        sw.Restart();
                                         await UpdatePrevJobsQaStatus(completePrevJobs, job.QaStatus.GetValueOrDefault(), job.NumOfRound);
+                                        sw.Stop();
+                                        Log.Debug($"{methodName} - UpdatePrevJobsQaStatus - Elapsed time: {sw.ElapsedMilliseconds} ms");
                                     }
                                 }
                                 break;
@@ -639,6 +670,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 }
             }
 
+            swTotal.Stop();
+            Log.Debug($"End {methodName} - EventId: {evt.EventBusIntergrationEventId} - Total Elapsed time {swTotal.ElapsedMilliseconds} ms");
         }
 
         private async Task UpdatePrevJobsQaStatus(List<Job> prevJobs, bool qaStatus, short numOfRound)
