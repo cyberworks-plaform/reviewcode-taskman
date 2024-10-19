@@ -27,6 +27,7 @@ using Axe.TaskManagement.Model.Entities;
 using MongoDB.Bson;
 using AutoMapper;
 using System.Diagnostics;
+using DocumentFormat.OpenXml.Math;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
@@ -607,7 +608,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         }
 
                                         // Cập nhật trạng thái QAStatus cho các bước TRƯỚC (CheckFinal)
+                                        sw.Restart();
                                         await UpdatePrevJobsQaStatus(completePrevJobs, job.QaStatus.GetValueOrDefault(), job.NumOfRound);
+                                        sw.Stop();
+                                        Log.Debug($"{methodName} - UpdatePrevJobsQaStatus - Elapsed time: {sw.ElapsedMilliseconds} ms");
                                     }
                                 }
                                 break;
