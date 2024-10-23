@@ -5367,17 +5367,30 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         #region Retry JOB
 
         // TODO: Turning
-        public async Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderId, string accessToken = null)
+        public async Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds, string accessToken = null)
         {
             // Filter by projectInstanceId
             var result = new List<ErrorDocReportSummary>();
             var baseFilter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId) & Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Error);
-
+            FilterDefinition<Job> filterFolders = null;
+            FilterDefinition<Job> filterFolder = null;
             // Filter by folderId Path
-            if (!string.IsNullOrEmpty(folderId))
+            if (!string.IsNullOrEmpty(folderIds) && folderIds != "-1")
             {
-                folderId = $"{folderId}/$";
-                baseFilter = baseFilter & Builders<Job>.Filter.Regex(x => x.DocPath, folderId);
+                var folderInfors = folderIds.Split(',');
+                foreach (var folderInfor in folderInfors)
+                {
+                    var folderId = $"{folderInfor}/$";
+                    filterFolder = Builders<Job>.Filter.Regex(x => x.DocPath, folderId);
+                    if (filterFolders != null)
+                    {
+                        filterFolders = filterFolders | filterFolder;
+                    }
+                }
+            }
+            if (filterFolders != null)
+            {
+                baseFilter = baseFilter & filterFolders;
             }
             try
             {

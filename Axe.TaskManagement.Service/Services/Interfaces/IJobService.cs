@@ -116,7 +116,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         //GET VALUE CHART 
 
-        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderId, string accessToken = null);
+        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds, string accessToken = null);
 
         Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderId, string accessToken = null);
 
