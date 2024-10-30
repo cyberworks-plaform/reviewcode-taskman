@@ -171,6 +171,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     job.LastModificationDate = job.StartWaitingDate;
                 }
+
+                job.OldValue = RemoveUnwantedJobOldValue(job.OldValue);
             }
 
             var resultUpdate = 0;
@@ -412,6 +414,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 // Loại bỏ những bước bị ngưng xử lý
                 return WorkflowHelper.GetAvailableSteps(allWfStepInfoes);
+            }
+
+            return null;
+        }
+
+        private string RemoveUnwantedJobOldValue(string jobOldValue)
+        {
+            if (!string.IsNullOrEmpty(jobOldValue))
+            {
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
+                if (docItems != null && docItems.Any())
+                {
+                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                    return JsonConvert.SerializeObject(storedDocItems);
+                }
+
+                return null;
             }
 
             return null;

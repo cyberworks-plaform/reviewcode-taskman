@@ -1708,8 +1708,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             DigitizedTemplateCode = subInputParams.DigitizedTemplateCode,
                             WorkflowInstanceId = subInputParams.WorkflowInstanceId,
                             WorkflowStepInstanceId = subInputParams.WorkflowStepInstanceId,
-                            Value = subInputParams.IsConvergenceNextStep ? value : subInputParams.Value,
-                            OldValue = subInputParams.Value,
+                            Value = subInputParams.IsConvergenceNextStep ? RemoveUnwantedInputParamValue(value) : RemoveUnwantedInputParamValue(subInputParams.Value),
+                            OldValue = RemoveUnwantedInputParamValue(subInputParams.Value),
                             //Input = null,
                             ActionCode = subInputParams.ActionCode,
                             //UserInstanceId = null,
@@ -1764,8 +1764,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                         WorkflowInstanceId = inputParam.WorkflowInstanceId,
                         WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        Value = inputParam.IsConvergenceNextStep ? value : inputParam.Value,
-                        OldValue = inputParam.Value,
+                        Value = inputParam.IsConvergenceNextStep ? RemoveUnwantedInputParamValue(value) : RemoveUnwantedInputParamValue(inputParam.Value),
+                        OldValue = RemoveUnwantedInputParamValue(inputParam.Value),
                         //Input = null,
                         ActionCode = inputParam.ActionCode,
                         //UserInstanceId = null,
@@ -2486,6 +2486,23 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     }
 
                     return JsonConvert.SerializeObject(inputParam);
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
+        private string RemoveUnwantedInputParamValue(string inputParamValue)
+        {
+            if (!string.IsNullOrEmpty(inputParamValue))
+            {
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParamValue);
+                if (docItems != null && docItems.Any())
+                {
+                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                    return JsonConvert.SerializeObject(storedDocItems);
                 }
 
                 return null;
