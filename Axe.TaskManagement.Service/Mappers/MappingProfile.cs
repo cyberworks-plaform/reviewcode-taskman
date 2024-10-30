@@ -31,6 +31,9 @@ namespace Axe.TaskManagement.Service.Mappers
             CreateMap<TaskDto, TaskEntity>(MemberList.Source)
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => new ObjectId(src.Id)));
 
+            CreateMap<DocItem, StoredDocItem>();
+            CreateMap<StoredDocItem, DocItem>();
+
             CreateMap<QueueLock, QueueLockDto>(MemberList.Destination)
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()));
             CreateMap<QueueLockDto, QueueLock>(MemberList.Source)

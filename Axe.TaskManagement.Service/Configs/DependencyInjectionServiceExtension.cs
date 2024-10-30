@@ -37,7 +37,7 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddSingleton<IExternalProviderServiceConfigClientService, ExternalProviderServiceConfigClientService>();
 
             // Outbox
-            services.AddHostedService<OutboxPublisher>();
+            //services.AddHostedService<OutboxPublisher>();
         }
     }
 }

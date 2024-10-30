@@ -133,6 +133,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _providerConfig = externalProviderServiceConfigClientService;
             _configuration = configuration;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
+            _recallJobWorkerService = recallJobWorkerService;
         }
 
         /// <summary>
@@ -1502,10 +1503,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
                 }
-                var resultDocItems = new List<DocItem>();
+                var resultDocItems = new List<StoredDocItem>();
                 if (result.IsIgnore == false)
                 {
-                    resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+                    resultDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(result.Value);
 
                     if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
                     {
@@ -1539,25 +1540,26 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (result.IsIgnore == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
                 {
                     //Validate Value
-                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var dbDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(job.Value);
                     var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
                     if (!isValidCheckFinalValue)
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
 
-                    var docItems = new List<DocItem>(dbDocItems);
+                    var storedDocItems = new List<StoredDocItem>(dbDocItems);
 
-                    docItems.ForEach(x =>
+                    storedDocItems.ForEach(x =>
                     {
                         var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
                         job.HasChange = x.Value != resultValue;
                         x.Value = resultValue;
                     });
-                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    var updatedValue = JsonConvert.SerializeObject(storedDocItems);
                     job.LastModificationDate = now;
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     job.Value = updatedValue;
+                    job.OldValue = RemoveUnwantedJobOldValue(job.OldValue);
                     job.RightStatus = (short)EnumJob.RightStatus.Correct;
                     job.Status = (short)EnumJob.Status.Complete;
 
@@ -1745,30 +1747,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (result.QAStatus == true)
                 {
-                    var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+                    var resultDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(result.Value);
 
                     if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
 
-                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var dbDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(job.Value);
                     var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
                     if (!isValidCheckFinalValue)
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
 
-                    var docItems = new List<DocItem>(dbDocItems);
-                    docItems.ForEach(x =>
+                    var storedDocItems = new List<StoredDocItem>(dbDocItems);
+                    storedDocItems.ForEach(x =>
                     {
                         var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
                         job.HasChange = x.Value != resultValue;
                         x.Value = resultValue;
                     });
-                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    var updatedValue = JsonConvert.SerializeObject(storedDocItems);
                     job.Value = updatedValue;
                 }
+
+                job.OldValue = RemoveUnwantedJobOldValue(job.OldValue);
 
                 job.LastModificationDate = DateTime.UtcNow;
                 job.LastModifiedBy = _userPrincipalService.UserInstanceId;
@@ -1956,8 +1960,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
                     var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
 
+                    var storedFinalValue = string.Empty;
+                    if (docItems != null && docItems.Any())
+                    {
+                        var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                        storedFinalValue = JsonConvert.SerializeObject(storedDocItems);
+                    }
+
                     var updateValue = Builders<Job>.Update
-                        .Set(s => s.Value, finalValue)
+                        .Set(s => s.Value, storedFinalValue)
                         .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Correct)
                         .Set(s => s.Status, (short)EnumJob.Status.Complete);
 
@@ -6757,7 +6768,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         }
 
-        private bool IsValidCheckFinalValue(List<DocItem> oldValue, List<DocItem> newValue)
+        private bool IsValidCheckFinalValue(List<StoredDocItem> oldValue, List<StoredDocItem> newValue)
         {
             if (oldValue == null || oldValue.Count == 0 || newValue == null || newValue.Count == 0)
             {
@@ -7114,15 +7125,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 //get PathName
                 string pathName = string.Empty;
-                if (!dicDocPath.ContainsKey(job.DocPath))
+                if (!string.IsNullOrEmpty(job.DocPath))
                 {
-                    pathName = await GetPathName(job.DocPath, accessToken);
-                    dicDocPath.Add(job.DocPath, pathName);
+                    if (!dicDocPath.ContainsKey(job.DocPath))
+                    {
+                        pathName = await GetPathName(job.DocPath, accessToken);
+                        dicDocPath.Add(job.DocPath, pathName);
+                    }
+                    else
+                    {
+                        pathName = dicDocPath[job.DocPath];
+                    }
                 }
-                else
-                {
-                    pathName = dicDocPath[job.DocPath];
-                }
+                
                 job.PathName = pathName;
 
                 List<DocTypeFieldDto> listDocTypeField = null;
@@ -7226,6 +7241,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             dicDocPath.Clear();
             dicDocTypeField.Clear();
             return updatedJobs;
+        }
+
+        private string RemoveUnwantedJobOldValue(string jobOldValue)
+        {
+            if (!string.IsNullOrEmpty(jobOldValue))
+            {
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
+                if (docItems != null && docItems.Any())
+                {
+                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                    return JsonConvert.SerializeObject(storedDocItems);
+                }
+
+                return null;
+            }
+
+            return null;
         }
 
         private async Task<string> GetPathName(string docPath, string accessToken)
