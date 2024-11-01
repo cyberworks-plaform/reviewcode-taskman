@@ -10,6 +10,7 @@ using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -389,6 +390,12 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetPagingProject([FromBody] PagingRequest request, string actionCode)
         {
             return ResponseResult(await _service.GetHistoryJobByUser(request, actionCode, GetBearerToken()));
+        }
+        [HttpPost]
+        [Route("get-history-job-by-user-v2")]
+        public async Task<IActionResult> GetPagingProjectV2([FromBody] PagingRequest request, string wfsInstanceId)
+        {
+            return ResponseResult(await _service.GetHistoryJobByUserV2(request, wfsInstanceId, GetBearerToken()));
         }
         [HttpPost]
         [Route("export-excel-history-job-by-user")]
