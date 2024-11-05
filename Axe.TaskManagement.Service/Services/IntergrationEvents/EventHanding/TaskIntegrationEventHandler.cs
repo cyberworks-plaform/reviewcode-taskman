@@ -10,6 +10,7 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Axe.Utility.MessageTemplate;
+using Azure.Core;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.Helpers;
 using Ce.Constant.Lib.Dtos;
@@ -104,7 +105,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         {
             if (@event != null)
             {
-               
+
                 var accessToken = @event.AccessToken;
                 var inputParam = JsonConvert.DeserializeObject<InputParam>(@event.Input);
                 if (inputParam == null)
@@ -156,6 +157,18 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 {
                     Log.Logger.Information(
                         $"Start handle integration event from {nameof(TaskIntegrationEventHandler)}: step {inputParam.ActionCode}, WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
+                }
+
+                // Kiểm tra doc có đang tồn tại hay đã xóa => Nếu đã xóa thì clear message
+                var checkDocExisted = await _docClientService.GetByInstanceIdAsync(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                if (checkDocExisted.Success == false)
+                {
+                    throw new Exception("Error calling DocClientService to check doc existed");
+                }
+                if (checkDocExisted.Data == null || checkDocExisted.Data.IsActive == false)
+                {
+                    Serilog.Log.Information($"Doc is deleted before handling message. Message will be ignored. EventId: {@event.EventBusIntergrationEventId} DocId: {inputParam.DocInstanceId}");
+                    return;
                 }
 
                 if (crrWfsInfo.ActionCode == ActionCodeConstants.Condition)
@@ -575,8 +588,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                         }
                     }
 
-                    // 1. Tạo jobs Waitting cho bước hiện tại
-                    var jobs = await CreateJobs(inputParam, crrWfsInfo.ConfigStep);
+                    // 1. Tạo jobs Waitting cho bước hiện tại; nếu job đã được tạo trước đó rồi thì sẽ không tạo lại-> tránh duplicate job
+                    var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep);
+                    var jobs = jobsResponse.Item2;
+                    if (jobsResponse.Item1)
+                    {
+                        Serilog.Log.Information($"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}");
+                        return;
+                    }
 
                     // 1.0. Nếu job là manual thì gửi message sang DistributionJob
                     if (jobs.Any() && !crrWfsInfo.IsAuto)
@@ -1465,7 +1484,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                             }
                                         }
 
-                                       
+
                                     }
 
 
@@ -1665,204 +1684,105 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             }
         }
 
-        private async Task<List<Job>> CreateJobs(InputParam inputParam, string configStep)
+        private async Task<Tuple<bool,List<Job>>> CreateJobs(InputParam inputParam, string configStep)
         {
             var jobs = new List<Job>();
-            if (_isCreateSingleJob)
+            var isExistedJob = false;
+            try
             {
-                string value = null;
-                if (inputParam.IsConvergenceNextStep && !string.IsNullOrEmpty(inputParam.Value))
+                //check job exist
+                var listWfsStepId = new List<Guid> { inputParam.WorkflowStepInstanceId.GetValueOrDefault() };
+                var existedJob = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), listWfsStepId);
+
+                if (existedJob.Any()) // job existed ; do not create duplicate
                 {
-                    var values = JsonConvert.DeserializeObject<List<string>>(inputParam.Value);
-                    if (values != null && values.Any())
-                    {
-                        values = values.Distinct().ToList();
-                        // Nếu bước HIỆN TẠI là hội tụ và tất cả các giá trị trong bước trước giống nhau thì lấy luôn giá trị đó làm khởi tạo
-                        if (values.Count == 1)
-                        {
-                            value = values.First();
-                        }
-                    }
+                    isExistedJob= true;
+                    return new Tuple<bool, List<Job>>(isExistedJob, existedJob);
                 }
 
-                if (_isCreateMultiJobFile)
+                if (_isCreateSingleJob)
                 {
-                    // Create multi jobs (File)
-                    foreach (var subInputParams in inputParam.InputParams)
+                    string value = null;
+                    if (inputParam.IsConvergenceNextStep && !string.IsNullOrEmpty(inputParam.Value))
                     {
+                        var values = JsonConvert.DeserializeObject<List<string>>(inputParam.Value);
+                        if (values != null && values.Any())
+                        {
+                            values = values.Distinct().ToList();
+                            // Nếu bước HIỆN TẠI là hội tụ và tất cả các giá trị trong bước trước giống nhau thì lấy luôn giá trị đó làm khởi tạo
+                            if (values.Count == 1)
+                            {
+                                value = values.First();
+                            }
+                        }
+                    }
+
+                    if (_isCreateMultiJobFile)
+                    {
+                        // Create multi jobs (File)
+                        foreach (var subInputParams in inputParam.InputParams)
+                        {
+                            jobs.Add(new Job
+                            {
+                                InstanceId = Guid.NewGuid(),
+                                Code = $"J{await _sequenceJobRepository.GetSequenceValue(SequenceJobNameConstants.SequenceJobName)}",
+                                TurnInstanceId = Guid.NewGuid(),
+                                DocInstanceId = subInputParams.DocInstanceId,
+                                DocName = subInputParams.DocName,
+                                DocCreatedDate = subInputParams.DocCreatedDate,
+                                DocPath = subInputParams.DocPath,
+                                SyncMetaId = SyncPathHelper.GetSyncMetaId(subInputParams.DocPath),
+                                TaskId = !string.IsNullOrEmpty(subInputParams.TaskId) ? new ObjectId(subInputParams.TaskId) : ObjectId.Empty,
+                                TaskInstanceId = subInputParams.TaskInstanceId,
+                                DocTypeFieldInstanceId = null,
+                                DocTypeFieldName = null,
+                                DocTypeFieldSortOrder = 0,
+                                InputType = 0,
+                                PrivateCategoryInstanceId = null,
+                                IsMultipleSelection = null,
+                                DocFieldValueInstanceId = null,
+                                ProjectTypeInstanceId = subInputParams.ProjectTypeInstanceId,
+                                ProjectInstanceId = subInputParams.ProjectInstanceId,
+                                SyncTypeInstanceId = subInputParams.SyncTypeInstanceId,
+                                DigitizedTemplateInstanceId = subInputParams.DigitizedTemplateInstanceId,
+                                DigitizedTemplateCode = subInputParams.DigitizedTemplateCode,
+                                WorkflowInstanceId = subInputParams.WorkflowInstanceId,
+                                WorkflowStepInstanceId = subInputParams.WorkflowStepInstanceId,
+                                Value = subInputParams.IsConvergenceNextStep ? value : subInputParams.Value,
+                                OldValue = subInputParams.Value,
+                                //Input = null,
+                                ActionCode = subInputParams.ActionCode,
+                                //UserInstanceId = null,
+                                FileInstanceId = subInputParams.FileInstanceId,
+                                //FilePartInstanceId = null,
+                                //CoordinateArea = null,
+                                RandomSortOrder = new Random().Next(1, int.MaxValue),
+                                Price = subInputParams.Price,
+                                ClientTollRatio = subInputParams.ClientTollRatio,
+                                WorkerTollRatio = subInputParams.WorkerTollRatio,
+                                CreatedDate = DateTime.UtcNow,
+                                //ShareJobSortOrder = 0,
+                                IsParallelJob = _isParallelStep,
+                                ParallelJobInstanceId = _isParallelStep ? subInputParams.ParallelJobInstanceId : null,
+                                Note = subInputParams.Note,
+                                NumOfRound = subInputParams.NumOfRound,
+                                BatchName = subInputParams.BatchName,
+                                BatchJobInstanceId = subInputParams.BatchJobInstanceId,
+                                QaStatus = subInputParams.QaStatus,
+                                TenantId = subInputParams.TenantId,
+                                Status = (short)EnumJob.Status.Waiting,
+                                LastModifiedBy = subInputParams.LastModifiedBy,
+                            });
+                        }
+                    }
+                    else
+                    {
+                        // Create a single job
                         jobs.Add(new Job
                         {
                             InstanceId = Guid.NewGuid(),
                             Code = $"J{await _sequenceJobRepository.GetSequenceValue(SequenceJobNameConstants.SequenceJobName)}",
                             TurnInstanceId = Guid.NewGuid(),
-                            DocInstanceId = subInputParams.DocInstanceId,
-                            DocName = subInputParams.DocName,
-                            DocCreatedDate = subInputParams.DocCreatedDate,
-                            DocPath = subInputParams.DocPath,
-                            SyncMetaId = SyncPathHelper.GetSyncMetaId(subInputParams.DocPath),
-                            TaskId = !string.IsNullOrEmpty(subInputParams.TaskId) ? new ObjectId(subInputParams.TaskId) : ObjectId.Empty,
-                            TaskInstanceId = subInputParams.TaskInstanceId,
-                            DocTypeFieldInstanceId = null,
-                            DocTypeFieldName = null,
-                            DocTypeFieldSortOrder = 0,
-                            InputType = 0,
-                            PrivateCategoryInstanceId = null,
-                            IsMultipleSelection = null,
-                            DocFieldValueInstanceId = null,
-                            ProjectTypeInstanceId = subInputParams.ProjectTypeInstanceId,
-                            ProjectInstanceId = subInputParams.ProjectInstanceId,
-                            SyncTypeInstanceId = subInputParams.SyncTypeInstanceId,
-                            DigitizedTemplateInstanceId = subInputParams.DigitizedTemplateInstanceId,
-                            DigitizedTemplateCode = subInputParams.DigitizedTemplateCode,
-                            WorkflowInstanceId = subInputParams.WorkflowInstanceId,
-                            WorkflowStepInstanceId = subInputParams.WorkflowStepInstanceId,
-                            Value = subInputParams.IsConvergenceNextStep ? value : subInputParams.Value,
-                            OldValue = subInputParams.Value,
-                            //Input = null,
-                            ActionCode = subInputParams.ActionCode,
-                            //UserInstanceId = null,
-                            FileInstanceId = subInputParams.FileInstanceId,
-                            //FilePartInstanceId = null,
-                            //CoordinateArea = null,
-                            RandomSortOrder = new Random().Next(1, int.MaxValue),
-                            Price = subInputParams.Price,
-                            ClientTollRatio = subInputParams.ClientTollRatio,
-                            WorkerTollRatio = subInputParams.WorkerTollRatio,
-                            CreatedDate = DateTime.UtcNow,
-                            //ShareJobSortOrder = 0,
-                            IsParallelJob = _isParallelStep,
-                            ParallelJobInstanceId = _isParallelStep ? subInputParams.ParallelJobInstanceId : null,
-                            Note = subInputParams.Note,
-                            NumOfRound = subInputParams.NumOfRound,
-                            BatchName = subInputParams.BatchName,
-                            BatchJobInstanceId = subInputParams.BatchJobInstanceId,
-                            QaStatus = subInputParams.QaStatus,
-                            TenantId = subInputParams.TenantId,
-                            Status = (short)EnumJob.Status.Waiting,
-                            LastModifiedBy = subInputParams.LastModifiedBy,
-                        });
-                    }
-                }
-                else
-                {
-                    // Create a single job
-                    jobs.Add(new Job
-                    {
-                        InstanceId = Guid.NewGuid(),
-                        Code = $"J{await _sequenceJobRepository.GetSequenceValue(SequenceJobNameConstants.SequenceJobName)}",
-                        TurnInstanceId = Guid.NewGuid(),
-                        DocInstanceId = inputParam.DocInstanceId,
-                        DocName = inputParam.DocName,
-                        DocCreatedDate = inputParam.DocCreatedDate,
-                        DocPath = inputParam.DocPath,
-                        SyncMetaId = SyncPathHelper.GetSyncMetaId(inputParam.DocPath),
-                        TaskId = !string.IsNullOrEmpty(inputParam.TaskId) ? new ObjectId(inputParam.TaskId) : ObjectId.Empty,
-                        TaskInstanceId = inputParam.TaskInstanceId,
-                        DocTypeFieldInstanceId = null,
-                        DocTypeFieldName = null,
-                        DocTypeFieldSortOrder = 0,
-                        InputType = 0,
-                        PrivateCategoryInstanceId = null,
-                        IsMultipleSelection = null,
-                        DocFieldValueInstanceId = null,
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId,
-                        SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
-                        DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
-                        DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                        Value = inputParam.IsConvergenceNextStep ? value : inputParam.Value,
-                        OldValue = inputParam.Value,
-                        //Input = null,
-                        ActionCode = inputParam.ActionCode,
-                        //UserInstanceId = null,
-                        FileInstanceId = inputParam.FileInstanceId,
-                        //FilePartInstanceId = null,
-                        //CoordinateArea = null,
-                        RandomSortOrder = new Random().Next(1, int.MaxValue),
-                        Price = inputParam.Price,
-                        ClientTollRatio = inputParam.ClientTollRatio,
-                        WorkerTollRatio = inputParam.WorkerTollRatio,
-                        CreatedDate = DateTime.UtcNow,
-                        //ShareJobSortOrder = 0,
-                        IsParallelJob = _isParallelStep,
-                        ParallelJobInstanceId = _isParallelStep ? inputParam.ParallelJobInstanceId : null,
-                        Note = inputParam.Note,
-                        NumOfRound = inputParam.NumOfRound,
-                        BatchName = inputParam.BatchName,
-                        BatchJobInstanceId = inputParam.BatchJobInstanceId,
-                        QaStatus = inputParam.QaStatus,
-                        TenantId = inputParam.TenantId,
-                        Status = (short)EnumJob.Status.Waiting,
-                        LastModifiedBy = inputParam.LastModifiedBy,
-                    });
-                }
-            }
-            else if (inputParam.ItemInputParams != null && inputParam.ItemInputParams.Any())
-            {
-                // Create multi jobs
-                foreach (var itemInput in inputParam.ItemInputParams)
-                {
-                    var isIgnoreStep = WorkflowHelper.IsIgnoreStep(configStep,
-                        itemInput.DocTypeFieldInstanceId.GetValueOrDefault());
-
-                    string value = itemInput.Value;
-                    string oldValue = itemInput.Value;
-
-                    // Set Value & OldValue cho 1 số case đặc biệt
-                    if (inputParam.ActionCode == ActionCodeConstants.DataConfirmBoolAuto)
-                    {
-                        value = itemInput.OldValue;
-                        itemInput.ConditionalValue = itemInput.Value;
-                    }
-
-                    // Trường hợp bước HIỆN TẠI là hội tụ
-                    if (itemInput.IsConvergenceNextStep && !string.IsNullOrEmpty(itemInput.Value))
-                    {
-
-                        if (inputParam.ActionCode != ActionCodeConstants.DataConfirmBoolAuto)
-                        {
-                            var values = JsonConvert.DeserializeObject<List<string>>(itemInput.Value);
-                            if (values != null && values.Any())
-                            {
-                                values = values.Distinct().ToList();
-                                // Nếu tất cả các giá trị trong bước trước giống nhau thì lấy luôn giá trị đó làm khởi tạo
-                                if (values.Count == 1)
-                                {
-                                    value = values.First();
-                                }
-                                else
-                                {
-                                    value = null;
-                                }
-                            }
-                        }
-                    }
-
-                    // Trường hợp bước HIỆN TẠI là DataEntryBool và là bước bỏ qua thì gán luôn giá trị bằng True
-                    if (isIgnoreStep && inputParam.ActionCode == ActionCodeConstants.DataEntryBool)
-                    {
-                        value = true.ToString();
-                    }
-
-                    // Trường hợp bước HIỆN TẠI là DataConfirm or DataConfirmAuto or DataConfirmBoolAuto và ko phải là bước hội tụ
-                    if ((inputParam.ActionCode == ActionCodeConstants.DataConfirm ||
-                         inputParam.ActionCode == ActionCodeConstants.DataConfirmAuto ||
-                         inputParam.ActionCode == ActionCodeConstants.DataConfirmBoolAuto) &&
-                        !itemInput.IsConvergenceNextStep && !string.IsNullOrEmpty(itemInput.Value))
-                    {
-                        oldValue = JsonConvert.SerializeObject(new List<string> { itemInput.Value });
-                    }
-
-                    int numOfCloneJob = _numOfResourceInJob > 0 ? _numOfResourceInJob : 1;
-                    for (int i = 0; i < numOfCloneJob; i++)
-                    {
-                        jobs.Add(new Job
-                        {
-                            InstanceId = Guid.NewGuid(),
-                            Code = $"J{await _sequenceJobRepository.GetSequenceValue(SequenceJobNameConstants.SequenceJobName)}",
-                            //TurnInstanceId = null,
                             DocInstanceId = inputParam.DocInstanceId,
                             DocName = inputParam.DocName,
                             DocCreatedDate = inputParam.DocCreatedDate,
@@ -1870,18 +1790,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             SyncMetaId = SyncPathHelper.GetSyncMetaId(inputParam.DocPath),
                             TaskId = !string.IsNullOrEmpty(inputParam.TaskId) ? new ObjectId(inputParam.TaskId) : ObjectId.Empty,
                             TaskInstanceId = inputParam.TaskInstanceId,
-                            DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
-                            DocTypeFieldCode = itemInput.DocTypeFieldCode,
-                            DocTypeFieldName = itemInput.DocTypeFieldName,
-                            DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
-                            InputType = itemInput.InputType,
-                            MaxLength = itemInput.MaxLength,
-                            MinLength = itemInput.MinLength,
-                            MaxValue = itemInput.MaxValue,
-                            MinValue = itemInput.MinValue,
-                            PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
-                            IsMultipleSelection = itemInput.IsMultipleSelection,
-                            DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
+                            DocTypeFieldInstanceId = null,
+                            DocTypeFieldName = null,
+                            DocTypeFieldSortOrder = 0,
+                            InputType = 0,
+                            PrivateCategoryInstanceId = null,
+                            IsMultipleSelection = null,
+                            DocFieldValueInstanceId = null,
                             ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
                             ProjectInstanceId = inputParam.ProjectInstanceId,
                             SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
@@ -1889,123 +1804,171 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                             DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                             WorkflowInstanceId = inputParam.WorkflowInstanceId,
                             WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                            Value = value,
-                            OldValue = oldValue,
+                            Value = inputParam.IsConvergenceNextStep ? value : inputParam.Value,
+                            OldValue = inputParam.Value,
                             //Input = null,
                             ActionCode = inputParam.ActionCode,
                             //UserInstanceId = null,
                             FileInstanceId = inputParam.FileInstanceId,
-                            FilePartInstanceId = itemInput.FilePartInstanceId,
-                            CoordinateArea = itemInput.CoordinateArea,
+                            //FilePartInstanceId = null,
+                            //CoordinateArea = null,
                             RandomSortOrder = new Random().Next(1, int.MaxValue),
-                            Price = itemInput.Price,
+                            Price = inputParam.Price,
                             ClientTollRatio = inputParam.ClientTollRatio,
                             WorkerTollRatio = inputParam.WorkerTollRatio,
                             CreatedDate = DateTime.UtcNow,
-                            ShareJobSortOrder = _numOfResourceInJob > 1 ? (short)(i + 1) : (short)0,
+                            //ShareJobSortOrder = 0,
                             IsParallelJob = _isParallelStep,
-                            ParallelJobInstanceId = _isParallelStep ? itemInput.ParallelJobInstanceId : null,
-                            RightStatus = isIgnoreStep ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.WaitingConfirm,
+                            ParallelJobInstanceId = _isParallelStep ? inputParam.ParallelJobInstanceId : null,
                             Note = inputParam.Note,
                             NumOfRound = inputParam.NumOfRound,
                             BatchName = inputParam.BatchName,
                             BatchJobInstanceId = inputParam.BatchJobInstanceId,
+                            QaStatus = inputParam.QaStatus,
                             TenantId = inputParam.TenantId,
-                            Status = isIgnoreStep ? (short)EnumJob.Status.Ignore : (short)EnumJob.Status.Waiting
+                            Status = (short)EnumJob.Status.Waiting,
+                            LastModifiedBy = inputParam.LastModifiedBy,
                         });
                     }
                 }
-            }
-
-            if (jobs.Any())
-            {
-                try
+                else if (inputParam.ItemInputParams != null && inputParam.ItemInputParams.Any())
                 {
-                    if (_useCache)
+                    // Create multi jobs
+                    foreach (var itemInput in inputParam.ItemInputParams)
                     {
-                        // Check các jobs đã lưu vào DB trước đó hay chưa, nếu chưa thì mới thêm mới
-                        var existedJobs = new List<Job>();
-                        foreach (var job in jobs)
-                        {
-                            var digitizedTemplateInstanceId = job.DigitizedTemplateInstanceId == null
-                                ? "null"
-                                : job.DigitizedTemplateInstanceId.ToString();
-                            var docTypeFieldInstanceId = job.DocTypeFieldInstanceId == null
-                                ? "null"
-                                : job.DocTypeFieldInstanceId.ToString();
-                            var docFieldValueInstanceId = job.DocFieldValueInstanceId == null
-                                ? "null"
-                                : job.DocFieldValueInstanceId.ToString();
+                        var isIgnoreStep = WorkflowHelper.IsIgnoreStep(configStep,
+                            itemInput.DocTypeFieldInstanceId.GetValueOrDefault());
 
-                            string cacheKey =
-                                $"{job.ProjectInstanceId}_{digitizedTemplateInstanceId}_{job.WorkflowStepInstanceId}_{job.DocInstanceId}_{docTypeFieldInstanceId}_{docFieldValueInstanceId}_{job.Status}_{job.ShareJobSortOrder}_{job.NumOfRound}";
-                            var existedJobCode = await _cachingHelper.TryGetFromCacheAsync<string>(cacheKey);
-                            if (!string.IsNullOrEmpty(existedJobCode) && existedJobCode.StartsWith("J"))
+                        string value = itemInput.Value;
+                        string oldValue = itemInput.Value;
+
+                        // Set Value & OldValue cho 1 số case đặc biệt
+                        if (inputParam.ActionCode == ActionCodeConstants.DataConfirmBoolAuto)
+                        {
+                            value = itemInput.OldValue;
+                            itemInput.ConditionalValue = itemInput.Value;
+                        }
+
+                        // Trường hợp bước HIỆN TẠI là hội tụ
+                        if (itemInput.IsConvergenceNextStep && !string.IsNullOrEmpty(itemInput.Value))
+                        {
+
+                            if (inputParam.ActionCode != ActionCodeConstants.DataConfirmBoolAuto)
                             {
-                                existedJobs.Add(job);
+                                var values = JsonConvert.DeserializeObject<List<string>>(itemInput.Value);
+                                if (values != null && values.Any())
+                                {
+                                    values = values.Distinct().ToList();
+                                    // Nếu tất cả các giá trị trong bước trước giống nhau thì lấy luôn giá trị đó làm khởi tạo
+                                    if (values.Count == 1)
+                                    {
+                                        value = values.First();
+                                    }
+                                    else
+                                    {
+                                        value = null;
+                                    }
+                                }
                             }
                         }
 
-                        if (existedJobs.Any())
+                        // Trường hợp bước HIỆN TẠI là DataEntryBool và là bước bỏ qua thì gán luôn giá trị bằng True
+                        if (isIgnoreStep && inputParam.ActionCode == ActionCodeConstants.DataEntryBool)
                         {
-                            jobs = jobs.Except(existedJobs).ToList();
+                            value = true.ToString();
                         }
 
-                        // Random create jobs if current step is ManyToSingleJob (prevent duplicate job)
-                        if (_isCrrStepRequiredAllBeforeStepComplete || _isParallelStep)
+                        // Trường hợp bước HIỆN TẠI là DataConfirm or DataConfirmAuto or DataConfirmBoolAuto và ko phải là bước hội tụ
+                        if ((inputParam.ActionCode == ActionCodeConstants.DataConfirm ||
+                             inputParam.ActionCode == ActionCodeConstants.DataConfirmAuto ||
+                             inputParam.ActionCode == ActionCodeConstants.DataConfirmBoolAuto) &&
+                            !itemInput.IsConvergenceNextStep && !string.IsNullOrEmpty(itemInput.Value))
                         {
-                            var rnd = new Random();
-                            int delayCreateJob = rnd.Next(100, 1100);
-                            await Task.Delay(delayCreateJob);
+                            oldValue = JsonConvert.SerializeObject(new List<string> { itemInput.Value });
                         }
 
-                        var result = 0;
-                        if (jobs.Any())
+                        int numOfCloneJob = _numOfResourceInJob > 0 ? _numOfResourceInJob : 1;
+                        for (int i = 0; i < numOfCloneJob; i++)
                         {
-                            result = await _jobRepository.AddMultiAsync(jobs);
-                        }
-
-                        if (result > 0)
-                        {
-                            // Lưu các jobs đã thêm vào DB trên cache
-                            foreach (var job in jobs)
+                            jobs.Add(new Job
                             {
-                                var digitizedTemplateInstanceId = job.DigitizedTemplateInstanceId == null
-                                    ? "null"
-                                    : job.DigitizedTemplateInstanceId.ToString();
-                                var docTypeFieldInstanceId = job.DocTypeFieldInstanceId == null
-                                    ? "null"
-                                    : job.DocTypeFieldInstanceId.ToString();
-                                var docFieldValueInstanceId = job.DocFieldValueInstanceId == null
-                                    ? "null"
-                                    : job.DocFieldValueInstanceId.ToString();
-
-                                string cacheKey =
-                                    $"{job.ProjectInstanceId}_{digitizedTemplateInstanceId}_{job.WorkflowStepInstanceId}_{job.DocInstanceId}_{docTypeFieldInstanceId}_{docFieldValueInstanceId}_{job.Status}_{job.ShareJobSortOrder}_{job.NumOfRound}";
-                                await _cachingHelper.TrySetCacheAsync(cacheKey, job.Code, 1800);
-                            }
+                                InstanceId = Guid.NewGuid(),
+                                Code = $"J{await _sequenceJobRepository.GetSequenceValue(SequenceJobNameConstants.SequenceJobName)}",
+                                //TurnInstanceId = null,
+                                DocInstanceId = inputParam.DocInstanceId,
+                                DocName = inputParam.DocName,
+                                DocCreatedDate = inputParam.DocCreatedDate,
+                                DocPath = inputParam.DocPath,
+                                SyncMetaId = SyncPathHelper.GetSyncMetaId(inputParam.DocPath),
+                                TaskId = !string.IsNullOrEmpty(inputParam.TaskId) ? new ObjectId(inputParam.TaskId) : ObjectId.Empty,
+                                TaskInstanceId = inputParam.TaskInstanceId,
+                                DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
+                                DocTypeFieldCode = itemInput.DocTypeFieldCode,
+                                DocTypeFieldName = itemInput.DocTypeFieldName,
+                                DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
+                                InputType = itemInput.InputType,
+                                MaxLength = itemInput.MaxLength,
+                                MinLength = itemInput.MinLength,
+                                MaxValue = itemInput.MaxValue,
+                                MinValue = itemInput.MinValue,
+                                PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
+                                IsMultipleSelection = itemInput.IsMultipleSelection,
+                                DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
+                                ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                                ProjectInstanceId = inputParam.ProjectInstanceId,
+                                SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
+                                DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
+                                DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
+                                WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                                WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                                Value = value,
+                                OldValue = oldValue,
+                                //Input = null,
+                                ActionCode = inputParam.ActionCode,
+                                //UserInstanceId = null,
+                                FileInstanceId = inputParam.FileInstanceId,
+                                FilePartInstanceId = itemInput.FilePartInstanceId,
+                                CoordinateArea = itemInput.CoordinateArea,
+                                RandomSortOrder = new Random().Next(1, int.MaxValue),
+                                Price = itemInput.Price,
+                                ClientTollRatio = inputParam.ClientTollRatio,
+                                WorkerTollRatio = inputParam.WorkerTollRatio,
+                                CreatedDate = DateTime.UtcNow,
+                                ShareJobSortOrder = _numOfResourceInJob > 1 ? (short)(i + 1) : (short)0,
+                                IsParallelJob = _isParallelStep,
+                                ParallelJobInstanceId = _isParallelStep ? itemInput.ParallelJobInstanceId : null,
+                                RightStatus = isIgnoreStep ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.WaitingConfirm,
+                                Note = inputParam.Note,
+                                NumOfRound = inputParam.NumOfRound,
+                                BatchName = inputParam.BatchName,
+                                BatchJobInstanceId = inputParam.BatchJobInstanceId,
+                                TenantId = inputParam.TenantId,
+                                Status = isIgnoreStep ? (short)EnumJob.Status.Ignore : (short)EnumJob.Status.Waiting
+                            });
                         }
                     }
-                    else
-                    {
-                        // UpSert
-                        jobs = await _jobRepository.UpSertMultiJobAsync(jobs);
-                    }
+                }
 
+                if (jobs.Any())
+                {
+
+                    // Create job UpSert
+                    jobs = await _jobRepository.UpSertMultiJobAsync(jobs);
                     Log.Logger.Information($"Created {jobs.Count} jobs in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
+                    isExistedJob = true;
+                    return new Tuple<bool, List<Job>>(isExistedJob, jobs);
                 }
-                catch (Exception ex)
+                else
                 {
-                    Log.Logger.Error(ex, ex.Message);
-                    throw ex;
+                    Log.Logger.Information($"There isn't not any jobs with DocInstanceId: {inputParam.DocInstanceId}");
+                    isExistedJob = false;
+                    return new Tuple<bool, List<Job>>(isExistedJob, jobs);
                 }
-
-                return jobs;
             }
-            else
+            catch (Exception ex)
             {
-                Log.Logger.Information($"There isn't not any jobs with DocInstanceId: {inputParam.DocInstanceId}");
-                return jobs;
+                Log.Logger.Error(ex, ex.Message);
+                throw ex;
             }
         }
 
