@@ -459,9 +459,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("get-error-doc-report-summary")]
-        public async Task<IActionResult> GetErrorDocReportSummary(Guid projectInstanceId, string folderId)
+        public async Task<IActionResult> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds)
         {
-            return ResponseResult(await _service.GetErrorDocReportSummary(projectInstanceId, folderId, GetBearerToken()));
+            return ResponseResult(await _service.GetErrorDocReportSummary(projectInstanceId, folderIds, GetBearerToken()));
         }
 
         [HttpPost]
