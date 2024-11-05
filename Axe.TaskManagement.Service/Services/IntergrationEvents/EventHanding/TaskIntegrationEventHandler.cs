@@ -10,7 +10,6 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Axe.Utility.MessageTemplate;
-using Azure.Core;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.Helpers;
 using Ce.Constant.Lib.Dtos;
