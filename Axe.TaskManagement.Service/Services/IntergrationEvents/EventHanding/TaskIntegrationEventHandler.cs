@@ -588,7 +588,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     }
 
                     // 1. Tạo jobs Waitting cho bước hiện tại; nếu job đã được tạo trước đó rồi thì sẽ không tạo lại-> tránh duplicate job
-                    var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep);
+                    var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep, accessToken);
                     var jobs = jobsResponse.Item2;
                     if (jobsResponse.Item1)
                     {
@@ -1224,42 +1224,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                             Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 ProcessingFile in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
 
-                            //// 2.3. Check validate input
-                            //if (!string.IsNullOrEmpty(crrWfsInfo.Input))
-                            //{
-                            //    var jSchema = JSchema.Parse(crrWfsInfo.Input); 
-                            //    var jObject = JObject.Parse(@event.Input);
-                            //    var isValid = jObject.IsValid(jSchema, out IList<string> errors);
-
-                            //    if (isValid)
-                            //    {
-                            //        string serviceUri = ServiceHelper.GetServiceUriByServiceCode(crrWfsInfo.ServiceCode);
-                            //        var response = await ProcessTask(@event.Input, serviceUri, crrWfsInfo.ApiEndpoint, crrWfsInfo.HttpMethodType, accessToken);
-                            //        if (response.Success)
-                            //        {
-                            //            @event.Output = response.Data;
-
-                            //            // 3. Trigger bước tiếp theo
-                            //            if (nextWfsInfo != null && nextWfsInfo.ActionCode != ActionCodeConstants.End)
-                            //            {
-                            //                var evt = new TaskEvent
-                            //                {
-                            //                    Input = @event.Output,     // output của bước trước là input của bước sau
-                            //                    AccessToken = @event.AccessToken
-                            //                };
-                            //                await TriggerNextStep(evt, nextWfsInfo);
-                            //            }
-                            //        }
-                            //    }
-                            //    else
-                            //    {
-                            //        foreach (var error in errors)
-                            //        {
-                            //            Log.Logger.Error("Error schema event input!");
-                            //            Log.Logger.Error(error);
-                            //        }
-                            //    }
-                            //}
 
                             // Ignore validate input
                             string serviceUri = ServiceHelper.GetServiceUriByServiceCode(crrWfsInfo.ServiceCode);
@@ -1683,7 +1647,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             }
         }
 
-        private async Task<Tuple<bool,List<Job>>> CreateJobs(InputParam inputParam, string configStep)
+        private async Task<Tuple<bool, List<Job>>> CreateJobs(InputParam inputParam, string configStep, string accessToken)
         {
             var jobs = new List<Job>();
             var isExistedJob = false;
@@ -1695,7 +1659,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                 if (existedJob.Any()) // job existed ; do not create duplicate
                 {
-                    isExistedJob= true;
+                    isExistedJob = true;
                     return new Tuple<bool, List<Job>>(isExistedJob, existedJob);
                 }
 
@@ -1832,8 +1796,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 }
                 else if (inputParam.ItemInputParams != null && inputParam.ItemInputParams.Any())
                 {
+                    //Không tạo các job phân mảnh đối với các Meta được đánh dấu không hiện thị để nhập
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
+                    {
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var listEnableInputDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == true).ToList();
+
                     // Create multi jobs
-                    foreach (var itemInput in inputParam.ItemInputParams)
+                    foreach (var itemInput in inputParam.ItemInputParams.Where(x => listEnableInputDocTypeField.Any(e => e.Id == x.DocTypeFieldId)))
                     {
                         var isIgnoreStep = WorkflowHelper.IsIgnoreStep(configStep,
                             itemInput.DocTypeFieldInstanceId.GetValueOrDefault());
@@ -1954,7 +1927,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     // Create job UpSert
                     jobs = await _jobRepository.UpSertMultiJobAsync(jobs);
                     Log.Logger.Information($"Created {jobs.Count} jobs in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
-                    isExistedJob = true;
+                    isExistedJob = false;
                     return new Tuple<bool, List<Job>>(isExistedJob, jobs);
                 }
                 else

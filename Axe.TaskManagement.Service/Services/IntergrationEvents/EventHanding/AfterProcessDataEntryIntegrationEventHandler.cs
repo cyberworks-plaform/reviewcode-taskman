@@ -2,6 +2,7 @@
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Implementations;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
@@ -37,6 +38,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
         private readonly IDocFieldValueClientService _docFieldValueClientService;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -60,6 +62,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IDocClientService docClientService,
             IServiceProvider provider,
             IDocFieldValueClientService docFieldValueClientService,
+            IDocTypeFieldClientService docTypeFieldClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
         {
@@ -73,6 +76,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _projectStatisticClientService = projectStatisticClientService;
             _docClientService = docClientService;
             _docFieldValueClientService = docFieldValueClientService;
+            _docTypeFieldClientService = docTypeFieldClientService;
             _moneyService = moneyService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
@@ -293,7 +297,24 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 };
                 // Nếu ko tồn tại job Waiting hoặc Processing ở các bước TRƯỚC và bước HIỆN TẠI thì mới chuyển trạng thái
                 var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                bool hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep);
+
+                // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                bool hasJobWaitingOrProcessing = false;
+                var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                if (listDocTypeFieldResponse.Success == false)
+                {
+                    throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                }
+
+                var listEnableInputDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == true).ToList();
+                // get các job ở bước hiện tại+các bước trước -> check nếu còn meta ở trạng thái waiting/processing và được setting hiện thị để nhập -> thì không đủ điều kiện chuyển bước
+                var listJob = await _repository.GetJobByWfsInstanceIds(job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep.Select(x => x.InstanceId).ToList());
+                
+                hasJobWaitingOrProcessing = listJob.Any(x =>
+                                                (x.Status == (short)EnumJob.Status.Waiting || x.Status == (short)EnumJob.Status.Processing)
+                                                && listEnableInputDocTypeField.Any(e => e.InstanceId == x.DocTypeFieldInstanceId)
+                                                );
+
                 if (!hasJobWaitingOrProcessing)
                 {
                     Log.Information($"ProcessDataEntry change step: DocInstanceId => {job.DocInstanceId}; ActionCode => {job.ActionCode}; WorkflowStepInstanceId => {job.WorkflowStepInstanceId}");
@@ -585,10 +606,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                     if (!hasJobWaitingOrProcessing)
                                     {
                                         var countOfExpectJobsRs =
-                                            await _docFieldValueClientService
-                                                .GetCountOfExpectedByDocInstanceId(
-                                                    job.DocInstanceId.GetValueOrDefault(),
-                                                    accessToken);
+                                            await _docFieldValueClientService.GetCountOfExpectedByDocInstanceId(job.DocInstanceId.GetValueOrDefault(), accessToken);
                                         var countOfExpectJobs =
                                             countOfExpectJobsRs != null && countOfExpectJobsRs.Success
                                                 ? countOfExpectJobsRs.Data
@@ -597,7 +615,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                         var prevOfNextWfsInstanceIds = prevOfNextWfsInfoes.Select(x => x.InstanceId).ToList();
                                         var prevOfNextWfsJobs = await _repository.GetJobByWfsInstanceIds(job.DocInstanceId.GetValueOrDefault(), prevOfNextWfsInstanceIds);
                                         //prevOfNextWfsJobs = prevOfNextWfsJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng => Bussiness New: Don't need filter
-                                        if (prevOfNextWfsJobs.Count == countOfExpectJobs) // Số lượng prevOfNextWfsJobs = countOfExpectJobs thì mới next step
+                                        if (prevOfNextWfsJobs.Count >= countOfExpectJobs) // Số lượng prevOfNextWfsJobs = countOfExpectJobs thì mới next step
                                         {
                                             // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
                                             bool triggerNextStepHappend =
@@ -830,7 +848,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                         try // try to publish event
                         {
-                           _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
+                            _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
                         }
                         catch (Exception exPublishEvent)
                         {
