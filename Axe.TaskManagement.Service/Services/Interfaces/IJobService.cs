@@ -106,6 +106,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<List<JobDto>>> GetListJobByStatusActionCode(Guid projectInstanceId, int status = 0, string actionCode = null);
         Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);
+        Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUserV2(PagingRequest request, string wfsInstanceId, string accessToken);
         Task<GenericResponse<double>> GetFalsePercent(string accessToken);
         Task<GenericResponse<HistoryJobDto>> GetHistoryJobByStep(PagingRequest request, string projectInstanceId, string sActionCodes);
         Task<GenericResponse<PagedList<HistoryUserJobDto>>> GetPagingHistoryUser(PagingRequest request, string accessToken);
@@ -116,7 +117,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         //GET VALUE CHART 
 
-        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderId, string accessToken = null);
+        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds, string accessToken = null);
 
         Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderId, string accessToken = null);
 
