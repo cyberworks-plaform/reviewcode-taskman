@@ -3,6 +3,7 @@ using System;
 using Axe.TaskManagement.Data.DataAccess;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,10 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Axe.TaskManagement.Data.Migrations
 {
     [DbContext(typeof(AxeTaskManagementDbContext))]
-    partial class AxeTaskManagementDbContextModelSnapshot : ModelSnapshot
+    [Migration("20241031073426_AddTableInboxIntegrationEvent")]
+    partial class AddTableInboxIntegrationEvent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder

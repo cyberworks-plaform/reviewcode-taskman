@@ -7161,15 +7161,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 //get PathName
                 string pathName = string.Empty;
-                if (!dicDocPath.ContainsKey(job.DocPath))
+                if (!string.IsNullOrEmpty(job.DocPath))
                 {
-                    pathName = await GetPathName(job.DocPath, accessToken);
-                    dicDocPath.Add(job.DocPath, pathName);
+                    if (!dicDocPath.ContainsKey(job.DocPath))
+                    {
+                        pathName = await GetPathName(job.DocPath, accessToken);
+                        dicDocPath.Add(job.DocPath, pathName);
+                    }
+                    else
+                    {
+                        pathName = dicDocPath[job.DocPath];
+                    }
                 }
-                else
-                {
-                    pathName = dicDocPath[job.DocPath];
-                }
+                
                 job.PathName = pathName;
 
                 List<DocTypeFieldDto> listDocTypeField = null;
