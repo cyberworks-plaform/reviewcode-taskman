@@ -1286,7 +1286,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 for (int i = 0; i < numOfProcessJob; i++)
                                 {
                                     string input = _isCreateMultiJobFile ? JsonConvert.SerializeObject(inputParam.InputParams[i]) : @event.Input;
-                                    var processJobResponse = await ProcessJob(input, serviceUri, crrWfsInfo.ApiEndpoint, crrWfsInfo.HttpMethodType, accessToken);
+                                    var processJobResponse = await ProcessJob(input, serviceUri, crrWfsInfo.ApiEndpoint, crrWfsInfo.HttpMethodType, accessToken, ct);
 
                                     if (processJobResponse.Success && !string.IsNullOrEmpty(processJobResponse.Data))
                                     {
@@ -2003,7 +2003,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             }
         }
 
-        private async Task<GenericResponse<string>> ProcessJob(string input, string serviceUri, string apiEndpoint, short httpMethodType = (short)HttpClientMethodType.POST, string accessToken = null)
+        private async Task<GenericResponse<string>> ProcessJob(string input, string serviceUri, string apiEndpoint, short httpMethodType = (short)HttpClientMethodType.POST, string accessToken = null, CancellationToken ct = default)
         {
             GenericResponse<string> response;
             var inputParam = JsonConvert.DeserializeObject<InputParam>(input);
