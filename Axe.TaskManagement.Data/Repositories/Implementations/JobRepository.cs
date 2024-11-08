@@ -52,74 +52,22 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 //var filter6 = Builders<Job>.Filter.Eq(x => x.TenantId, entity.TenantId);
                 var filter7 = Builders<Job>.Filter.Eq(x => x.ShareJobSortOrder, entity.ShareJobSortOrder);
                 var filter8 = Builders<Job>.Filter.Eq(x => x.Status, entity.Status);
-                var filter = filter1 & filter2 & filter3 & filter4 & filter5 & filter6 & filter7 & filter8;
+                var filter9 = Builders<Job>.Filter.Eq(x => x.NumOfRound, entity.NumOfRound);
+                var filter = filter1 & filter2 & filter3 & filter4 & filter5 & filter6 & filter7 & filter8 & filter9;
 
-                var updateValue = Builders<Job>.Update
-                    //.Set(s => s.Id, entity.Id)
-                    .Set(s => s.InstanceId, entity.InstanceId)
-                    .Set(s => s.Code, entity.Code)
-                    .Set(s => s.TurnInstanceId, entity.TurnInstanceId)
-                    .Set(s => s.TaskId, entity.TaskId)
-                    .Set(s => s.TaskInstanceId, entity.TaskInstanceId)
-                    .Set(s => s.DocInstanceId, entity.DocInstanceId)
-                    .Set(s => s.DocName, entity.DocName)
-                    .Set(s => s.DocCreatedDate, entity.DocCreatedDate)
-                    .Set(s => s.SyncTypeInstanceId, entity.SyncTypeInstanceId)
-                    .Set(s => s.DocPath, entity.DocPath)
-                    .Set(s => s.SyncMetaId, entity.SyncMetaId)
-                    .Set(s => s.DigitizedTemplateInstanceId, entity.DigitizedTemplateInstanceId)
-                    .Set(s => s.DigitizedTemplateCode, entity.DigitizedTemplateCode)
-                    .Set(s => s.DocTypeFieldInstanceId, entity.DocTypeFieldInstanceId)
-                    .Set(s => s.DocTypeFieldName, entity.DocTypeFieldName)
-                    .Set(s => s.DocTypeFieldSortOrder, entity.DocTypeFieldSortOrder)
-                    .Set(s => s.DocFieldValueInstanceId, entity.DocFieldValueInstanceId)
-                    .Set(s => s.InputType, entity.InputType)
-                    .Set(s => s.PrivateCategoryInstanceId, entity.PrivateCategoryInstanceId)
-                    .Set(s => s.IsMultipleSelection, entity.IsMultipleSelection)
-                    .Set(s => s.Format, entity.Format)
-                    .Set(s => s.MinLength, entity.MinLength)
-                    .Set(s => s.MaxLength, entity.MaxLength)
-                    .Set(s => s.MinValue, entity.MinValue)
-                    .Set(s => s.MaxValue, entity.MaxValue)
-                    .Set(s => s.RandomSortOrder, entity.RandomSortOrder)
-                    .Set(s => s.ProjectTypeInstanceId, entity.ProjectTypeInstanceId)
-                    .Set(s => s.ProjectInstanceId, entity.ProjectInstanceId)
-                    .Set(s => s.WorkflowInstanceId, entity.WorkflowInstanceId)
-                    .Set(s => s.WorkflowStepInstanceId, entity.WorkflowStepInstanceId)
-                    .Set(s => s.ActionCode, entity.ActionCode)
-                    .Set(s => s.UserInstanceId, entity.UserInstanceId)
-                    .Set(s => s.Value, entity.Value)
-                    .Set(s => s.OldValue, entity.OldValue)
-                    .Set(s => s.Input, entity.Input)
-                    .Set(s => s.Output, entity.Output)
-                    .Set(s => s.FileInstanceId, entity.FileInstanceId)
-                    .Set(s => s.FilePartInstanceId, entity.FilePartInstanceId)
-                    .Set(s => s.CoordinateArea, entity.CoordinateArea)
-                    .Set(s => s.ReceivedDate, entity.ReceivedDate)
-                    .Set(s => s.DueDate, entity.DueDate)
-                    .Set(s => s.CreatedDate, entity.CreatedDate)
-                    .Set(s => s.CreatedBy, entity.CreatedBy)
-                    .Set(s => s.LastModificationDate, entity.LastModificationDate)
-                    .Set(s => s.LastModifiedBy, entity.LastModifiedBy)
-                    .Set(s => s.StartWaitingDate, entity.StartWaitingDate)
-                    .Set(s => s.Note, entity.Note)
-                    .Set(s => s.IsIgnore, entity.IsIgnore)
-                    .Set(s => s.ReasonIgnore, entity.ReasonIgnore)
-                    .Set(s => s.IsWarning, entity.IsWarning)
-                    .Set(s => s.ReasonWarning, entity.ReasonWarning)
-                    .Set(s => s.HasChange, entity.HasChange)
-                    .Set(s => s.OldValue, entity.OldValue)
-                    .Set(s => s.Input, entity.Input)
-                    .Set(s => s.Output, entity.Output)
-                    .Set(s => s.Price, entity.Price)
-                    .Set(s => s.ClientTollRatio, entity.ClientTollRatio)
-                    .Set(s => s.WorkerTollRatio, entity.WorkerTollRatio)
-                    .Set(s => s.ShareJobSortOrder, entity.ShareJobSortOrder)
-                    .Set(s => s.IsParallelJob, entity.IsParallelJob)
-                    .Set(s => s.ParallelJobInstanceId, entity.ParallelJobInstanceId)
-                    .Set(s => s.TenantId, entity.TenantId)
-                    .Set(s => s.RightStatus, entity.RightStatus)
-                    .Set(s => s.Status, entity.Status);
+
+                var updateValue = Builders<Job>.Update.Unset(u => u.Id);
+                
+                //update all field except ID
+                var jobFields = entity.GetType().GetProperties();
+                foreach (var property in jobFields)
+                {
+                    if (property.Name != nameof(Job.Id))
+                    {
+                        updateValue = updateValue.Set(property.Name, property.GetValue(entity));
+                    }
+
+                }
 
                 updateOneModels.Add(new UpdateOneModel<Job>(filter, updateValue));
             }
@@ -200,8 +148,15 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var existedJob = await DbSet.Find(filter).Limit(1).SingleOrDefaultAsync();
             return existedJob != null;
         }
-
-        public async Task<bool> CheckHasJobWaitingOrProcessingByIgnoreWfs(Guid docInstanceId, string ignoreActionCode = null, Guid? ignoreWorkflowStepInstanceId = null)
+        /// <summary>
+        /// Không xét đến các meta được đánh dấu bỏ qua
+        /// </summary>
+        /// <param name="docInstanceId"></param>
+        /// <param name="ignoreActionCode"></param>
+        /// <param name="ignoreWorkflowStepInstanceId"></param>
+        /// <param name="ignoreListDocTypeField"></param>
+        /// <returns></returns>
+        public async Task<bool> CheckHasJobWaitingOrProcessingByIgnoreWfs(Guid docInstanceId, string ignoreActionCode , Guid? ignoreWorkflowStepInstanceId,List<Guid?> ignoreListDocTypeField)
         {
             var filter1 = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
             var filter21 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
@@ -212,7 +167,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var filter4 = ignoreWorkflowStepInstanceId == null
                 ? Builders<Job>.Filter.Empty
                 : Builders<Job>.Filter.Ne(x => x.WorkflowStepInstanceId, ignoreWorkflowStepInstanceId);
-            var filter = filter1 & (filter21 | filter22) & filter3 & filter4;
+            var filterIgnoreDocTypeField = ignoreListDocTypeField == null ?
+                Builders<Job>.Filter.Empty : 
+                Builders<Job>.Filter.Nin(x => x.DocTypeFieldInstanceId, ignoreListDocTypeField);
+            var filter = filter1 & (filter21 | filter22) & filter3 & filter4 & filterIgnoreDocTypeField;
             var existedJob = await DbSet.Find(filter).Limit(1).SingleOrDefaultAsync();
             return existedJob != null;
         }
@@ -276,15 +234,27 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return doneJob;
         }
 
-        public async Task<bool> CheckHasJobWaitingOrProcessingByMultiWfs(Guid docInstanceId, List<WorkflowStepInfo> checkWorkflowStepInfos)
+        /// <summary>
+        /// Kiểm tra còn job đang xử lý / đợi xử lý => không gồm các mete được đánh dấu bỏ qua
+        ///  Không xét đến các meta bị bỏ qua
+        /// </summary>
+        /// <param name="docInstanceId"></param>
+        /// <param name="checkWorkflowStepInfos"></param>
+        /// <param name="ignoreListDocTypeField"></param>
+        /// <returns></returns>
+        public async Task<bool> CheckHasJobWaitingOrProcessingByMultiWfs(Guid docInstanceId, List<WorkflowStepInfo> checkWorkflowStepInfos,List<Guid?> ignoreListDocTypeField)
         {
             Job existedJob;
             var filter1 = Builders<Job>.Filter.Eq(x => x.DocInstanceId, docInstanceId);
             var filter21 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
             var filter22 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+            var filterIgnoreDocTypeField = ignoreListDocTypeField == null ?
+                Builders<Job>.Filter.Empty :
+                Builders<Job>.Filter.Nin(x => x.DocTypeFieldInstanceId, ignoreListDocTypeField);
             if (checkWorkflowStepInfos == null || checkWorkflowStepInfos.Count == 0)
             {
-                existedJob = await DbSet.Find(filter1 & (filter21 | filter22)).Limit(1).SingleOrDefaultAsync();
+                var filter = filter1 & (filter21 | filter22) & filterIgnoreDocTypeField;
+                existedJob = await DbSet.Find(filter).Limit(1).SingleOrDefaultAsync();
                 return existedJob != null;
             }
 
@@ -295,7 +265,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                     ? Builders<Job>.Filter.Empty
                     : Builders<Job>.Filter.Eq(x => x.ActionCode, wfs.ActionCode);
                 var filter4 = Builders<Job>.Filter.Eq(x => x.WorkflowStepInstanceId, wfs.InstanceId);
-                var filter = filter1 & (filter21 | filter22) & filter3 & filter4;
+                var filter = filter1 & (filter21 | filter22) & filter3 & filter4 & filterIgnoreDocTypeField;
                 existedJob = await DbSet.Find(filter).Limit(1).SingleOrDefaultAsync();
                 if (existedJob != null)
                 {
@@ -395,8 +365,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             short? status = null, string docPath = null, Guid? batchJobInstanceId = null, short numOfRound = -1, Guid? docInstanceId = null)
         {
             var filter = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
-            
-            filter =filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+
+            filter = filter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
 
             if (workflowStepInstanceId != null)
             {
@@ -1159,7 +1129,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return response;
         }
 
-        public async Task<List<TotalDocPathJob>> GetSummaryDoc (FilterDefinition<Job> filter)
+        public async Task<List<TotalDocPathJob>> GetSummaryDoc(FilterDefinition<Job> filter)
         {
             var serializerRegistry = MongoDB.Bson.Serialization.BsonSerializer.SerializerRegistry;
             var documentSerializer = serializerRegistry.GetSerializer<Job>();
@@ -1961,7 +1931,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             sw.Start();
             var aggregate = DbSet.Aggregate();
             var result = await aggregate
-                .SortBy(x=>x.Status) // and need to create index by status for best performance
+                .SortBy(x => x.Status) // and need to create index by status for best performance
                 .Group(x => x.Status,
                 l => new CountJobEntity
                 {
@@ -2036,13 +2006,13 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         /// <returns></returns>
         public async Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId)
         {
-            
+
             Stopwatch sw = Stopwatch.StartNew();
-            
-            var lstTotal =await DbSet.Aggregate()
+
+            var lstTotal = await DbSet.Aggregate()
                 .Match(x => x.ProjectInstanceId == projectInstanceId)
-              //  .SortBy(x => x.WorkflowStepInstanceId).ThenBy(x=>x.Status)
-                .Group(x => new { x.WorkflowStepInstanceId,x.Status },
+                //  .SortBy(x => x.WorkflowStepInstanceId).ThenBy(x=>x.Status)
+                .Group(x => new { x.WorkflowStepInstanceId, x.Status },
                 l => new CountJobEntity
                 {
                     Status = (Axe.Utility.Enums.EnumJob.Status)l.First().Status,
@@ -2055,10 +2025,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             sw.Stop();
             Log.Debug($"GetSummaryDocByAction- GroupJobByStep - Elapsed time: {sw.ElapsedMilliseconds} ms");
 
-         
+
             sw.Restart();
             var result = new List<CountJobEntity>();
-           
+
             foreach (var item in lstTotal.GroupBy(x => x.WorkflowStepInstanceId))
             {
                 var resultItem = new CountJobEntity()
@@ -2370,9 +2340,9 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var jobs = DbSet.Find(filter);
             return await jobs.ToListAsync();
         }
-        public async Task<IAsyncCursor<Job>> GetCursorListJobAsync(FilterDefinition<Job> filter,FindOptions<Job> findOption)
+        public async Task<IAsyncCursor<Job>> GetCursorListJobAsync(FilterDefinition<Job> filter, FindOptions<Job> findOption)
         {
-            var jobs = await DbSet.FindAsync(filter,findOption);
+            var jobs = await DbSet.FindAsync(filter, findOption);
             return jobs;
         }
     }

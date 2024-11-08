@@ -47,6 +47,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         private readonly ICachingHelper _cachingHelper;
         private readonly bool _useCache;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
 
         public AfterProcessSegmentLabelingIntegrationEventHandler(
             IJobRepository repository,
@@ -61,7 +62,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IMoneyService moneyService,
             IServiceProvider provider,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration, IMapper mapper)
+            IConfiguration configuration, IMapper mapper, IDocTypeFieldClientService docTypeFieldClientService)
         {
             _repository = repository;
             _taskRepository = taskRepository;
@@ -78,6 +79,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _mapper = mapper;
             _cachingHelper = provider.GetService<ICachingHelper>();
             _useCache = _cachingHelper != null;
+            _docTypeFieldClientService = docTypeFieldClientService;
         }
 
         public async Task Handle(AfterProcessSegmentLabelingEvent @event)
@@ -560,9 +562,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                                 {
                                     // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
                                     var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                                    bool hasJobWaitingOrProcessing =
-                                        await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                                            job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep);
+                                    // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                    if (listDocTypeFieldResponse.Success == false)
+                                    {
+                                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                    }
+
+                                    var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                                    var hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                                     if (!hasJobWaitingOrProcessing)
                                     {
                                         // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
@@ -647,13 +657,21 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             if (jobEnds.Any())
             {
                 var docInstanceIds = jobEnds.Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct().ToList();
-                foreach (var docInstanceId in docInstanceIds)
+                foreach (var jobEnd in jobEnds)
                 {
+                    var docInstanceId = job.DocInstanceId.GetValueOrDefault();  
                     var actionCode = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.ActionCode;
                     var wfsIntanceId = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.WorkflowStepInstanceId;
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(jobEnd.ProjectInstanceId.GetValueOrDefault(), jobEnd.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
+                    {
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
                     bool hasJobWaitingOrProcessing =
-                        await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode,
-                            wfsIntanceId);
+                        await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode,                            wfsIntanceId, ignoreListDocTypeField);
                     if (!hasJobWaitingOrProcessing)
                     {
                         // Update FinalValue for Doc

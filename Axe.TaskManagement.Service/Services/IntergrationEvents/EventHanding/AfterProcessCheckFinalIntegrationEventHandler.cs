@@ -47,6 +47,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
         private readonly ICachingHelper _cachingHelper;
         private readonly bool _useCache;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
 
         public AfterProcessCheckFinalIntegrationEventHandler(
             IJobRepository repository,
@@ -61,7 +62,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             IBatchClientService batchClientService,
             IServiceProvider provider,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration, IMapper mapper)
+            IConfiguration configuration, IMapper mapper, IDocTypeFieldClientService docTypeFieldClientService)
         {
             _repository = repository;
             _taskRepository = taskRepository;
@@ -78,6 +79,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             _mapper = mapper;
             _cachingHelper = provider.GetService<ICachingHelper>();
             _useCache = _cachingHelper != null;
+            _docTypeFieldClientService = docTypeFieldClientService;
         }
 
         public async Task Handle(AfterProcessCheckFinalEvent @event)
@@ -301,9 +303,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             };
             // Nếu ko tồn tại job Waiting hoặc Processing ở các bước TRƯỚC và bước HIỆN TẠI thì mới chuyển trạng thái
             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), true);
-            bool hasJobWaitingOrProcessing =
-                await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                    job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep);
+            // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+            var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+            if (listDocTypeFieldResponse.Success == false)
+            {
+                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+            }
+
+            var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+            var hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
             if (!hasJobWaitingOrProcessing)
             {
                 Log.Information($"ProcessCheckFinal change step: DocInstanceId => {job.DocInstanceId}; ActionCode => {job.ActionCode}; WorkflowStepInstanceId => {job.WorkflowStepInstanceId}");
@@ -840,9 +850,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 {
                     var actionCode = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.ActionCode;
                     var wfsIntanceId = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.WorkflowStepInstanceId;
+                    // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+
                     bool hasJobWaitingOrProcessingByIgnoreWfs =
-                        await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode,
-                            wfsIntanceId);
+                        await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId, ignoreListDocTypeField);
                     if (!hasJobWaitingOrProcessingByIgnoreWfs)
                     {
                         // Update FinalValue for Doc
