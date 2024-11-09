@@ -17,6 +17,7 @@ namespace Axe.TaskManagement.Data.Configs
             services.AddScoped<ISequenceComplainRepository, SequenceComplainRepository>();
 
             services.AddScoped<IOutboxIntegrationEventRepository, OutboxIntegrationEventRepository>();
+            services.AddScoped<IExtendedInboxIntegrationEventRepository, ExtendedInboxIntegrationEventRepository>();
         }
     }
 }
