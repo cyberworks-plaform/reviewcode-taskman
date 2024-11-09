@@ -1,5 +1,4 @@
-﻿using Axe.TaskManagement.Model.Entities;
-using Axe.Utility.EntityExtensions;
+﻿using Axe.Utility.EntityExtensions;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
