@@ -636,7 +636,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 ExchangeName = nameof(LogJobEvent).ToLower(),
                                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                                 Data = JsonConvert.SerializeObject(logJobEvt),
-                                LastModificationDate = DateTime.Now,
+                                LastModificationDate = DateTime.UtcNow,
                                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
                             };
                             try //try to publish event
@@ -758,7 +758,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                                         Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                                        LastModificationDate = DateTime.Now,
+                                        LastModificationDate = DateTime.UtcNow,
                                         Status = (short)EnumEventBus.PublishMessageStatus.Nack
                                     };
                                     try //try to publish event
@@ -1471,7 +1471,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                                                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                                                 Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                                                LastModificationDate = DateTime.Now,
+                                                LastModificationDate = DateTime.UtcNow,
                                                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
                                             };
 
@@ -2166,7 +2166,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(evt),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack,
             };
 
