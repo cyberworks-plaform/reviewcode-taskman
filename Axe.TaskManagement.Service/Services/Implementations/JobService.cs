@@ -1932,7 +1932,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var docInstanceId = inputParam.DocInstanceId.GetValueOrDefault();
                     var wfsIntanceId = inputParam.WorkflowStepInstanceId.GetValueOrDefault();
                     var actionCode = inputParam.ActionCode;
-                    bool hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId);
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
+                    {
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                    bool hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId, ignoreListDocTypeField);
+                    
                     if (!hasJobWaitingOrProcessing)
                     {
                         // Update FinalValue for Doc
@@ -2763,7 +2772,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             GenericResponse<bool> response;
             try
             {
-                var rs = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(model.DocInstanceId, model.CheckWorkflowStepInfos);
+                var rs = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(model.DocInstanceId, model.CheckWorkflowStepInfos,model.IgnoreListDocTypeField);
                 response = GenericResponse<bool>.ResultWithData(rs);
             }
             catch (Exception ex)

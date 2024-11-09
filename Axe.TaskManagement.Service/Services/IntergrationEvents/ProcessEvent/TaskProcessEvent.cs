@@ -11,6 +11,7 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Axe.Utility.MessageTemplate;
+using Azure.Core;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.Helpers;
@@ -461,10 +462,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                             {
                                                                 // Nếu bước HIỆN TẠI yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
                                                                 var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
-                                                                bool hasJobWaitingOrProcessing =
-                                                                    await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                                                                        inputParam.DocInstanceId.GetValueOrDefault(),
-                                                                        beforeWfsInfoIncludeCurrentStep);
+                                                                // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                                                                var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                                if (listDocTypeFieldResponse.Success == false)
+                                                                {
+                                                                    throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                                }
+
+                                                                var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                                                                var hasJobWaitingOrProcessing = await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(inputParam.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                                                                 if (!hasJobWaitingOrProcessing)
                                                                 {
                                                                     var countOfExpectJobs = lstDocItemFull.Count(x => !string.IsNullOrEmpty(x.CoordinateArea));
@@ -606,7 +614,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         }
 
                         // 1. Tạo jobs Waitting cho bước hiện tại; nếu job đã được tạo trước đó rồi thì sẽ không tạo lại-> tránh duplicate job
-                        var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep);
+                        var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep, accessToken);
                         var jobs = jobsResponse.Item2;
                         if (!@event.IsRetry && jobsResponse.Item1)
                         {
@@ -996,45 +1004,30 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             {
                                                 // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
                                                 var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, ignoreInputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                                                bool hasJobWaitingOrProcessing =
-                                                    await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                                                        inputParam.DocInstanceId.GetValueOrDefault(),
-                                                        beforeWfsInfoIncludeCurrentStep);
+                                                // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                                                var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                if (listDocTypeFieldResponse.Success == false)
+                                                {
+                                                    throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                }
+
+                                                var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                                                var hasJobWaitingOrProcessing = await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(inputParam.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                                                 if (!hasJobWaitingOrProcessing)
                                                 {
-                                                    var countOfExpectJobsRs =
-                                                        await _docFieldValueClientService
-                                                            .GetCountOfExpectedByDocInstanceId(
-                                                                inputParam.DocInstanceId.GetValueOrDefault(),
-                                                                accessToken);
-                                                    var countOfExpectJobs =
-                                                        countOfExpectJobsRs != null && countOfExpectJobsRs.Success
-                                                            ? countOfExpectJobsRs.Data
-                                                            : 0;
-                                                    var prevOfNextWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
-                                                    var prevOfNextWfsInstanceIds = prevOfNextWfsInfoes.Select(x => x.InstanceId).ToList();
-                                                    var prevOfNextWfsJobs = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), prevOfNextWfsInstanceIds);
-                                                    //prevOfNextWfsJobs = prevOfNextWfsJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng => Bussiness New: Don't need filter
 
-
-                                                    //var crrJobs = await _jobRepository.GetJobByWfs(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.ActionCode, crrWfsInfo.InstanceId);
-                                                    //crrJobs = crrJobs.Where(x =>
-                                                    //    x.Status == (short)EnumJob.Status.Complete ||
-                                                    //    x.Status == (short)EnumJob.Status.Ignore).ToList(); // Chỉ lấy các jobs có trạng thái Hoàn thành hoặc Bỏ qua
-
-
-                                                    if (prevOfNextWfsJobs.Count == countOfExpectJobs) // Số lượng crrJobs = countOfExpectJobs thì mới next step
+                                                    // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
+                                                    bool triggerNextStepHappend = await TriggerNextStepHappened(
+                                                        inputParam.DocInstanceId.GetValueOrDefault(),
+                                                        inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                                                    if (!triggerNextStepHappend)
                                                     {
-                                                        // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
-                                                        bool triggerNextStepHappend = await TriggerNextStepHappened(
-                                                            inputParam.DocInstanceId.GetValueOrDefault(),
-                                                            inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                                                        if (!triggerNextStepHappend)
-                                                        {
-                                                            await TriggerNextStep(ignoreEvt, nextWfsInfo.ActionCode);
-                                                            isTriggerNextStep = true;
-                                                        }
+                                                        await TriggerNextStep(ignoreEvt, nextWfsInfo.ActionCode);
+                                                        isTriggerNextStep = true;
                                                     }
+
                                                 }
                                             }
                                         }
@@ -1635,36 +1628,30 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                         {
                                                             // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
                                                             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                                                            bool hasJobWaitingOrProcessing =
-                                                                await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                                                                    inputParam.DocInstanceId.GetValueOrDefault(),
-                                                                    beforeWfsInfoIncludeCurrentStep);
+                                                            // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                                                            var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                            if (listDocTypeFieldResponse.Success == false)
+                                                            {
+                                                                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                            }
+
+                                                            var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                                                            var hasJobWaitingOrProcessing = await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(inputParam.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                                                             if (!hasJobWaitingOrProcessing)
                                                             {
-                                                                var countOfExpectJobsRs =
-                                                                    await _docFieldValueClientService
-                                                                        .GetCountOfExpectedByDocInstanceId(
-                                                                            inputParam.DocInstanceId.GetValueOrDefault(),
-                                                                            accessToken);
-                                                                var countOfExpectJobs =
-                                                                    countOfExpectJobsRs != null && countOfExpectJobsRs.Success
-                                                                        ? countOfExpectJobsRs.Data
-                                                                        : 0;
-                                                                var prevWfsInstanceIds = prevWfsInfoes.Select(x => x.InstanceId).ToList();
-                                                                var prevJobs = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), prevWfsInstanceIds);
-                                                                //prevJobs = prevJobs.Where(x => x.RightStatus == (short)EnumJob.RightStatus.Correct).ToList();   // Chỉ lấy các jobs có trạng thái Đúng => Bussiness New: Don't need filter
-                                                                if (prevJobs.Count == countOfExpectJobs) // Số lượng prevJobs = countOfExpectJobs thì mới next step
+
+                                                                // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
+                                                                bool triggerNextStepHappend = await TriggerNextStepHappened(
+                                                                    inputParam.DocInstanceId.GetValueOrDefault(),
+                                                                    inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                                                                if (!triggerNextStepHappend)
                                                                 {
-                                                                    // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
-                                                                    bool triggerNextStepHappend = await TriggerNextStepHappened(
-                                                                        inputParam.DocInstanceId.GetValueOrDefault(),
-                                                                        inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                                                                    if (!triggerNextStepHappend)
-                                                                    {
-                                                                        await TriggerNextStep(evt, nextWfsInfo.ActionCode);
-                                                                        isTriggerNextStep = true;
-                                                                    }
+                                                                    await TriggerNextStep(evt, nextWfsInfo.ActionCode);
+                                                                    isTriggerNextStep = true;
                                                                 }
+
                                                             }
                                                         }
                                                     }
@@ -1712,17 +1699,54 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                 return new Tuple<bool, string, string>(true, null, null);
             }
-            
+
         }
 
-        private async Task<Tuple<bool, List<Job>>> CreateJobs(InputParam inputParam, string configStep)
+        /// <summary>
+        /// Lấy danh sách các job trong DB để check exist trước khi tạo
+        ///    check job exist by Project/Doc/Step/NumOfRound
+        /// </summary>
+        /// <param name="inputParam"></param>
+        /// <param name="configStep"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
+        private async Task<List<Job>> GetExisteJob(InputParam inputParam)
+        {
+            var existedJob = new List<Job>();
+
+            if (_isCreateMultiJobFile)
+            {
+                foreach (var subInputParams in inputParam.InputParams)
+                {
+                    var tempListJob = await _jobRepository.GetAllJobByWfs(projectInstanceId: subInputParams.ProjectInstanceId.GetValueOrDefault(),
+                                                            actionCode: inputParam.ActionCode,
+                                                            workflowStepInstanceId: subInputParams.WorkflowStepInstanceId, status: null, docPath: string.Empty, batchJobInstanceId: null,
+                                                            numOfRound: subInputParams.NumOfRound, docInstanceId: subInputParams.DocInstanceId);
+                    if (tempListJob != null && tempListJob.Any())
+                    {
+                        existedJob.AddRange(tempListJob);
+                    }
+                }
+            }
+            else
+            {
+                existedJob = await _jobRepository.GetAllJobByWfs(projectInstanceId: inputParam.ProjectInstanceId.GetValueOrDefault(),
+                                    actionCode: inputParam.ActionCode,
+                                    workflowStepInstanceId: inputParam.WorkflowStepInstanceId, status: null, docPath: string.Empty, batchJobInstanceId: null,
+                                    numOfRound: inputParam.NumOfRound, docInstanceId: inputParam.DocInstanceId);
+            }
+            return existedJob;
+        }
+
+        private async Task<Tuple<bool, List<Job>>> CreateJobs(InputParam inputParam, string configStep, string accessToken)
         {
             var jobs = new List<Job>();
             try
             {
                 //check job exist
-                var listWfsStepId = new List<Guid> { inputParam.WorkflowStepInstanceId.GetValueOrDefault() };
-                var existedJob = await _jobRepository.GetJobByWfsInstanceIds(inputParam.DocInstanceId.GetValueOrDefault(), listWfsStepId);
+                var randomDelayTime = new Random().Next(10, 100); // 10-100 ms
+                await Task.Delay(randomDelayTime);
+                var existedJob = await GetExisteJob(inputParam);
 
                 bool isExistedJob;
                 if (existedJob.Any()) // job existed ; do not create duplicate
@@ -1864,8 +1888,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 }
                 else if (inputParam.ItemInputParams != null && inputParam.ItemInputParams.Any())
                 {
+                    //Không tạo các job phân mảnh đối với các Meta được đánh dấu không hiện thị để nhập
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
+                    {
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var listEnableInputDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == true).ToList();
+
                     // Create multi jobs
-                    foreach (var itemInput in inputParam.ItemInputParams)
+                    foreach (var itemInput in inputParam.ItemInputParams.Where(x => listEnableInputDocTypeField.Any(e => e.Id == x.DocTypeFieldId)))
                     {
                         var isIgnoreStep = WorkflowHelper.IsIgnoreStep(configStep,
                             itemInput.DocTypeFieldInstanceId.GetValueOrDefault());
@@ -1983,10 +2016,20 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 if (jobs.Any())
                 {
 
-                    // Create job UpSert
-                    jobs = await _jobRepository.UpSertMultiJobAsync(jobs);
+                    //check existed job sencond time => to minimize duplicate job 
+                    await Task.Delay(randomDelayTime);
+                    existedJob = await GetExisteJob(inputParam);
+                    if (existedJob.Any())
+                    {
+                        isExistedJob = true;
+                        return new Tuple<bool, List<Job>>(isExistedJob, existedJob);
+                    }
+
+                    // Create job
+                    jobs = await _jobRepository.AddMultiAsyncV2(jobs);
                     Log.Logger.Information($"Created {jobs.Count} jobs in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
-                    isExistedJob = true;
+
+                    isExistedJob = false;
                     return new Tuple<bool, List<Job>>(isExistedJob, jobs);
                 }
                 else
@@ -1999,7 +2042,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             catch (Exception ex)
             {
                 Log.Logger.Error(ex, ex.Message);
-                throw ex;
+                throw;
             }
         }
 
@@ -2107,7 +2150,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
                 }
 
-                throw ex;
+                throw;
             }
 
             return response;
