@@ -201,7 +201,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                         Data = JsonConvert.SerializeObject(logJobEvt),
-                        LastModificationDate = DateTime.Now,
+                        LastModificationDate = DateTime.UtcNow,
                         Status = (short)EnumEventBus.PublishMessageStatus.Nack
                     };
                     try
@@ -309,22 +309,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (_useRabbitMq)
                     {
                         // Outbox
-                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocChangeDeleteableEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(evt)
-                        });
-                        var isAck = _eventBus.Publish(evt, nameof(DocChangeDeleteableEvent).ToLower());
-                        if (isAck)
-                        {
-                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                        }
-                        else
-                        {
-                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                        }
+                        await PublishEvent<DocChangeDeleteableEvent>(evt);
                     }
                 }
             }
@@ -363,22 +348,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (_useRabbitMq)
                     {
                         // Outbox
-                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(evt)
-                        });
-                        var isAck = _eventBus.Publish(evt, nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower());
-                        if (isAck)
-                        {
-                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                        }
-                        else
-                        {
-                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                        }
+                        await PublishEvent<DocFieldValueUpdateStatusWaitingEvent>(evt);
                     }
                 }
             }
@@ -417,6 +387,37 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return null;
         }
 
+        private async Task PublishEvent<T>(object eventData)
+        {
+            // Outbox LogJob
+            var outboxEvent = new OutboxIntegrationEvent
+            {
+                ExchangeName = typeof(T).Name.ToLower(),
+                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                Data = JsonConvert.SerializeObject(eventData),
+                LastModificationDate = DateTime.UtcNow,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
+            {
+                _eventBus.Publish(eventData, outboxEvent.ExchangeName);
+            }
+            catch (Exception exPublishEvent)
+            {
+                Log.Error(exPublishEvent, $"Error publish for event {outboxEvent.ExchangeName}");
+
+                //save to DB for retry later
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEvent);
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, $"Error save DB for event {outboxEvent.ExchangeName}");
+                    throw;
+                }
+            }
+        }
         #endregion
     }
 }

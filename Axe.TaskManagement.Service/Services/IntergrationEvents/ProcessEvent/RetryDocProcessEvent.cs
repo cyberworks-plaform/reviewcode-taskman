@@ -431,10 +431,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         {
                                             // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
                                             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                                            bool hasJobWaitingOrProcessing =
-                                                await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                                                    inputParam.DocInstanceId.GetValueOrDefault(),
-                                                    beforeWfsInfoIncludeCurrentStep);
+                                            // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                                            var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                            if (listDocTypeFieldResponse.Success == false)
+                                            {
+                                                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                            }
+
+                                            var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                                            var hasJobWaitingOrProcessing = await _jobRepository.CheckHasJobWaitingOrProcessingByMultiWfs(inputParam.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                                             if (!hasJobWaitingOrProcessing)
                                             {
                                                 await TriggerNextStep(evt, nextWfsInfo.ActionCode);
@@ -595,7 +602,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(evt),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
             };
 

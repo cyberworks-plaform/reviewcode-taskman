@@ -2,6 +2,7 @@
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Implementations;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.Utility.Definitions;
@@ -18,6 +19,7 @@ using Ce.EventBus.Lib;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.EventBusRabbitMq.Lib.Interfaces;
 using Ce.Workflow.Client.Services.Interfaces;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MongoDB.Bson;
@@ -52,6 +54,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
         private readonly ICachingHelper _cachingHelper;
         private readonly bool _useCache;
+        private readonly IDocTypeFieldClientService _docTypeFieldClientService;
 
         public AfterProcessCheckFinalProcessEvent(
             IJobRepository repository,
@@ -66,7 +69,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             IBatchClientService batchClientService,
             IServiceProvider provider,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
-            IConfiguration configuration, IMapper mapper)
+            IConfiguration configuration, IMapper mapper, IDocTypeFieldClientService docTypeFieldClientService)
         {
             _repository = repository;
             _taskRepository = taskRepository;
@@ -83,6 +86,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             _mapper = mapper;
             _cachingHelper = provider.GetService<ICachingHelper>();
             _useCache = _cachingHelper != null;
+            _docTypeFieldClientService = docTypeFieldClientService;
         }
 
         public async Task<Tuple<bool, string, string>> ProcessEvent(AfterProcessCheckFinalEvent evt, CancellationToken ct = default)
@@ -301,9 +305,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     };
                     // Nếu ko tồn tại job Waiting hoặc Processing ở các bước TRƯỚC và bước HIỆN TẠI thì mới chuyển trạng thái
                     var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), true);
-                    bool hasJobWaitingOrProcessing =
-                        await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(
-                            job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep);
+                    // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
+                    {
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                    var hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(job.DocInstanceId.GetValueOrDefault(), beforeWfsInfoIncludeCurrentStep, ignoreListDocTypeField);
+
                     if (!hasJobWaitingOrProcessing)
                     {
                         Log.Information($"ProcessCheckFinal change step: DocInstanceId => {job.DocInstanceId}; ActionCode => {job.ActionCode}; WorkflowStepInstanceId => {job.WorkflowStepInstanceId}");
@@ -361,7 +373,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                             ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                             Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                            LastModificationDate = DateTime.Now,
+                            LastModificationDate = DateTime.UtcNow,
                             Status = (short)EnumEventBus.PublishMessageStatus.Nack
                         };
 
@@ -840,9 +852,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         {
                             var actionCode = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.ActionCode;
                             var wfsIntanceId = jobEnds.FirstOrDefault(x => x.DocInstanceId == docInstanceId)?.WorkflowStepInstanceId;
+
+                            // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                             bool hasJobWaitingOrProcessingByIgnoreWfs =
-                                await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode,
-                                    wfsIntanceId);
+                                await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId, ignoreListDocTypeField);
+
                             if (!hasJobWaitingOrProcessingByIgnoreWfs)
                             {
                                 // Update FinalValue for Doc
@@ -858,7 +872,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
                                     ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                                     Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt),
-                                    LastModificationDate = DateTime.Now,
+                                    LastModificationDate = DateTime.UtcNow,
                                     Status = (short)EnumEventBus.PublishMessageStatus.Nack
                                 };
 
@@ -895,7 +909,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     ExchangeName = nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower(),
                                     ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                                     Data = JsonConvert.SerializeObject(docFieldValueUpdateStatusCompleteEvt),
-                                    LastModificationDate = DateTime.Now,
+                                    LastModificationDate = DateTime.UtcNow,
                                     Status = (short)EnumEventBus.PublishMessageStatus.Nack
                                 };
 
@@ -998,7 +1012,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(evt),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack,
             };
 
