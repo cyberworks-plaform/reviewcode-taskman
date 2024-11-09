@@ -10,9 +10,9 @@ using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -159,16 +159,16 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("process-data-confirm-auto")]
-        public async Task<IActionResult> ProcessDataConfirmAuto(ModelInput input)
+        public async Task<IActionResult> ProcessDataConfirmAuto(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessDataConfirmAuto(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessDataConfirmAuto(input, GetBearerToken(), ct));
         }
 
         [HttpPost]
         [Route("process-data-confirm-bool")]
-        public async Task<IActionResult> ProcessDataConfirmBool(ModelInput input)
+        public async Task<IActionResult> ProcessDataConfirmBool(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessDataConfirmBool(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessDataConfirmBool(input, GetBearerToken(), ct));
         }
 
         [HttpPost]
@@ -187,9 +187,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPut]
         [Route("process-synthetic-data")]
-        public async Task<IActionResult> ProcessSyntheticData(ModelInput input)
+        public async Task<IActionResult> ProcessSyntheticData(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessSyntheticData(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessSyntheticData(input, GetBearerToken(), ct));
         }
 
         [HttpPost]

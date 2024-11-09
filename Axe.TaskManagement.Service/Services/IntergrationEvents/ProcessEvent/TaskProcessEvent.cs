@@ -608,7 +608,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         // 1. Tạo jobs Waitting cho bước hiện tại; nếu job đã được tạo trước đó rồi thì sẽ không tạo lại-> tránh duplicate job
                         var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep);
                         var jobs = jobsResponse.Item2;
-                        if (jobsResponse.Item1)
+                        if (!@event.IsRetry && jobsResponse.Item1)
                         {
                             Log.Information($"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}");
                             return new Tuple<bool, string, string>(true, $"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}", null);

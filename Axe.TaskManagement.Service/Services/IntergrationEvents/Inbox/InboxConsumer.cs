@@ -12,6 +12,8 @@ using Newtonsoft.Json;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent;
 using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.TaskManagement.Service.Dtos;
+using Ce.Constant.Lib.Dtos;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
 {
@@ -87,18 +89,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                         if (rowAffected > 0)
                                         {
                                             var consumerConfigClientService = scope.ServiceProvider.GetRequiredService<IConsumerConfigClientService>();
-                                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName);
-                                            CancellationToken ct;
-                                            if (exchangeConfigRs != null && exchangeConfigRs.Success && exchangeConfigRs.Data != null && exchangeConfigRs.Data.TimeOut != default)
-                                            {
-                                                var cancellationTokenSource = new CancellationTokenSource();
-                                                cancellationTokenSource.CancelAfter(exchangeConfigRs.Data.TimeOut);
-                                                ct = cancellationTokenSource.Token;
-                                            }
-                                            else
-                                            {
-                                                ct = default;
-                                            }
 
                                             // Parse & Process event
                                             if (inboxEvent.ExchangeName == nameof(AfterProcessCheckFinalEvent).ToLower())
@@ -106,6 +96,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessCheckFinalEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessCheckFinalProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -118,6 +110,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessDataCheckEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataCheckProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -130,6 +124,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessDataConfirmEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataConfirmProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -142,6 +138,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryBoolEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryBoolProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -154,6 +152,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -166,6 +166,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessQaCheckFinalEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessQaCheckFinalProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -178,6 +180,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<AfterProcessSegmentLabelingEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessSegmentLabelingProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -190,6 +194,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<QueueLockEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IQueueLockProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -202,6 +208,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<RetryDocEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<IRetryDocProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -214,6 +222,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 var evt = JsonConvert.DeserializeObject<TaskEvent>(inboxEvent.Data);
                                                 if (evt != null)
                                                 {
+                                                    // Check is Retry or Not
+                                                    if (inboxEventStatus == (short)EnumEventBus.ConsumMessageStatus.Nack)
+                                                    {
+                                                        evt.IsRetry = true;
+                                                    }
+
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
                                                     using var processEventService = scope.ServiceProvider.GetRequiredService<ITaskProcessEvent>();
                                                     var result = await processEventService.ProcessEvent(evt, ct);
                                                     isAck = result.Item1;
@@ -291,6 +307,23 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                     }
                 }
             }
+        }
+
+        private CancellationToken GetCancellationToken(GenericResponse<ExchangeConfigDto> exchangeConfigRs)
+        {
+            CancellationToken ct;
+            if (exchangeConfigRs != null && exchangeConfigRs.Success && exchangeConfigRs.Data != null && (exchangeConfigRs.Data.TimeOut != default || exchangeConfigRs.Data.TimeOut.Ticks != 0))
+            {
+                var cancellationTokenSource = new CancellationTokenSource();
+                cancellationTokenSource.CancelAfter(exchangeConfigRs.Data.TimeOut);
+                ct = cancellationTokenSource.Token;
+            }
+            else
+            {
+                ct = default;
+            }
+
+            return ct;
         }
     }
 }

@@ -107,7 +107,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     if (@event.Jobs == null || @event.Jobs.Count == 0)
                     {
                         Log.Logger.Error("list job is null or empty!");
-                        return new Tuple<bool, string, string>(false, "list job is null or empty!", null);
+                        return new Tuple<bool, string, string>(true, "list job is null or empty!", null);
                     }
 
                     var input = @event.Jobs.First().Input;
@@ -115,7 +115,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     if (inputParam == null)
                     {
                         Log.Logger.Error("inputParam is null!");
-                        return new Tuple<bool, string, string>(false, "inputParam is null!", null);
+                        return new Tuple<bool, string, string>(true, "inputParam is null!", null);
                     }
 
                     await EnrichData(inputParam, accessToken);
@@ -124,7 +124,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     if (wfsInfoes == null)
                     {
                         Log.Logger.Error("wfsInfoes is null!");
-                        return new Tuple<bool, string, string>(false, "wfsInfoes is null!", null);
+                        return new Tuple<bool, string, string>(true, "wfsInfoes is null!", null);
                     }
 
                     var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);

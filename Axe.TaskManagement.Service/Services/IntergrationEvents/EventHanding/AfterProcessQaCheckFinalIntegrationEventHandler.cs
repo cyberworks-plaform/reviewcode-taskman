@@ -104,7 +104,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                         // Process Event
                         CancellationToken ct;
-                        if (exchangeConfigRs != null && exchangeConfigRs.Success && exchangeConfigRs.Data != null && exchangeConfigRs.Data.TimeOut != default)
+                        if (exchangeConfigRs != null && exchangeConfigRs.Success && exchangeConfigRs.Data != null && (exchangeConfigRs.Data.TimeOut != default || exchangeConfigRs.Data.TimeOut.Ticks != 0))
                         {
                             var cancellationTokenSource = new CancellationTokenSource();
                             cancellationTokenSource.CancelAfter(exchangeConfigRs.Data.TimeOut);
