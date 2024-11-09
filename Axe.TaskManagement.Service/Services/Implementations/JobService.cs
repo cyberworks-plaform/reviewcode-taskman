@@ -22,6 +22,7 @@ using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Dtos;
 using Ce.Workflow.Client.Services.Interfaces;
+using DocumentFormat.OpenXml.Vml.Office;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Configuration;
 using MiniExcelLibs;
@@ -409,18 +410,38 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
 
+                var workflowInstanceId = jobs.Select(x => x.WorkflowInstanceId.GetValueOrDefault()).FirstOrDefault();
+                var wfInfoes = await GetWfInfoes(workflowInstanceId, accessToken);
+                var wfsInfoes = wfInfoes.Item1;
+                var wfSchemaInfoes = wfInfoes.Item2;
+
                 foreach (var job in jobs)
                 {
                     var now = DateTime.UtcNow;
+                    var oldValue = job.Value;
                     var newValue = result.FirstOrDefault(x => x.JobId == job.Id.ToString())?.Value;
                     job.HasChange = newValue != job.Value;
                     job.Value = newValue;
+                    job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                     job.Status = (short)EnumJob.Status.Complete;
                     job.LastModificationDate = now;
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     if (job.IsIgnore)
                     {
                         job.Value = null;
+                        job.Price = 0;
+                    }
+                    else
+                    {
+                        var itemWfsInfo = wfsInfoes.FirstOrDefault(x => x.InstanceId == job.WorkflowStepInstanceId);
+                        var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
+                            job.WorkflowStepInstanceId.GetValueOrDefault());
+                        var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
+
+                        var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValue, job.Value);
+                        job.Price = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
+                            job.DigitizedTemplateInstanceId, job.DocTypeFieldInstanceId,
+                            isPriceEdit);
                     }
                 }
 
@@ -513,19 +534,38 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
 
+                var workflowInstanceId = jobs.Select(x => x.WorkflowInstanceId.GetValueOrDefault()).FirstOrDefault();
+                var wfInfoes = await GetWfInfoes(workflowInstanceId, accessToken);
+                var wfsInfoes = wfInfoes.Item1;
+                var wfSchemaInfoes = wfInfoes.Item2;
+
                 foreach (var job in jobs)
                 {
                     var now = DateTime.UtcNow;
+                    var oldValue = job.Value;
                     var newValue = result.FirstOrDefault(x => x.JobId == job.Id.ToString())?.Value;
                     job.HasChange = newValue != job.Value;
                     job.Value = newValue;
                     job.Status = (short)EnumJob.Status.Complete;
-                    job.RightStatus = (short)EnumJob.RightStatus.Correct;
+                    job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                     job.LastModificationDate = now;
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     if (job.IsIgnore)
                     {
                         job.Value = null;
+                        job.Price = 0;
+                    }
+                    else
+                    {
+                        var itemWfsInfo = wfsInfoes.FirstOrDefault(x => x.InstanceId == job.WorkflowStepInstanceId);
+                        var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
+                            job.WorkflowStepInstanceId.GetValueOrDefault());
+                        var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
+
+                        var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValue, job.Value);
+                        job.Price = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
+                            job.DigitizedTemplateInstanceId, job.DocTypeFieldInstanceId,
+                            isPriceEdit);
                     }
                 }
 
@@ -873,19 +913,38 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
 
+                var workflowInstanceId = jobs.Select(x => x.WorkflowInstanceId.GetValueOrDefault()).FirstOrDefault();
+                var wfInfoes = await GetWfInfoes(workflowInstanceId, accessToken);
+                var wfsInfoes = wfInfoes.Item1;
+                var wfSchemaInfoes = wfInfoes.Item2;
+
                 foreach (var job in jobs)
                 {
                     var now = DateTime.UtcNow;
+                    var oldValue = job.Value;
                     var newValue = result.FirstOrDefault(x => x.JobId == job.Id.ToString())?.Value;
                     job.HasChange = newValue != job.Value;
                     job.Value = newValue;
                     job.Status = (short)EnumJob.Status.Complete;
-                    job.RightStatus = (short)EnumJob.RightStatus.Correct;
+                    job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                     job.LastModificationDate = now;
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     if (job.IsIgnore)
                     {
                         job.Value = null;
+                        job.Price = 0;
+                    }
+                    else
+                    {
+                        var itemWfsInfo = wfsInfoes.FirstOrDefault(x => x.InstanceId == job.WorkflowStepInstanceId);
+                        var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes,
+                            job.WorkflowStepInstanceId.GetValueOrDefault());
+                        var prevWfsInfo = prevWfsInfoes.FirstOrDefault();
+
+                        var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValue, job.Value);
+                        job.Price = MoneyHelper.GetPriceByConfigPriceV2(itemWfsInfo.ConfigPrice,
+                            job.DigitizedTemplateInstanceId, job.DocTypeFieldInstanceId,
+                            isPriceEdit);
                     }
                 }
 
@@ -981,6 +1040,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 foreach (var job in jobs)
                 {
                     var now = DateTime.UtcNow;
+                    var oldValue = job.Value;
                     var newValue = result.FirstOrDefault(x => x.JobId == job.Id.ToString())?.Value;
                     job.HasChange = newValue != job.Value;
                     job.Value = newValue;
@@ -1393,14 +1453,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (result.IsIgnore == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
                 {
                     //Validate Value
-                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
+                    var oldValue = job.Value;
+                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                    var isValidCheckFinalValue = IsValidCheckFinalValue(docItems, resultDocItems);
                     if (!isValidCheckFinalValue)
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
-
-                    var docItems = new List<DocItem>(dbDocItems);
 
                     docItems.ForEach(x =>
                     {
@@ -1413,20 +1472,47 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     job.Value = updatedValue;
                     job.RightStatus = (short)EnumJob.RightStatus.Correct;
+                    job.RightRatio = 1;
                     job.Status = (short)EnumJob.Status.Complete;
 
                     // Xử lý RightStatus nếu bước SAU là QaCheckFinal
                     var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
                     var wfsInfoes = wfInfoes.Item1;
                     var wfSchemaInfoes = wfInfoes.Item2;
+                    WorkflowStepInfo crrWfsInfo = null;
                     if (wfsInfoes != null && wfsInfoes.Any())
                     {
+                        crrWfsInfo = wfsInfoes.FirstOrDefault(x => x.InstanceId == job.WorkflowStepInstanceId.GetValueOrDefault());
                         var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
                         if (nextWfsInfoes != null && nextWfsInfoes.Any(x => x.ActionCode == ActionCodeConstants.QACheckFinal))
                         {
                             job.RightStatus = (short)EnumJob.RightStatus.Confirmed;
                         }
                     }
+
+                    // Tính toán Price
+                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(oldValue);
+                    decimal price = 0;
+                    var priceDetails = new List<PriceItem>();
+                    foreach (var docItem in docItems)
+                    {
+                        var oldDocItemValue = dbDocItems
+                            .FirstOrDefault(x => x.DocTypeFieldInstanceId == docItem.DocTypeFieldInstanceId)?.Value;
+                        var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldDocItemValue, docItem.Value);
+                        var itemPrice = MoneyHelper.GetPriceByConfigPriceV2(crrWfsInfo.ConfigPrice,
+                            job.DigitizedTemplateInstanceId, docItem.DocTypeFieldInstanceId,
+                            isPriceEdit);
+                        price += itemPrice;
+                        priceDetails.Add(new PriceItem
+                        {
+                            DocTypeFieldInstanceId = docItem.DocTypeFieldInstanceId,
+                            Price = itemPrice,
+                            RightStatus = job.RightStatus
+                        });
+                    }
+
+                    job.Price = price;
+                    job.PriceDetails = JsonConvert.SerializeObject(priceDetails);
 
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
                 }
@@ -1437,10 +1523,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     job.Status = (short)EnumJob.Status.Ignore;
                     job.IsIgnore = true;
                     job.ReasonIgnore = result.Comment;
+                    job.Price = 0;
+                    job.PriceDetails = null;
+                    job.RightStatus = (short) EnumJob.RightStatus.Confirmed;
 
                     resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
 
-                    //
                     if (resultUpdateJob != null)
                     {
                         response = GenericResponse<int>.ResultWithData(2);
@@ -1550,23 +1638,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return response;
                 }
 
+                var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+
+                if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
+                {
+                    return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                }
+
+                //Validate Value
+                var oldValue = job.Value;
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
+                var isValidCheckFinalValue = IsValidCheckFinalValue(docItems, resultDocItems);
+                if (!isValidCheckFinalValue)
+                {
+                    return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
+                }
+
                 if (result.QAStatus == true)
                 {
-                    var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
-
-                    if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
-                    {
-                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
-                    }
-
-                    var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
-                    if (!isValidCheckFinalValue)
-                    {
-                        return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
-                    }
-
-                    var docItems = new List<DocItem>(dbDocItems);
                     docItems.ForEach(x =>
                     {
                         var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
@@ -1588,6 +1677,31 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 job.RightStatus = (short)EnumJob.RightStatus.Correct;
                 job.Status = (short)EnumJob.Status.Complete;
+
+                // Tính toán Price
+                var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                var wfsInfoes = wfInfoes.Item1;
+                var wfSchemaInfoes = wfInfoes.Item2;
+                WorkflowStepInfo crrWfsInfo = null;
+                var dbDocItems = JsonConvert.DeserializeObject<List<DocItem>>(oldValue);
+                decimal price = 0;
+                var priceDetails = new List<PriceItem>();
+                foreach (var docItem in docItems)
+                {
+                    var oldDocItemValue = dbDocItems
+                        .FirstOrDefault(x => x.DocTypeFieldInstanceId == docItem.DocTypeFieldInstanceId)?.Value;
+                    var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldDocItemValue, docItem.Value);
+                    var itemPrice = MoneyHelper.GetPriceByConfigPriceV2(crrWfsInfo.ConfigPrice,
+                        job.DigitizedTemplateInstanceId, docItem.DocTypeFieldInstanceId,
+                        isPriceEdit);
+                    price += itemPrice;
+                    priceDetails.Add(new PriceItem
+                    {
+                        DocTypeFieldInstanceId = docItem.DocTypeFieldInstanceId,
+                        Price = itemPrice,
+                        RightStatus = job.RightStatus
+                    });
+                }
 
                 var resultUpdateJob = await _repos.ReplaceOneAsync(filter2, job);
 
