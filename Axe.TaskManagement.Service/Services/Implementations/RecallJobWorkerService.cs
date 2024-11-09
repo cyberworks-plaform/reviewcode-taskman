@@ -390,9 +390,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private async Task PublishEvent<T>(object eventData)
         {
             // Outbox LogJob
-            var outboxEntityLogJobEvent = new OutboxIntegrationEvent
+            var outboxEvent = new OutboxIntegrationEvent
             {
-                ExchangeName = nameof(T).ToLower(),
+                ExchangeName = typeof(T).Name.ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(eventData),
                 LastModificationDate = DateTime.Now,
@@ -400,20 +400,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             };
             try
             {
-                _eventBus.Publish(eventData, nameof(T).ToLower());
+                _eventBus.Publish(eventData, outboxEvent.ExchangeName);
             }
             catch (Exception exPublishEvent)
             {
-                Log.Error(exPublishEvent, $"Error publish for event {nameof(T)}");
+                Log.Error(exPublishEvent, $"Error publish for event {outboxEvent.ExchangeName}");
 
                 //save to DB for retry later
                 try
                 {
-                    await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEvent);
                 }
                 catch (Exception exSaveDB)
                 {
-                    Log.Error(exSaveDB, $"Error save DB for event {nameof(T)}");
+                    Log.Error(exSaveDB, $"Error save DB for event {outboxEvent.ExchangeName}");
                     throw;
                 }
             }
