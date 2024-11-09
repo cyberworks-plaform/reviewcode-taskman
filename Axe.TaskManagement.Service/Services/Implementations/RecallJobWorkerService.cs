@@ -201,7 +201,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         ExchangeName = nameof(LogJobEvent).ToLower(),
                         ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                         Data = JsonConvert.SerializeObject(logJobEvt),
-                        LastModificationDate = DateTime.Now,
+                        LastModificationDate = DateTime.UtcNow,
                         Status = (short)EnumEventBus.PublishMessageStatus.Nack
                     };
                     try
@@ -395,7 +395,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 ExchangeName = typeof(T).Name.ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(eventData),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
             };
             try

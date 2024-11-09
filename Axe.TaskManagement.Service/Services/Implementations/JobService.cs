@@ -1,6 +1,5 @@
 ﻿using AutoMapper;
 using Axe.TaskManagement.Data.EntityExtensions;
-using Axe.TaskManagement.Data.Repositories.Implementations;
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
@@ -11,8 +10,7 @@ using Axe.Utility.Dtos;
 using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
-using Azure;
-using Azure.Core;
+using Ce.Auth.Client.Dtos;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
@@ -22,10 +20,11 @@ using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
+using Ce.Workflow.Client.Dtos;
 using Ce.Workflow.Client.Services.Interfaces;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Configuration;
+using MiniExcelLibs;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using Newtonsoft.Json;
@@ -34,20 +33,12 @@ using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
-using System.IO;
-using Microsoft.AspNetCore.Mvc.Rendering;
-using Ce.Workflow.Client.Dtos;
-using Ce.Auth.Client.Dtos;
-using MiniExcelLibs;
-using SharpCompress.Common;
-using System.IO.Compression;
-using SharpCompress.Compressors.Xz;
-using System.Collections;
-using Ce.Common.Lib.Interfaces;
-using Microsoft.CodeAnalysis.CSharp.Syntax;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
@@ -344,7 +335,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Outbox
                     await PublishEvent<AfterProcessSegmentLabelingEvent>(evt);
 
-
                     // Publish message sang DistributionJob
                     var logJob = _mapper.Map<Job, LogJobDto>(job);
                     var logJobEvt = new LogJobEvent
@@ -353,14 +343,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(1);
                 }
@@ -453,8 +436,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     };
 
                     // Outbox AfterProcessDataEntryEvent
-
-                    await PublishEvent<AfterProcessDataEntryEvent>(evt);
+                    await PublishEvent< AfterProcessDataEntryEvent >(evt);
 
                     // Publish message sang DistributionJob
                     var logJobEvt = new LogJobEvent
@@ -464,14 +446,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     };
 
                     // Outbox LogJob
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
                 }
@@ -567,7 +542,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Outbox
                     await PublishEvent<AfterProcessDataEntryBoolEvent>(evt);
 
-
                     // Publish message sang DistributionJob
                     var logJobEvt = new LogJobEvent
                     {
@@ -575,14 +549,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
                 }
@@ -606,7 +573,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         #region ProcessDataConfirmBoolAuto
 
-        public async Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null)
+        public async Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null, CancellationToken ct = default)
         {
             if (model == null || string.IsNullOrEmpty(model.Input))
             {
@@ -623,214 +590,230 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Bad request!");
                 }
 
-                var itemInputParams = inputParam.ItemInputParams;
-                var docItems = new List<DocItem>();
-                var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
-                var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
-                var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
-
-                var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
-                var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                var prevWfsInfo = prevWfsInfoes.First();
-                int numOfResourceInJobPrevStep = WorkflowHelper.GetNumOfResourceInJob(prevWfsInfo.ConfigStep);
-                foreach (var itemInput in itemInputParams)
+                while (true)
                 {
-                    if (numOfResourceInJobPrevStep > 1)
+                    if (ct.IsCancellationRequested)
                     {
-                        var strValues = JsonConvert.DeserializeObject<List<string>>(itemInput.Value);
-                        var values = strValues.Select(x => Boolean.Parse(x)).ToList();
-                        if (values != null && values.Any() && values.All(x => x))
+                        ct.ThrowIfCancellationRequested();
+                        return GenericResponse<string>.ResultWithError((int)HttpStatusCode.RequestTimeout, null, "Request has been cancelled");
+                    }
+
+                    var itemInputParams = inputParam.ItemInputParams;
+                    var docItems = new List<DocItem>();
+                    var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
+                    var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
+                    var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+
+                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                    var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
+                    var prevWfsInfoes = WorkflowHelper.GetPreviousSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                    var prevWfsInfo = prevWfsInfoes.First();
+                    int numOfResourceInJobPrevStep = WorkflowHelper.GetNumOfResourceInJob(prevWfsInfo.ConfigStep);
+                    foreach (var itemInput in itemInputParams)
+                    {
+                        if (numOfResourceInJobPrevStep > 1)
                         {
-                            itemInput.ConditionalValue = true.ToString();
+                            var strValues = JsonConvert.DeserializeObject<List<string>>(itemInput.Value);
+                            var values = strValues.Select(x => Boolean.Parse(x)).ToList();
+                            if (values != null && values.Any() && values.All(x => x))
+                            {
+                                itemInput.ConditionalValue = true.ToString();
+                            }
+                            else
+                            {
+                                itemInput.ConditionalValue = false.ToString();
+                            }
                         }
                         else
                         {
-                            itemInput.ConditionalValue = false.ToString();
+                            itemInput.ConditionalValue = itemInput.Value;
                         }
-                    }
-                    else
-                    {
-                        itemInput.ConditionalValue = itemInput.Value;
-                    }
 
-                    // Gán lại giá trị OldValue cho Value
-                    itemInput.Value = itemInput.OldValue;
+                        // Gán lại giá trị OldValue cho Value
+                        itemInput.Value = itemInput.OldValue;
 
-                    docItems.Add(new DocItem
-                    {
-                        FilePartInstanceId = itemInput.FilePartInstanceId,
-                        DocTypeFieldId = itemInput.DocTypeFieldId,
-                        DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
-                        DocTypeFieldCode = itemInput.DocTypeFieldCode,
-                        DocTypeFieldName = itemInput.DocTypeFieldName,
-                        DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
-                        InputType = itemInput.InputType,
-                        MaxLength = itemInput.MaxLength,
-                        MinLength = itemInput.MinLength,
-                        MaxValue = itemInput.MaxValue,
-                        MinValue = itemInput.MinValue,
-                        PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
-                        IsMultipleSelection = itemInput.IsMultipleSelection,
-                        DocFieldValueId = itemInput.DocFieldValueId,
-                        DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
-                        CoordinateArea = itemInput.CoordinateArea,
-                        Value = itemInput.Value
-                    });
-
-                    //Cập nhật giá trị value
-                    var updateValue = Builders<Job>.Update
-                        .Set(s => s.RightStatus, itemInput.ConditionalValue == true.ToString() ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.Confirmed)
-                        .Set(s => s.Status, (short)EnumJob.Status.Complete);
-
-                    var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
-                }
-
-                var updatedValue = JsonConvert.SerializeObject(docItems);
-
-                if (wfsInfoes != null && wfsInfoes.Any() && wfSchemaInfoes != null && wfSchemaInfoes.Any())
-                {
-                    var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
-                    var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                    var nextWfsInfo = nextWfsInfoes.First();
-                    bool isMultipleNextStep = nextWfsInfoes.Count > 1;
-                    var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
-                    bool isConvergenceNextStep = isParallelStep;
-                    var parallelJobInstanceId = Guid.NewGuid();
-
-                    int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
-                    bool isDivergenceStep = isMultipleNextStep || numOfResourceInJob > 1;
-
-                    var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
-                        ConfigStepPropertyConstants.IsPaidStep);
-                    var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
-                    bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
-
-                    // Tổng hợp price cho các bước TIẾP THEO
-                    decimal price = 0;
-                    List<WorkflowStepPrice> wfsPrices = null;
-                    if (nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
-                    {
-                        foreach (var itemInput in itemInputParams)
+                        docItems.Add(new DocItem
                         {
-                            // Tổng hợp các thông số cho các bước TIẾP THEO
-                            itemInput.IsDivergenceStep = isDivergenceStep;
-                            itemInput.ParallelJobInstanceId = parallelJobInstanceId;
-                            itemInput.IsConvergenceNextStep = isConvergenceNextStep;
+                            FilePartInstanceId = itemInput.FilePartInstanceId,
+                            DocTypeFieldId = itemInput.DocTypeFieldId,
+                            DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
+                            DocTypeFieldCode = itemInput.DocTypeFieldCode,
+                            DocTypeFieldName = itemInput.DocTypeFieldName,
+                            DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
+                            InputType = itemInput.InputType,
+                            MaxLength = itemInput.MaxLength,
+                            MinLength = itemInput.MinLength,
+                            MaxValue = itemInput.MaxValue,
+                            MinValue = itemInput.MinValue,
+                            PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
+                            IsMultipleSelection = itemInput.IsMultipleSelection,
+                            DocFieldValueId = itemInput.DocFieldValueId,
+                            DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
+                            CoordinateArea = itemInput.CoordinateArea,
+                            Value = itemInput.Value
+                        });
 
-                            // Tổng hợp price cho các bước TIẾP THEO
+                        //Cập nhật giá trị value
+                        var updateValue = Builders<Job>.Update
+                            .Set(s => s.RightStatus, itemInput.ConditionalValue == true.ToString() ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.Confirmed)
+                            .Set(s => s.Status, (short)EnumJob.Status.Complete);
+
+                        var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
+                    }
+
+                    var updatedValue = JsonConvert.SerializeObject(docItems);
+
+                    if (wfsInfoes != null && wfsInfoes.Any() && wfSchemaInfoes != null && wfSchemaInfoes.Any())
+                    {
+                        var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
+                        var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                        var nextWfsInfo = nextWfsInfoes.First();
+                        bool isMultipleNextStep = nextWfsInfoes.Count > 1;
+                        var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
+                        bool isConvergenceNextStep = isParallelStep;
+                        var parallelJobInstanceId = Guid.NewGuid();
+
+                        int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
+                        bool isDivergenceStep = isMultipleNextStep || numOfResourceInJob > 1;
+
+                        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
+                            ConfigStepPropertyConstants.IsPaidStep);
+                        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                        bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+
+                        // Tổng hợp price cho các bước TIẾP THEO
+                        decimal price = 0;
+                        List<WorkflowStepPrice> wfsPrices = null;
+                        if (nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
+                        {
+                            foreach (var itemInput in itemInputParams)
+                            {
+                                // Tổng hợp các thông số cho các bước TIẾP THEO
+                                itemInput.IsDivergenceStep = isDivergenceStep;
+                                itemInput.ParallelJobInstanceId = parallelJobInstanceId;
+                                itemInput.IsConvergenceNextStep = isConvergenceNextStep;
+
+                                // Tổng hợp price cho các bước TIẾP THEO
+                                if (isMultipleNextStep)
+                                {
+                                    itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                                    {
+                                        InstanceId = x.InstanceId,
+                                        ActionCode = x.ActionCode,
+                                        Price = isPaid
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
+                                                inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                            : 0
+                                    }).ToList();
+                                }
+                                else
+                                {
+                                    itemInput.Price = isPaid
+                                        ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
+                                            inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                        : 0;
+                                }
+                            }
+                        }
+                        else
+                        {
                             if (isMultipleNextStep)
                             {
-                                itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                                wfsPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
                                 {
                                     InstanceId = x.InstanceId,
                                     ActionCode = x.ActionCode,
                                     Price = isPaid
                                         ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
-                                            inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                            inputParam.DigitizedTemplateInstanceId)
                                         : 0
                                 }).ToList();
                             }
                             else
                             {
-                                itemInput.Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
-                                        inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
-                                    : 0;
+                                price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
                             }
                         }
-                    }
-                    else
-                    {
-                        if (isMultipleNextStep)
+
+                        // Tổng hợp value
+                        string value;
+                        var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
+                        if (isNextStepRequiredAllBeforeStepComplete)
                         {
-                            wfsPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                            var lstDocItemFull = new List<DocItem>();
+                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
                             {
-                                InstanceId = x.InstanceId,
-                                ActionCode = x.ActionCode,
-                                Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
-                                        inputParam.DigitizedTemplateInstanceId)
-                                    : 0
-                            }).ToList();
+                                lstDocItemFull = lstDocItemFullRs.Data;
+                            }
+
+                            if (lstDocItemFull != null && lstDocItemFull.Any())
+                            {
+                                var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
+                                var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
+                                if (missDocItem != null && missDocItem.Count > 0)
+                                {
+                                    docItems.AddRange(missDocItem);
+                                }
+                            }
+                            value = JsonConvert.SerializeObject(docItems);
                         }
                         else
                         {
-                            price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                            value = updatedValue;
                         }
-                    }
 
-                    // Tổng hợp value
-                    string value;
-                    var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
-                    if (isNextStepRequiredAllBeforeStepComplete)
-                    {
-                        var lstDocItemFull = new List<DocItem>();
-                        var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                        if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                        var output = new InputParam
                         {
-                            lstDocItemFull = lstDocItemFullRs.Data;
-                        }
-
-                        if (lstDocItemFull != null && lstDocItemFull.Any())
-                        {
-                            var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
-                            var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
-                            if (missDocItem != null && missDocItem.Count > 0)
-                            {
-                                docItems.AddRange(missDocItem);
-                            }
-                        }
-                        value = JsonConvert.SerializeObject(docItems);
-                    }
-                    else
-                    {
-                        value = updatedValue;
-                    }
-
-                    var output = new InputParam
-                    {
-                        FileInstanceId = inputParam.FileInstanceId,
-                        ActionCode = isMultipleNextStep ? null : nextWfsInfo.ActionCode,
-                        ActionCodes = isMultipleNextStep ? nextWfsInfoes.Select(x => x.ActionCode).ToList() : null,
-                        DocInstanceId = inputParam.DocInstanceId,
-                        DocName = inputParam.DocName,
-                        DocPath = inputParam.DocPath,
-                        DocCreatedDate = inputParam.DocCreatedDate,
-                        TaskId = inputParam.TaskId,
-                        TaskInstanceId = inputParam.TaskInstanceId,
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId,
-                        SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
-                        DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
-                        DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = isMultipleNextStep ? null : nextWfsInfo.InstanceId,
-                        WorkflowStepInstanceIds = isMultipleNextStep
-                            ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
-                            : null,
-                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
-                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
-                        Value = value,
-                        Price = price,
-                        WorkflowStepPrices = wfsPrices,
-                        ClientTollRatio = inputParam.ClientTollRatio,
-                        WorkerTollRatio = inputParam.WorkerTollRatio,
-                        IsDivergenceStep = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                                           isDivergenceStep,
-                        ParallelJobInstanceId =
-                            nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
-                                ? parallelJobInstanceId
+                            FileInstanceId = inputParam.FileInstanceId,
+                            ActionCode = isMultipleNextStep ? null : nextWfsInfo.ActionCode,
+                            ActionCodes = isMultipleNextStep ? nextWfsInfoes.Select(x => x.ActionCode).ToList() : null,
+                            DocInstanceId = inputParam.DocInstanceId,
+                            DocName = inputParam.DocName,
+                            DocPath = inputParam.DocPath,
+                            DocCreatedDate = inputParam.DocCreatedDate,
+                            TaskId = inputParam.TaskId,
+                            TaskInstanceId = inputParam.TaskInstanceId,
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId,
+                            SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
+                            DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
+                            DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = isMultipleNextStep ? null : nextWfsInfo.InstanceId,
+                            WorkflowStepInstanceIds = isMultipleNextStep
+                                ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                                 : null,
-                        IsConvergenceNextStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                                                isConvergenceNextStep,
-                        TenantId = inputParam.TenantId,
-                        ItemInputParams = itemInputParams
-                    };
+                            //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                            //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
+                            Value = value,
+                            Price = price,
+                            WorkflowStepPrices = wfsPrices,
+                            ClientTollRatio = inputParam.ClientTollRatio,
+                            WorkerTollRatio = inputParam.WorkerTollRatio,
+                            IsDivergenceStep = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                                               isDivergenceStep,
+                            ParallelJobInstanceId =
+                                nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
+                                    ? parallelJobInstanceId
+                                    : null,
+                            IsConvergenceNextStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                                                    isConvergenceNextStep,
+                            TenantId = inputParam.TenantId,
+                            ItemInputParams = itemInputParams
+                        };
 
-                    return GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
+                        if (ct.IsCancellationRequested)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            return GenericResponse<string>.ResultWithError((int)HttpStatusCode.RequestTimeout, null, "Request has been cancelled");
+                        }
+
+                        return GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
+                    }
+                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Can not get list WorkflowStepInfo!");
                 }
-                return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Can not get list WorkflowStepInfo!");
+
             }
             catch (Exception ex)
             {
@@ -918,7 +901,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     };
                     // Outbox
                     await PublishEvent<AfterProcessDataCheckEvent>(evt);
-                 
 
                     // Publish message sang DistributionJob
                     var logJobEvt = new LogJobEvent
@@ -926,15 +908,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
                         AccessToken = accessToken
                     };
-                    // Outbox LogJobEvent
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
+                    // Outbox
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
                 }
@@ -1028,7 +1003,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Outbox
                     await PublishEvent<AfterProcessDataConfirmEvent>(evt);
 
-
                     // Publish message sang DistributionJob
                     var logJobEvt = new LogJobEvent
                     {
@@ -1036,14 +1010,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(resultUpdateJob);
                 }
@@ -1068,7 +1035,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         #region ProcessDataConfirmAuto
 
-        public async Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null)
+        public async Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null, CancellationToken ct = default)
         {
             if (model == null || string.IsNullOrEmpty(model.Input))
             {
@@ -1076,278 +1043,294 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             try
             {
-                var inputParam = JsonConvert.DeserializeObject<InputParam>(model.Input);
-                if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null || inputParam.ItemInputParams == null || !inputParam.ItemInputParams.Any())
+                while (true)
                 {
-                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Bad request!");
-                }
-
-                //ConfirmAuto
-                const double exactRatio = 0.9;  // Fix lấy giá trị độ chính xác là 90%
-                var itemInputParams = inputParam.ItemInputParams;
-                if (itemInputParams == null || itemInputParams.Count == 0)
-                {
-                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Bad request!");
-                }
-
-                var docItems = new List<DocItem>();
-                var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
-                var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
-                var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
-                var updatePrevJobInfos = new List<PrevJobInfo>();
-                foreach (var itemInput in itemInputParams)
-                {
-                    if (itemInput.PrevJobInfos != null && itemInput.PrevJobInfos.Any())
+                    if (ct.IsCancellationRequested)
                     {
-                        var confirmAutoInputDto = new ConfirmAutoInputDto
-                        {
-                            data = new List<ItemConfirmAutoInputDto>()
-                        };
+                        ct.ThrowIfCancellationRequested();
+                        return GenericResponse<string>.ResultWithError((int)HttpStatusCode.RequestTimeout, null, "Request has been cancelled");
+                    }
 
-                        int i = 0;
-                        foreach (var prevJobInfo in itemInput.PrevJobInfos)
-                        {
-                            confirmAutoInputDto.data.Add(new ItemConfirmAutoInputDto
-                            {
-                                labeler_id = i,
-                                label_value = prevJobInfo.Value
-                            });
-                            i++;
-                        }
+                    var inputParam = JsonConvert.DeserializeObject<InputParam>(model.Input);
+                    if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null || inputParam.ItemInputParams == null || !inputParam.ItemInputParams.Any())
+                    {
+                        return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Bad request!");
+                    }
 
-                        // Call CyberLab ConfirmAuto
-                        var confirmAutoOutput = await GetConfirmAutoResult(confirmAutoInputDto, accessToken);
-                        if (confirmAutoOutput != null && !string.IsNullOrEmpty(confirmAutoOutput.true_label))
+                    //ConfirmAuto
+                    const double exactRatio = 0.9;  // Fix lấy giá trị độ chính xác là 90%
+                    var itemInputParams = inputParam.ItemInputParams;
+                    if (itemInputParams == null || itemInputParams.Count == 0)
+                    {
+                        return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Bad request!");
+                    }
+
+                    var docItems = new List<DocItem>();
+                    var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
+                    var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
+                    var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+                    var updatePrevJobInfos = new List<PrevJobInfo>();
+                    foreach (var itemInput in itemInputParams)
+                    {
+                        if (itemInput.PrevJobInfos != null && itemInput.PrevJobInfos.Any())
                         {
-                            var confirmValue = confirmAutoOutput.true_label;
-                            itemInput.Value = confirmValue;
-                            if (confirmAutoOutput.confidence >= exactRatio)
+                            var confirmAutoInputDto = new ConfirmAutoInputDto
                             {
-                                itemInput.ConditionalValue = true.ToString();
+                                data = new List<ItemConfirmAutoInputDto>()
+                            };
+
+                            int i = 0;
+                            foreach (var prevJobInfo in itemInput.PrevJobInfos)
+                            {
+                                confirmAutoInputDto.data.Add(new ItemConfirmAutoInputDto
+                                {
+                                    labeler_id = i,
+                                    label_value = prevJobInfo.Value
+                                });
+                                i++;
+                            }
+
+                            // Call CyberLab ConfirmAuto
+                            var confirmAutoOutput = await GetConfirmAutoResult(confirmAutoInputDto, accessToken);
+                            if (confirmAutoOutput != null && !string.IsNullOrEmpty(confirmAutoOutput.true_label))
+                            {
+                                var confirmValue = confirmAutoOutput.true_label;
+                                itemInput.Value = confirmValue;
+                                if (confirmAutoOutput.confidence >= exactRatio)
+                                {
+                                    itemInput.ConditionalValue = true.ToString();
+                                }
+                                else
+                                {
+                                    itemInput.ConditionalValue = false.ToString();
+                                }
+
+                                docItems.Add(new DocItem
+                                {
+                                    FilePartInstanceId = itemInput.FilePartInstanceId,
+                                    DocTypeFieldId = itemInput.DocTypeFieldId,
+                                    DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
+                                    DocTypeFieldName = itemInput.DocTypeFieldName,
+                                    DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
+                                    InputType = itemInput.InputType,
+                                    MaxLength = itemInput.MaxLength,
+                                    MinLength = itemInput.MinLength,
+                                    MaxValue = itemInput.MaxValue,
+                                    MinValue = itemInput.MinValue,
+                                    PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
+                                    IsMultipleSelection = itemInput.IsMultipleSelection,
+                                    DocFieldValueId = itemInput.DocFieldValueId,
+                                    DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
+                                    CoordinateArea = itemInput.CoordinateArea,
+                                    Value = confirmValue
+                                });
+
+                                //Cập nhật giá trị value
+                                var updateValue = Builders<Job>.Update
+                                    .Set(s => s.RightStatus, itemInput.ConditionalValue == true.ToString() ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.Wrong)
+                                    .Set(s => s.Value, confirmValue)
+                                    .Set(s => s.Status, (short)EnumJob.Status.Complete);
+
+                                var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
+
+                                // Cập nhật RightStatus cho prevJobInfos
+                                foreach (var prevJobInfo in itemInput.PrevJobInfos)
+                                {
+                                    prevJobInfo.RightStatus = prevJobInfo.Value == confirmAutoOutput.true_label
+                                        ? (short)EnumJob.RightStatus.Correct
+                                        : (short)EnumJob.RightStatus.Wrong;
+                                    if (!string.IsNullOrEmpty(prevJobInfo.Id))
+                                    {
+                                        updatePrevJobInfos.Add(prevJobInfo);
+                                    }
+                                }
                             }
                             else
                             {
-                                itemInput.ConditionalValue = false.ToString();
+                                //Cập nhật giá trị value
+                                var updateValue = Builders<Job>.Update
+                                    .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Wrong)
+                                    .Set(s => s.Value, null)
+                                    .Set(s => s.Status, (short)EnumJob.Status.Error);
+
+                                var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
+
+                                // Nếu giá trị confirmAuto trả về là null thì bung Exception
+                                throw new Exception();
                             }
+                        }
+                    }
 
-                            docItems.Add(new DocItem
+                    // Cập nhật RightStatus cho prevJobs
+                    if (updatePrevJobInfos.Any())
+                    {
+                        var lstId = updatePrevJobInfos.Select(x => ObjectId.Parse(x.Id)).ToList();
+                        var filterId = Builders<Job>.Filter.In(x => x.Id, lstId); // lấy theo id
+                        var prevJobs = await _repos.FindAsync(filterId);
+                        foreach (var prevJob in prevJobs)
+                        {
+                            var updatePrevJobInfo = updatePrevJobInfos.FirstOrDefault(x => x.Id == prevJob.Id.ToString());
+                            prevJob.RightStatus = updatePrevJobInfo?.RightStatus ?? (short)EnumJob.RightStatus.Confirmed;
+                        }
+                        await _repos.UpdateMultiAsync(prevJobs);
+                    }
+
+                    var updatedValue = JsonConvert.SerializeObject(docItems);
+
+                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                    var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
+                    if (wfsInfoes != null && wfsInfoes.Any() && wfSchemaInfoes != null && wfSchemaInfoes.Any())
+                    {
+                        var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
+                        var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                        var nextWfsInfo = nextWfsInfoes.First();
+                        bool isMultipleNextStep = nextWfsInfoes.Count > 1;
+                        var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
+                        bool isConvergenceNextStep = isParallelStep;
+                        var parallelJobInstanceId = Guid.NewGuid();
+
+                        int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
+                        bool isDivergenceStep = isMultipleNextStep || numOfResourceInJob > 1;
+
+                        var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
+                            ConfigStepPropertyConstants.IsPaidStep);
+                        var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
+                        bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
+
+                        // Tổng hợp price cho các bước TIẾP THEO
+                        decimal price = 0;
+                        List<WorkflowStepPrice> wfsPrices = null;
+                        if (nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
+                        {
+                            foreach (var itemInput in itemInputParams)
                             {
-                                FilePartInstanceId = itemInput.FilePartInstanceId,
-                                DocTypeFieldId = itemInput.DocTypeFieldId,
-                                DocTypeFieldInstanceId = itemInput.DocTypeFieldInstanceId,
-                                DocTypeFieldName = itemInput.DocTypeFieldName,
-                                DocTypeFieldSortOrder = itemInput.DocTypeFieldSortOrder,
-                                InputType = itemInput.InputType,
-                                MaxLength = itemInput.MaxLength,
-                                MinLength = itemInput.MinLength,
-                                MaxValue = itemInput.MaxValue,
-                                MinValue = itemInput.MinValue,
-                                PrivateCategoryInstanceId = itemInput.PrivateCategoryInstanceId,
-                                IsMultipleSelection = itemInput.IsMultipleSelection,
-                                DocFieldValueId = itemInput.DocFieldValueId,
-                                DocFieldValueInstanceId = itemInput.DocFieldValueInstanceId,
-                                CoordinateArea = itemInput.CoordinateArea,
-                                Value = confirmValue
-                            });
+                                // Tổng hợp các thông số cho các bước TIẾP THEO
+                                itemInput.IsDivergenceStep = isDivergenceStep;
+                                itemInput.ParallelJobInstanceId = parallelJobInstanceId;
+                                itemInput.IsConvergenceNextStep = isConvergenceNextStep;
 
-                            //Cập nhật giá trị value
-                            var updateValue = Builders<Job>.Update
-                                .Set(s => s.RightStatus, itemInput.ConditionalValue == true.ToString() ? (short)EnumJob.RightStatus.Correct : (short)EnumJob.RightStatus.Wrong)
-                                .Set(s => s.Value, confirmValue)
-                                .Set(s => s.Status, (short)EnumJob.Status.Complete);
-
-                            var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
-
-                            // Cập nhật RightStatus cho prevJobInfos
-                            foreach (var prevJobInfo in itemInput.PrevJobInfos)
-                            {
-                                prevJobInfo.RightStatus = prevJobInfo.Value == confirmAutoOutput.true_label
-                                    ? (short)EnumJob.RightStatus.Correct
-                                    : (short)EnumJob.RightStatus.Wrong;
-                                if (!string.IsNullOrEmpty(prevJobInfo.Id))
+                                // Tổng hợp price cho các bước TIẾP THEO
+                                if (isMultipleNextStep)
                                 {
-                                    updatePrevJobInfos.Add(prevJobInfo);
+                                    itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                                    {
+                                        InstanceId = x.InstanceId,
+                                        ActionCode = x.ActionCode,
+                                        Price = isPaid
+                                            ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
+                                                inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                            : 0
+                                    }).ToList();
+                                }
+                                else
+                                {
+                                    itemInput.Price = isPaid
+                                        ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
+                                            inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                        : 0;
                                 }
                             }
                         }
                         else
                         {
-                            //Cập nhật giá trị value
-                            var updateValue = Builders<Job>.Update
-                                .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Wrong)
-                                .Set(s => s.Value, null)
-                                .Set(s => s.Status, (short)EnumJob.Status.Error);
-
-                            var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
-
-                            // Nếu giá trị confirmAuto trả về là null thì bung Exception
-                            throw new Exception();
-                        }
-                    }
-                }
-
-                // Cập nhật RightStatus cho prevJobs
-                if (updatePrevJobInfos.Any())
-                {
-                    var lstId = updatePrevJobInfos.Select(x => ObjectId.Parse(x.Id)).ToList();
-                    var filterId = Builders<Job>.Filter.In(x => x.Id, lstId); // lấy theo id
-                    var prevJobs = await _repos.FindAsync(filterId);
-                    foreach (var prevJob in prevJobs)
-                    {
-                        var updatePrevJobInfo = updatePrevJobInfos.FirstOrDefault(x => x.Id == prevJob.Id.ToString());
-                        prevJob.RightStatus = updatePrevJobInfo?.RightStatus ?? (short)EnumJob.RightStatus.Confirmed;
-                    }
-                    await _repos.UpdateMultiAsync(prevJobs);
-                }
-
-                var updatedValue = JsonConvert.SerializeObject(docItems);
-
-                var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
-                if (wfsInfoes != null && wfsInfoes.Any() && wfSchemaInfoes != null && wfSchemaInfoes.Any())
-                {
-                    var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == inputParam.WorkflowStepInstanceId);
-                    var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                    var nextWfsInfo = nextWfsInfoes.First();
-                    bool isMultipleNextStep = nextWfsInfoes.Count > 1;
-                    var isParallelStep = WorkflowHelper.IsParallelStep(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId);
-                    bool isConvergenceNextStep = isParallelStep;
-                    var parallelJobInstanceId = Guid.NewGuid();
-
-                    int numOfResourceInJob = WorkflowHelper.GetNumOfResourceInJob(nextWfsInfo.ConfigStep);
-                    bool isDivergenceStep = isMultipleNextStep || numOfResourceInJob > 1;
-
-                    var strIsPaidStep = WorkflowHelper.GetConfigStepPropertyValue(nextWfsInfo.ConfigStep,
-                        ConfigStepPropertyConstants.IsPaidStep);
-                    var isPaidStepRs = Boolean.TryParse(strIsPaidStep, out bool isPaidStep);
-                    bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
-
-                    // Tổng hợp price cho các bước TIẾP THEO
-                    decimal price = 0;
-                    List<WorkflowStepPrice> wfsPrices = null;
-                    if (nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)
-                    {
-                        foreach (var itemInput in itemInputParams)
-                        {
-                            // Tổng hợp các thông số cho các bước TIẾP THEO
-                            itemInput.IsDivergenceStep = isDivergenceStep;
-                            itemInput.ParallelJobInstanceId = parallelJobInstanceId;
-                            itemInput.IsConvergenceNextStep = isConvergenceNextStep;
-
-                            // Tổng hợp price cho các bước TIẾP THEO
                             if (isMultipleNextStep)
                             {
-                                itemInput.WorkflowStepPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                                wfsPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
                                 {
                                     InstanceId = x.InstanceId,
                                     ActionCode = x.ActionCode,
                                     Price = isPaid
                                         ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
-                                            inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
+                                            inputParam.DigitizedTemplateInstanceId)
                                         : 0
                                 }).ToList();
                             }
                             else
                             {
-                                itemInput.Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
-                                        inputParam.DigitizedTemplateInstanceId, itemInput.DocTypeFieldInstanceId)
-                                    : 0;
+                                price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
                             }
                         }
-                    }
-                    else
-                    {
-                        if (isMultipleNextStep)
+
+                        // Tổng hợp value
+                        string value;
+                        var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
+                        if (isNextStepRequiredAllBeforeStepComplete)
                         {
-                            wfsPrices = nextWfsInfoes.Select(x => new WorkflowStepPrice
+                            var lstDocItemFull = new List<DocItem>();
+                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
                             {
-                                InstanceId = x.InstanceId,
-                                ActionCode = x.ActionCode,
-                                Price = isPaid
-                                    ? MoneyHelper.GetPriceByConfigPriceV2(x.ConfigPrice,
-                                        inputParam.DigitizedTemplateInstanceId)
-                                    : 0
-                            }).ToList();
+                                lstDocItemFull = lstDocItemFullRs.Data;
+                            }
+
+                            if (lstDocItemFull != null && lstDocItemFull.Any())
+                            {
+                                var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
+                                var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
+                                if (missDocItem != null && missDocItem.Count > 0)
+                                {
+                                    docItems.AddRange(missDocItem);
+                                }
+                            }
+                            value = JsonConvert.SerializeObject(docItems);
                         }
                         else
                         {
-                            price = isPaid ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice, inputParam.DigitizedTemplateInstanceId) : 0;
+                            value = updatedValue;
                         }
-                    }
 
-                    // Tổng hợp value
-                    string value;
-                    var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
-                    if (isNextStepRequiredAllBeforeStepComplete)
-                    {
-                        var lstDocItemFull = new List<DocItem>();
-                        var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                        if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                        var output = new InputParam
                         {
-                            lstDocItemFull = lstDocItemFullRs.Data;
-                        }
-
-                        if (lstDocItemFull != null && lstDocItemFull.Any())
-                        {
-                            var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
-                            var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
-                            if (missDocItem != null && missDocItem.Count > 0)
-                            {
-                                docItems.AddRange(missDocItem);
-                            }
-                        }
-                        value = JsonConvert.SerializeObject(docItems);
-                    }
-                    else
-                    {
-                        value = updatedValue;
-                    }
-
-                    var output = new InputParam
-                    {
-                        FileInstanceId = inputParam.FileInstanceId,
-                        ActionCode = isMultipleNextStep ? null : nextWfsInfo.ActionCode,
-                        ActionCodes = isMultipleNextStep ? nextWfsInfoes.Select(x => x.ActionCode).ToList() : null,
-                        DocInstanceId = inputParam.DocInstanceId,
-                        DocName = inputParam.DocName,
-                        DocPath = inputParam.DocPath,
-                        DocCreatedDate = inputParam.DocCreatedDate,
-                        TaskId = inputParam.TaskId,
-                        TaskInstanceId = inputParam.TaskInstanceId,
-                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                        ProjectInstanceId = inputParam.ProjectInstanceId,
-                        SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
-                        DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
-                        DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
-                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                        WorkflowStepInstanceId = isMultipleNextStep ? null : nextWfsInfo.InstanceId,
-                        WorkflowStepInstanceIds = isMultipleNextStep
-                            ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
-                            : null,
-                        //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
-                        //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
-                        Value = value,
-                        Price = price,
-                        WorkflowStepPrices = wfsPrices,
-                        ClientTollRatio = inputParam.ClientTollRatio,
-                        WorkerTollRatio = inputParam.WorkerTollRatio,
-                        IsDivergenceStep = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                                           isDivergenceStep,
-                        ParallelJobInstanceId =
-                            nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
-                                ? parallelJobInstanceId
+                            FileInstanceId = inputParam.FileInstanceId,
+                            ActionCode = isMultipleNextStep ? null : nextWfsInfo.ActionCode,
+                            ActionCodes = isMultipleNextStep ? nextWfsInfoes.Select(x => x.ActionCode).ToList() : null,
+                            DocInstanceId = inputParam.DocInstanceId,
+                            DocName = inputParam.DocName,
+                            DocPath = inputParam.DocPath,
+                            DocCreatedDate = inputParam.DocCreatedDate,
+                            TaskId = inputParam.TaskId,
+                            TaskInstanceId = inputParam.TaskInstanceId,
+                            ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                            ProjectInstanceId = inputParam.ProjectInstanceId,
+                            SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
+                            DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
+                            DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
+                            WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                            WorkflowStepInstanceId = isMultipleNextStep ? null : nextWfsInfo.InstanceId,
+                            WorkflowStepInstanceIds = isMultipleNextStep
+                                ? nextWfsInfoes.Select(x => (Guid?)x.InstanceId).ToList()
                                 : null,
-                        IsConvergenceNextStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                                                isConvergenceNextStep,
-                        TenantId = inputParam.TenantId,
-                        ItemInputParams = itemInputParams
-                    };
+                            //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                            //WorkflowSchemaInfoes = inputParam.WorkflowSchemaInfoes, // Không truyền thông tin này để giảm dung lượng msg
+                            Value = value,
+                            Price = price,
+                            WorkflowStepPrices = wfsPrices,
+                            ClientTollRatio = inputParam.ClientTollRatio,
+                            WorkerTollRatio = inputParam.WorkerTollRatio,
+                            IsDivergenceStep = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                                               isDivergenceStep,
+                            ParallelJobInstanceId =
+                                nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
+                                    ? parallelJobInstanceId
+                                    : null,
+                            IsConvergenceNextStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
+                                                    isConvergenceNextStep,
+                            TenantId = inputParam.TenantId,
+                            ItemInputParams = itemInputParams
+                        };
 
-                    return GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
+                        if (ct.IsCancellationRequested)
+                        {
+                            ct.ThrowIfCancellationRequested();
+                            return GenericResponse<string>.ResultWithError((int)HttpStatusCode.RequestTimeout, null, "Request has been cancelled");
+                        }
+
+                        return GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
+                    }
+
+                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Can not get list WorkflowStepInfo!");
                 }
-
-                return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null, "Can not get list WorkflowStepInfo!");
+                
             }
             catch (Exception ex)
             {
@@ -1481,7 +1464,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             AccessToken = accessToken
                         };
                         // Outbox
-                        await PublishEvent<AfterProcessDataEntryEvent>(evt);
+                        await PublishEvent<AfterProcessCheckFinalEvent>(evt);
 
                         // Publish message to DistributionJob to sync job status
                         var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
@@ -1491,14 +1474,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             AccessToken = accessToken
                         };
                         // Outbox
-                        try
-                        {
-                            await PublishEvent<LogJobEvent>(logJobEvt);
-                        }
-                        catch (Exception exPublishEvent)
-                        {
-                           //ignore if exception here
-                        }
+                        await PublishEvent<LogJobEvent>(logJobEvt);
                     }
 
                     var responseCode = 1; // Ghi nhận thành công
@@ -1625,31 +1601,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox OutboxIntegrationEvent
-                    var outboxEntity = new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(AfterProcessQaCheckFinalEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(evt),
-                        LastModificationDate = DateTime.Now,
-                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                    };
-
-                    try
-                    {
-                        _eventBus.Publish(evt, nameof(AfterProcessQaCheckFinalEvent).ToLower());
-                    }
-                    catch (Exception exPublishEvent)
-                    {
-                        Log.Error(exPublishEvent, "Error publish for event AfterProcessQaCheckFinalEvent");
-                        try
-                        {
-                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-                        }
-                        catch (Exception exSaveDB)
-                        {
-                            Log.Error(exSaveDB, "Error save DB for event AfterProcessQaCheckFinalEvent ");
-                        }
-                    }
+                    await PublishEvent<AfterProcessQaCheckFinalEvent>(evt);
 
                     // Publish message sang DistributionJob
                     var logJob = _mapper.Map<Job, LogJobDto>(job);
@@ -1660,30 +1612,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     };
 
                     // Outbox logjob
-                    var outboxEntityLogJobEvent = new OutboxIntegrationEvent
-                    {
-                        ExchangeName = nameof(LogJobEvent).ToLower(),
-                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                        Data = JsonConvert.SerializeObject(logJobEvt),
-                        LastModificationDate = DateTime.Now,
-                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                    };
-                    try
-                    {
-                        _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-                    }
-                    catch (Exception exPublishEvent)
-                    {
-                        Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
-                        try
-                        {
-                            await _outboxIntegrationEventRepository.AddAsync(outboxEntityLogJobEvent);
-                        }
-                        catch (Exception exSaveDB)
-                        {
-                            Log.Error(exSaveDB, "Error save DB for event LogJobEvent ");
-                        }
-                    }
+                    await PublishEvent<LogJobEvent>(logJobEvt);
 
                     response = GenericResponse<int>.ResultWithData(1);
                 }
@@ -1706,7 +1635,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         #region ProcessSyntheticData
 
-        public async Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null)
+        public async Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null, CancellationToken ct = default)
         {
             if (model == null || string.IsNullOrEmpty(model.Input))
             {
@@ -1714,178 +1643,202 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
 
             // 2. Process
-            GenericResponse<string> response;
-            try
+            while (true)
             {
-                var inputParam = JsonConvert.DeserializeObject<InputParam>(model.Input);
-                if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null ||
-                    string.IsNullOrEmpty(inputParam.Value))
+                // Check at the top of while loop
+                if (ct.IsCancellationRequested)
                 {
-                    return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null,
-                        "Bad request!");
+                    // Request has been cancelled
+                    ct.ThrowIfCancellationRequested();
+                    return null;
                 }
 
-                var docInstanceId = inputParam.DocInstanceId.GetValueOrDefault();
-                var wfsIntanceId = inputParam.WorkflowStepInstanceId.GetValueOrDefault();
-                var actionCode = inputParam.ActionCode;
-                bool hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId);
-                if (!hasJobWaitingOrProcessing)
+                GenericResponse<string> response;
+                try
                 {
-                    // Update FinalValue for Doc
-                    var finalValue = inputParam.Value;
-                    var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
+                    var inputParam = JsonConvert.DeserializeObject<InputParam>(model.Input);
+                    if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null ||
+                        string.IsNullOrEmpty(inputParam.Value))
                     {
-                        DocInstanceId = docInstanceId,
-                        FinalValue = finalValue
-                    };
-
-                    // Outbox
-                    await PublishEvent<DocUpdateFinalValueEvent>(docUpdateFinalValueEvt);
-
-
-
-                    // Update all status DocFieldValues is complete
-                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParam.Value);
-                    var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
-                    {
-                        DocFieldValueInstanceIds = docItems
-                            .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
-                    };
-                    // Outbox
-                    await PublishEvent<DocFieldValueUpdateStatusCompleteEvent>(docFieldValueUpdateStatusCompleteEvt);
-
-
-                    // Cập nhật giá trị value
-                    var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
-                    var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
-                    var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
-
-                    var updateValue = Builders<Job>.Update
-                        .Set(s => s.Value, finalValue)
-                        .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Correct)
-                        .Set(s => s.Status, (short)EnumJob.Status.Complete);
-
-                    var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
-
-                    var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
-                    var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
-
-                    if (resultUpdateJob)
-                    {
-                        Log.Logger.Information($"ProcessSyntheticData with DocInstanceId: {docInstanceId} success!");
-                    }
-                    else
-                    {
-                        Log.Logger.Error($"ProcessSyntheticData with DocInstanceId: {inputParam.DocInstanceId} failure!");
+                        return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null,
+                            "Bad request!");
                     }
 
-                    if (wfsInfoes != null && wfsInfoes.Any())
+                    var docInstanceId = inputParam.DocInstanceId.GetValueOrDefault();
+                    var wfsIntanceId = inputParam.WorkflowStepInstanceId.GetValueOrDefault();
+                    var actionCode = inputParam.ActionCode;
+                    var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldResponse.Success == false)
                     {
-                        var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
-                        if (nextWfsInfoes != null && nextWfsInfoes.Any())
+                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                    }
+
+                    var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
+
+                    bool hasJobWaitingOrProcessing = await _repository.CheckHasJobWaitingOrProcessingByIgnoreWfs(docInstanceId, actionCode, wfsIntanceId, ignoreListDocTypeField);
+                    
+                    if (!hasJobWaitingOrProcessing)
+                    {
+                        // Update FinalValue for Doc
+                        var finalValue = inputParam.Value;
+                        var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
                         {
-                            var nextWfsInfo = nextWfsInfoes.First();
-                            var output = new InputParam
-                            {
-                                FileInstanceId = inputParam.FileInstanceId,
-                                ActionCode = nextWfsInfo.ActionCode,
-                                DocInstanceId = inputParam.DocInstanceId,
-                                DocName = inputParam.DocName,
-                                DocCreatedDate = inputParam.DocCreatedDate,
-                                DocPath = inputParam.DocPath,
-                                TaskId = inputParam.TaskId,
-                                TaskInstanceId = inputParam.TaskInstanceId,
-                                ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                                ProjectInstanceId = inputParam.ProjectInstanceId,
-                                SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
-                                DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
-                                DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
-                                WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                                WorkflowStepInstanceId = nextWfsInfo.InstanceId,
-                                //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
-                                ItemInputParams = new List<ItemInputParam>()
-                            };
+                            DocInstanceId = docInstanceId,
+                            FinalValue = finalValue
+                        };
+                        // Outbox
+                        await PublishEvent<DocUpdateFinalValueEvent>(docUpdateFinalValueEvt);
 
-                            response = GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
 
-                            if (nextWfsInfo.ActionCode == ActionCodeConstants.End)
+                        // Update all status DocFieldValues is complete
+                        var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParam.Value);
+                        var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
+                        {
+                            DocFieldValueInstanceIds = docItems
+                                .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
+                        };
+                        // Outbox
+                        await PublishEvent<DocFieldValueUpdateStatusCompleteEvent>(docFieldValueUpdateStatusCompleteEvt);
+
+                        // Cập nhật giá trị value
+                        var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
+                        var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
+                        var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
+
+                        var updateValue = Builders<Job>.Update
+                            .Set(s => s.Value, finalValue)
+                            .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Correct)
+                            .Set(s => s.Status, (short)EnumJob.Status.Complete);
+
+                        var resultUpdateJob = await _repos.UpdateOneAsync(filter1 & filter2 & filter3, updateValue);
+
+                        var wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
+                        var wfSchemaInfoes = JsonConvert.DeserializeObject<List<WorkflowSchemaConditionInfo>>(inputParam.WorkflowSchemaInfoes);
+
+                        if (resultUpdateJob)
+                        {
+                            Log.Logger.Information($"ProcessSyntheticData with DocInstanceId: {docInstanceId} success!");
+                        }
+                        else
+                        {
+                            Log.Logger.Error($"ProcessSyntheticData with DocInstanceId: {inputParam.DocInstanceId} failure!");
+                        }
+
+                        if (wfsInfoes != null && wfsInfoes.Any())
+                        {
+                            var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault());
+                            if (nextWfsInfoes != null && nextWfsInfoes.Any())
                             {
-                                // đây là bước cuối cùng: nextstep = end
-                                // Update value TaskStepProgress
-                                var updateTaskStepProgress = new TaskStepProgress
+                                var nextWfsInfo = nextWfsInfoes.First();
+                                var output = new InputParam
                                 {
-                                    Id = nextWfsInfo.Id,
-                                    InstanceId = nextWfsInfo.InstanceId,
-                                    Name = nextWfsInfo.Name,
+                                    FileInstanceId = inputParam.FileInstanceId,
                                     ActionCode = nextWfsInfo.ActionCode,
-                                    WaitingJob = 0,
-                                    ProcessingJob = 0,
-                                    CompleteJob = 0,
-                                    TotalJob = 0,
-                                    Status = (short)EnumTaskStepProgress.Status.Complete
-                                };
-                                await _taskRepository.UpdateProgressValue(inputParam.TaskId, updateTaskStepProgress, (short)EnumTask.Status.Complete);
-
-                                // Update ProjectStatistic
-                                var changeProjectFileProgress = new ProjectFileProgress
-                                {
-                                    UnprocessedFile = 0,
-                                    ProcessingFile = -1,
-                                    CompleteFile = 1,
-                                    TotalFile = 0,
-                                    ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() },
-                                    CompleteDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
-                                };
-                                var changeProjectStepProgress = new List<ProjectStepProgress>();
-                                var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
-                                {
+                                    DocInstanceId = inputParam.DocInstanceId,
+                                    DocName = inputParam.DocName,
+                                    DocCreatedDate = inputParam.DocCreatedDate,
+                                    DocPath = inputParam.DocPath,
+                                    TaskId = inputParam.TaskId,
+                                    TaskInstanceId = inputParam.TaskInstanceId,
                                     ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
-                                    ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                                    ProjectInstanceId = inputParam.ProjectInstanceId,
+                                    SyncTypeInstanceId = inputParam.SyncTypeInstanceId,
+                                    DigitizedTemplateInstanceId = inputParam.DigitizedTemplateInstanceId,
+                                    DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                                     WorkflowInstanceId = inputParam.WorkflowInstanceId,
-                                    WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                                    ActionCode = inputParam.ActionCode,
-                                    DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
-                                    StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date
-                                        .ToString("yyyyMMdd")),
-                                    ChangeFileProgressStatistic =
-                                        JsonConvert.SerializeObject(changeProjectFileProgress),
-                                    ChangeStepProgressStatistic =
-                                        JsonConvert.SerializeObject(changeProjectStepProgress),
-                                    ChangeUserStatistic = string.Empty,
-                                    TenantId = inputParam.TenantId
+                                    WorkflowStepInstanceId = nextWfsInfo.InstanceId,
+                                    //WorkflowStepInfoes = inputParam.WorkflowStepInfoes,     // Không truyền thông tin này để giảm dung lượng msg
+                                    ItemInputParams = new List<ItemInputParam>()
                                 };
-                                await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
 
-                                await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
+                                response = GenericResponse<string>.ResultWithData(JsonConvert.SerializeObject(output));
+
+                                if (nextWfsInfo.ActionCode == ActionCodeConstants.End)
+                                {
+                                    // đây là bước cuối cùng: nextstep = end
+                                    // Update value TaskStepProgress
+                                    var updateTaskStepProgress = new TaskStepProgress
+                                    {
+                                        Id = nextWfsInfo.Id,
+                                        InstanceId = nextWfsInfo.InstanceId,
+                                        Name = nextWfsInfo.Name,
+                                        ActionCode = nextWfsInfo.ActionCode,
+                                        WaitingJob = 0,
+                                        ProcessingJob = 0,
+                                        CompleteJob = 0,
+                                        TotalJob = 0,
+                                        Status = (short)EnumTaskStepProgress.Status.Complete
+                                    };
+                                    await _taskRepository.UpdateProgressValue(inputParam.TaskId, updateTaskStepProgress, (short)EnumTask.Status.Complete);
+
+                                    // Update ProjectStatistic
+                                    var changeProjectFileProgress = new ProjectFileProgress
+                                    {
+                                        UnprocessedFile = 0,
+                                        ProcessingFile = -1,
+                                        CompleteFile = 1,
+                                        TotalFile = 0,
+                                        ProcessingDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() },
+                                        CompleteDocInstanceIds = new List<Guid> { inputParam.DocInstanceId.GetValueOrDefault() }
+                                    };
+                                    var changeProjectStepProgress = new List<ProjectStepProgress>();
+                                    var changeProjectStatistic = new ProjectStatisticUpdateProgressDto
+                                    {
+                                        ProjectTypeInstanceId = inputParam.ProjectTypeInstanceId,
+                                        ProjectInstanceId = inputParam.ProjectInstanceId.GetValueOrDefault(),
+                                        WorkflowInstanceId = inputParam.WorkflowInstanceId,
+                                        WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
+                                        ActionCode = inputParam.ActionCode,
+                                        DocInstanceId = inputParam.DocInstanceId.GetValueOrDefault(),
+                                        StatisticDate = Int32.Parse(inputParam.DocCreatedDate.GetValueOrDefault().Date
+                                            .ToString("yyyyMMdd")),
+                                        ChangeFileProgressStatistic =
+                                            JsonConvert.SerializeObject(changeProjectFileProgress),
+                                        ChangeStepProgressStatistic =
+                                            JsonConvert.SerializeObject(changeProjectStepProgress),
+                                        ChangeUserStatistic = string.Empty,
+                                        TenantId = inputParam.TenantId
+                                    };
+                                    await _projectStatisticClientService.UpdateProjectStatisticAsync(changeProjectStatistic, accessToken);
+
+                                    await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
+                                }
+                            }
+                            else
+                            {
+                                response = GenericResponse<string>.ResultWithData(null, "Can not get next workflowstep!");
                             }
                         }
                         else
                         {
-                            response = GenericResponse<string>.ResultWithData(null, "Can not get next workflowstep!");
+                            response = GenericResponse<string>.ResultWithData(null, "Can not get list WorkflowStepInfo!");
                         }
                     }
                     else
                     {
-                        response = GenericResponse<string>.ResultWithData(null, "Can not get list WorkflowStepInfo!");
+                        response = GenericResponse<string>.ResultWithData(null);
                     }
                 }
-                else
+                catch (Exception ex)
                 {
-                    response = GenericResponse<string>.ResultWithData(null);
+                    Log.Logger.Error(ex.StackTrace);
+                    Log.Logger.Error(ex.Message);
+                    response = GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
                 }
-            }
-            catch (Exception ex)
-            {
-                Log.Logger.Error(ex.StackTrace);
-                Log.Logger.Error(ex.Message);
-                response = GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
-            }
 
-            return response;
+                // Check at the end of the loop before return statement
+                if (ct.IsCancellationRequested)
+                {
+                    // Request has been cancelled
+                    ct.ThrowIfCancellationRequested();
+                    return null;
+                }
+
+                return response;
+            }
         }
 
         #endregion
-
         private async Task PublishEvent<T>(object eventData)
         {
             // Outbox LogJob
@@ -1894,7 +1847,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 ExchangeName = typeof(T).Name.ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(eventData),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
             };
             try
@@ -1916,7 +1869,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     throw;
                 }
             }
-        }    
+        }
     }
 
     public partial class JobService
@@ -2159,8 +2112,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 LogJobs = new List<LogJobDto> { logJob },
                                 AccessToken = accessToken
                             };
-                            await PublishEvent<LogJobEvent>(logJobEvt);
-                            
+
+                            await PublishEvent<LogJobEvent>(logJobEvt); 
                             countSuccess++;
                         }
                         else
@@ -2544,7 +2497,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             GenericResponse<bool> response;
             try
             {
-                var rs = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(model.DocInstanceId, model.CheckWorkflowStepInfos);
+                var rs = await _repository.CheckHasJobWaitingOrProcessingByMultiWfs(model.DocInstanceId, model.CheckWorkflowStepInfos,model.IgnoreListDocTypeField);
                 response = GenericResponse<bool>.ResultWithData(rs);
             }
             catch (Exception ex)
@@ -3112,44 +3065,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             //sync data to Job Distribution by publish LogJobEvent
             jobsForDelete.ForEach(x => x.Status = (short)EnumJob.Status.Ignore);
 
-            await PublishJobEvent(jobsForDelete);
+            var logJobEvt = new LogJobEvent
+            {
+                LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobsForDelete),
+            };
+            await PublishEvent<LogJobEvent>(logJobEvt);
+            
 
             response = GenericResponse<long>.ResultWithData(result);
             return response;
         }
 
-        private async Task PublishJobEvent(List<Job> jobs)
-        {
-            var logJobEvt = new LogJobEvent
-            {
-                LogJobs = _mapper.Map<List<Job>, List<LogJobDto>>(jobs),
-            };
-            // Outbox
-            var outboxEntity = new OutboxIntegrationEvent
-            {
-                ExchangeName = nameof(LogJobEvent).ToLower(),
-                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                Data = JsonConvert.SerializeObject(logJobEvt),
-                LastModificationDate = DateTime.Now,
-                Status = (short)EnumEventBus.PublishMessageStatus.Nack
-            };
-            try
-            {
-                _eventBus.Publish(logJobEvt, nameof(LogJobEvent).ToLower());
-            }
-            catch (Exception exPublishEvent)
-            {
-                Log.Error(exPublishEvent, "Error publish for event LogJobEvent");
-                try
-                {
-                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-                }
-                catch (Exception exSaveDB)
-                {
-                    Log.Error(exSaveDB, "Error save db for event");
-                }
-            }
-        }
 
         #region Get List JobDto with different arguments
 
@@ -5073,15 +4999,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         AccessToken = accessToken
                     };
                     // Outbox
-                    try
-                    {
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-                    }
-                    catch
-                    {
-                        //ignore if exception
-                    }
-                   
+                    await PublishEvent<LogJobEvent>(logJobEvt);
                     response = GenericResponse<int>.ResultWithData(1);
                 }
                 else
@@ -5176,15 +5094,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 AccessToken = accessToken
                             };
                             // Outbox
-                            try
-                            {
-                                await PublishEvent<LogJobEvent>(logJobEvt);
-                            }
-                            catch
-                            {
-                                //ignore if exception
-                            }
-                            
+                            await PublishEvent<LogJobEvent>(logJobEvt);
                             countSuccess++;
                         }
                         else
@@ -6981,7 +6891,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 ExchangeName = exchangeName,
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(evt),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
             };
 
@@ -7231,7 +7141,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 ExchangeName = nameof(LogJobEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(logJobEvt),
-                LastModificationDate = DateTime.Now,
+                LastModificationDate = DateTime.UtcNow,
                 Status = (short)EnumEventBus.PublishMessageStatus.Nack
             };
             try
@@ -7362,15 +7272,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 //get PathName
                 string pathName = string.Empty;
-                if (!dicDocPath.ContainsKey(job.DocPath))
+                if (!string.IsNullOrEmpty(job.DocPath))
                 {
-                    pathName = await GetPathName(job.DocPath, accessToken);
-                    dicDocPath.Add(job.DocPath, pathName);
+                    if (!dicDocPath.ContainsKey(job.DocPath))
+                    {
+                        pathName = await GetPathName(job.DocPath, accessToken);
+                        dicDocPath.Add(job.DocPath, pathName);
+                    }
+                    else
+                    {
+                        pathName = dicDocPath[job.DocPath];
+                    }
                 }
-                else
-                {
-                    pathName = dicDocPath[job.DocPath];
-                }
+                
                 job.PathName = pathName;
 
                 List<DocTypeFieldDto> listDocTypeField = null;

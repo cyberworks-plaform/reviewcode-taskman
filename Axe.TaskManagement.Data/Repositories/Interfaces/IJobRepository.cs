@@ -21,11 +21,11 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
 
         Task<bool> CheckHasJobByProjectTypeActionCode(Guid projectTypeInstanceId, string actionCode, short status = (short)EnumJob.Status.Waiting);
 
-        Task<bool> CheckHasJobWaitingOrProcessingByIgnoreWfs(Guid docInstanceId, string ignoreActionCode = null, Guid? ignoreWorkflowStepInstanceId = null);
+        Task<bool> CheckHasJobWaitingOrProcessingByIgnoreWfs(Guid docInstanceId, string ignoreActionCode, Guid? ignoreWorkflowStepInstanceId, List<Guid?> ignoreListDocTypeField);
 
         Task<bool> CheckHasJobWaitingOrProcessingByWfs(Guid docInstanceId, string actionCode = null, Guid? workflowStepInstanceId = null);
 
-        Task<bool> CheckHasJobWaitingOrProcessingByMultiWfs(Guid docInstanceId, List<WorkflowStepInfo> checkWorkflowStepInfos);
+        Task<bool> CheckHasJobWaitingOrProcessingByMultiWfs(Guid docInstanceId, List<WorkflowStepInfo> checkWorkflowStepInfos, List<Guid?> ignoreListDocTypeField);
 
         Task<bool> CheckHasJobWaitingOrProcessingByDocFieldValueAndParallelJob(Guid docInstanceId, Guid? docFieldValueInstanceId, Guid? parallelJobInstanceId);
 

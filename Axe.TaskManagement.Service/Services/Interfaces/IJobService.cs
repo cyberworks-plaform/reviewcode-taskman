@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Axe.TaskManagement.Service.Services.Interfaces
@@ -48,13 +49,13 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<int>> ProcessDataConfirm(List<JobResult> result, string accessToken = null);
 
-        Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
-        Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
         Task<GenericResponse<int>> ProcessCheckFinal(JobResult result, string accessToken = null);
 
-        Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
         Task<GenericResponse<List<JobDto>>> GetListJobByUserProject(Guid userInstanceId, Guid projectInstanceId);
 
