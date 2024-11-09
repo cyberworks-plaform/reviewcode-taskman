@@ -23,6 +23,12 @@ using Axe.TaskManagement.Data.DataAccess;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Serilog;
+using System.Collections.Generic;
+using System.Reflection;
+using System;
+using System.Linq;
 
 namespace Axe.TaskManagement.Api
 {
@@ -104,6 +110,7 @@ namespace Axe.TaskManagement.Api
             // Config RabbitMq
             services.AddServiceBusPersistentConnection(Configuration);
             services.AddEventBus(Configuration);
+            services.AddRabbitMqAdminClient(Configuration);
 
             // Config EvenHandling
             if (Configuration.GetValue("RabbitMq:UseRabbitMq", false))
@@ -125,6 +132,8 @@ namespace Axe.TaskManagement.Api
 
         protected override void UseCustomService(IApplicationBuilder app, IWebHostEnvironment env)
         {
+            UseMigration(app);
+
             Task.Run(async () => await SeedData(app));
 
             if (Configuration.GetValue("RabbitMq:UseRabbitMq", false))
@@ -145,6 +154,81 @@ namespace Axe.TaskManagement.Api
             }
 
             base.UseCustomService(app, env);
+        }
+
+        private void UseMigration(IApplicationBuilder app)
+        {
+            using (var serviceScope = app.ApplicationServices.GetService<IServiceScopeFactory>().CreateScope())
+            {
+                var context = serviceScope.ServiceProvider.GetRequiredService<AxeTaskManagementDbContext>();
+                List<string> migrationIds = null;
+                try
+                {
+                    var dbAssebmly = Assembly.GetAssembly(context.GetType());
+                    var types = dbAssebmly.GetTypes();
+                    if (types.Any())
+                    {
+                        migrationIds = types.Where(x => x.BaseType == typeof(Migration))
+                            .Select(item => item.GetCustomAttributes<MigrationAttribute>().First().Id)
+                            .OrderBy(o => o).ToList();
+
+                        if (Configuration["UseDebugMode"] == "true")
+                        {
+                            Log.Information("MigrationId List:");
+                            for (int i = migrationIds.Count - 1; i >= 0; i--)
+                            {
+                                Log.Information($"MigrationId => {migrationIds[i]}");
+                            }
+                        }
+                    }
+
+                    // 1. Migration
+                    if (Configuration["AutoMigration"] == "true")   // automatic migrations: add migration + update database
+                    {
+                        context.Database.Migrate();
+                    }
+                    else // insert all of migrations
+                    {
+                        if (migrationIds != null && migrationIds.Any())
+                        {
+                            var version = typeof(Migration).Assembly.GetName().Version;
+                            string efVersion = $"{version.Major}.{version.Minor}.{version.Build}";
+
+                            foreach (var mid in migrationIds)
+                            {
+                                string sql;
+                                if (_providerName == ProviderTypeConstants.Postgre)
+                                {
+                                    sql =
+                                        $@"DO
+                                        $do$
+                                        BEGIN
+                                        IF NOT EXISTS ( SELECT 1 FROM ""__EFMigrationsHistory"" WHERE ""MigrationId"" = '{mid}' ) THEN
+                                            INSERT INTO ""__EFMigrationsHistory""(""MigrationId"",""ProductVersion"") VALUES ('{mid}','{efVersion}');
+                                        END IF;
+                                        END;
+                                        $do$";
+                                }
+                                else
+                                {
+                                    sql =
+                                        $@" IF NOT EXISTS ( SELECT 1 FROM __EFMigrationsHistory WHERE MigrationId = '{mid}' )
+                                BEGIN
+                                    INSERT INTO __EFMigrationsHistory(MigrationId,ProductVersion) VALUES ('{mid}','{efVersion}')
+                                END";
+                                }
+
+                                context.Database.ExecuteSqlRaw(sql);
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Error($"AutoMigration StackTrace: {ex.StackTrace}");
+                    Log.Error($"AutoMigration Message: {ex.Message}");
+                }
+            }
         }
 
         private async Task SeedData(IApplicationBuilder app)

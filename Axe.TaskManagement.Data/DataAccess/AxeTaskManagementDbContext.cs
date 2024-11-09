@@ -1,4 +1,5 @@
-﻿using Ce.Common.Lib.Interfaces;
+﻿using Axe.TaskManagement.Model.Entities;
+using Ce.Common.Lib.Interfaces;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Dtos;
@@ -33,7 +34,8 @@ namespace Axe.TaskManagement.Data.DataAccess
 
         // Declaire DbSets
         public DbSet<OutboxIntegrationEvent> OutboxIntegrationEvents { get; set; }
-      
+        public DbSet<ExtendedInboxIntegrationEvent> ExtendedInboxIntegrationEvents { get; set; }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             base.OnModelCreating(modelBuilder);
@@ -59,6 +61,8 @@ namespace Axe.TaskManagement.Data.DataAccess
                     index.SetMethod("gin");
                 }
             }
+
+            modelBuilder.Entity<ExtendedInboxIntegrationEvent>().HasKey(o => new { o.IntergrationEventId, o.ServiceCode });
         }
 
         public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
