@@ -73,7 +73,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     //inboxEvent.EntityId = inputParam.DocId.ToString();  // Ignore
                     inboxEvent.EntityInstanceId = inputParam.DocInstanceId;
                     inboxEvent.Path = inputParam.DocPath;
-                    inboxEvent.EntityInstanceId = inputParam.DocInstanceId;
+                    inboxEvent.ProjectInstanceId = inputParam.ProjectInstanceId;
                     inboxEvent.DocInstanceId = inputParam.DocInstanceId;
                 }
 
