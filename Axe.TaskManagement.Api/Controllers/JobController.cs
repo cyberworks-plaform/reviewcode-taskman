@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 
@@ -158,16 +159,16 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("process-data-confirm-auto")]
-        public async Task<IActionResult> ProcessDataConfirmAuto(ModelInput input)
+        public async Task<IActionResult> ProcessDataConfirmAuto(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessDataConfirmAuto(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessDataConfirmAuto(input, GetBearerToken(), ct));
         }
 
         [HttpPost]
         [Route("process-data-confirm-bool")]
-        public async Task<IActionResult> ProcessDataConfirmBool(ModelInput input)
+        public async Task<IActionResult> ProcessDataConfirmBool(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessDataConfirmBool(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessDataConfirmBool(input, GetBearerToken(), ct));
         }
 
         [HttpPost]
@@ -186,9 +187,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPut]
         [Route("process-synthetic-data")]
-        public async Task<IActionResult> ProcessSyntheticData(ModelInput input)
+        public async Task<IActionResult> ProcessSyntheticData(ModelInput input, CancellationToken ct)
         {
-            return ResponseResult(await _service.ProcessSyntheticData(input, GetBearerToken()));
+            return ResponseResult(await _service.ProcessSyntheticData(input, GetBearerToken(), ct));
         }
 
         [HttpPost]
@@ -391,6 +392,12 @@ namespace Axe.TaskManagement.Api.Controllers
             return ResponseResult(await _service.GetHistoryJobByUser(request, actionCode, GetBearerToken()));
         }
         [HttpPost]
+        [Route("get-history-job-by-user-v2")]
+        public async Task<IActionResult> GetPagingProjectV2([FromBody] PagingRequest request, string wfsInstanceId)
+        {
+            return ResponseResult(await _service.GetHistoryJobByUserV2(request, wfsInstanceId, GetBearerToken()));
+        }
+        [HttpPost]
         [Route("export-excel-history-job-by-user")]
         public async Task<byte[]> ExportJobs(PagingRequest request, string actionCode)
         {
@@ -459,9 +466,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpPost]
         [Route("get-error-doc-report-summary")]
-        public async Task<IActionResult> GetErrorDocReportSummary(Guid projectInstanceId, string folderId)
+        public async Task<IActionResult> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds)
         {
-            return ResponseResult(await _service.GetErrorDocReportSummary(projectInstanceId, folderId, GetBearerToken()));
+            return ResponseResult(await _service.GetErrorDocReportSummary(projectInstanceId, folderIds, GetBearerToken()));
         }
 
         [HttpPost]

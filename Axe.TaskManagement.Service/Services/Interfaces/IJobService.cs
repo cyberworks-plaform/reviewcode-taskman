@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Axe.TaskManagement.Service.Services.Interfaces
@@ -48,13 +49,13 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<int>> ProcessDataConfirm(List<JobResult> result, string accessToken = null);
 
-        Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessDataConfirmAuto(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
-        Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessDataConfirmBool(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
         Task<GenericResponse<int>> ProcessCheckFinal(JobResult result, string accessToken = null);
 
-        Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null);
+        Task<GenericResponse<string>> ProcessSyntheticData(ModelInput model, string accessToken = null, CancellationToken ct = default);
 
         Task<GenericResponse<List<JobDto>>> GetListJobByUserProject(Guid userInstanceId, Guid projectInstanceId);
 
@@ -106,6 +107,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<List<JobDto>>> GetListJobByStatusActionCode(Guid projectInstanceId, int status = 0, string actionCode = null);
         Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);
+        Task<GenericResponse<HistoryJobDto>> GetHistoryJobByUserV2(PagingRequest request, string wfsInstanceId, string accessToken);
         Task<GenericResponse<double>> GetFalsePercent(string accessToken);
         Task<GenericResponse<HistoryJobDto>> GetHistoryJobByStep(PagingRequest request, string projectInstanceId, string sActionCodes);
         Task<GenericResponse<PagedList<HistoryUserJobDto>>> GetPagingHistoryUser(PagingRequest request, string accessToken);
@@ -116,7 +118,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         //GET VALUE CHART 
 
-        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderId, string accessToken = null);
+        Task<GenericResponse<List<ErrorDocReportSummary>>> GetErrorDocReportSummary(Guid projectInstanceId, string folderIds, string accessToken = null);
 
         Task<GenericResponse<PagedList<DocErrorDto>>> GetPagingErrorDocByProject(PagingRequest request, Guid projectInstanceId, string folderId, string accessToken = null);
 

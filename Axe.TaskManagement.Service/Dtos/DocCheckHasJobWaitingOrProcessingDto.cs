@@ -9,5 +9,7 @@ namespace Axe.TaskManagement.Service.Dtos
         public Guid DocInstanceId { get; set; }
 
         public List<WorkflowStepInfo> CheckWorkflowStepInfos { get; set; }
+
+        public List<Guid?> IgnoreListDocTypeField {  get; set; }    
     }
 }

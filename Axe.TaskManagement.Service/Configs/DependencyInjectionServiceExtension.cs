@@ -1,6 +1,8 @@
 ﻿using Axe.TaskManagement.Service.Services.Implementations;
 using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Axe.TaskManagement.Service.Configs
@@ -21,6 +23,7 @@ namespace Axe.TaskManagement.Service.Configs
 
             // Common service
             services.AddScoped<IMoneyService, MoneyService>();
+            services.AddTransient<ICommonConsumerService, CommonConsumerService>();
 
             // Client service
             services.AddSingleton<IProjectTypeClientService, ProjectTypeClientService>();
@@ -35,9 +38,26 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddSingleton<ITransactionClientService, TransactionClientService>();
             services.AddSingleton<IProjectStatisticClientService, ProjectStatisticClientService>();
             services.AddSingleton<IExternalProviderServiceConfigClientService, ExternalProviderServiceConfigClientService>();
+            services.AddSingleton<IConsumerConfigClientService, ConsumerConfigClientService>();
 
             // Outbox
-            //services.AddHostedService<OutboxPublisher>();
+            services.AddHostedService<OutboxPublisher>();
+
+            // Inbox
+            services.AddHostedService<InboxConsumer>();
+            services.AddHostedService<InboxRecall>();
+
+            // Process Event
+            services.AddTransient<IAfterProcessCheckFinalProcessEvent, AfterProcessCheckFinalProcessEvent>();
+            services.AddTransient<IAfterProcessDataCheckProcessEvent, AfterProcessDataCheckProcessEvent>();
+            services.AddTransient<IAfterProcessDataConfirmProcessEvent, AfterProcessDataConfirmProcessEvent>();
+            services.AddTransient<IAfterProcessDataEntryBoolProcessEvent, AfterProcessDataEntryBoolProcessEvent>();
+            services.AddTransient<IAfterProcessDataEntryProcessEvent, AfterProcessDataEntryProcessEvent>();
+            services.AddTransient<IAfterProcessQaCheckFinalProcessEvent, AfterProcessQaCheckFinalProcessEvent>();
+            services.AddTransient<IAfterProcessSegmentLabelingProcessEvent, AfterProcessSegmentLabelingProcessEvent>();
+            services.AddTransient<IQueueLockProcessEvent, QueueLockProcessEvent>();
+            services.AddTransient<IRetryDocProcessEvent, RetryDocProcessEvent>();
+            services.AddTransient<ITaskProcessEvent, TaskProcessEvent>();
         }
     }
 }

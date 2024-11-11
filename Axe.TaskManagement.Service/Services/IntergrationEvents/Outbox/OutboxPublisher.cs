@@ -153,7 +153,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                     else
                                     {
                                         outboxEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                        outboxEvent.LastModificationDate = DateTime.Now;
+                                        outboxEvent.LastModificationDate = DateTime.UtcNow;
                                         await outboxIntegrationEventRepository.UpdateAsync(outboxEvent);
                                     }
                                 }

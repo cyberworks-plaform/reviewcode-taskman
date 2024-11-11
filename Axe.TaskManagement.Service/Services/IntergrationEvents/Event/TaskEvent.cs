@@ -8,6 +8,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Event
 
         public string Output { get; set; }
 
+        public bool IsRetry { get; set; }
+
         public string AccessToken { get; set; }
     }
 }
