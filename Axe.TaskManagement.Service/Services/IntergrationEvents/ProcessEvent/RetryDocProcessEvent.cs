@@ -433,9 +433,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
                                             // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                                             var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                                            if (listDocTypeFieldResponse.Success == false)
+                                            if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                                             {
-                                                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                return new Tuple<bool, string, string>(false,
+                                                    "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                                    null);
                                             }
 
                                             var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();

@@ -177,9 +177,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     // Kiểm tra doc có đang tồn tại hay đã xóa => Nếu đã xóa thì clear message
                     var checkDocExisted = await _docClientService.GetByInstanceIdAsync(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                    if (checkDocExisted.Success == false)
+                    if (checkDocExisted == null || !checkDocExisted.Success)
                     {
-                        throw new Exception("Error calling DocClientService to check doc existed");
+                        Log.Error("Error calling DocClientService to check doc existed");
+                        return new Tuple<bool, string, string>(false,
+                            "Error calling DocClientService to check doc existed", null);
                     }
                     if (checkDocExisted.Data == null || checkDocExisted.Data.IsActive == false)
                     {
@@ -464,9 +466,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                                 var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
                                                                 // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                                                                 var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                                                                if (listDocTypeFieldResponse.Success == false)
+                                                                if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                                                                 {
-                                                                    throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                                    Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                                    return new Tuple<bool, string, string>(false,
+                                                                        "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                                                        null);
                                                                 }
 
                                                                 var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
@@ -1006,9 +1011,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, ignoreInputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
                                                 // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                                                 var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                                                if (listDocTypeFieldResponse.Success == false)
+                                                if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                                                 {
-                                                    throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                    Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                    return new Tuple<bool, string, string>(false,
+                                                        "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                                        null);
                                                 }
 
                                                 var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
@@ -1630,9 +1638,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), true);
                                                             // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                                                             var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                                                            if (listDocTypeFieldResponse.Success == false)
+                                                            if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                                                             {
-                                                                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                                Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                                return new Tuple<bool, string, string>(false,
+                                                                    "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                                                    null);
                                                             }
 
                                                             var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
@@ -1890,9 +1901,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 {
                     //Không tạo các job phân mảnh đối với các Meta được đánh dấu không hiện thị để nhập
                     var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                    if (listDocTypeFieldResponse.Success == false)
+                    if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                     {
-                        throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                        Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
                     }
 
                     var listEnableInputDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == true).ToList();

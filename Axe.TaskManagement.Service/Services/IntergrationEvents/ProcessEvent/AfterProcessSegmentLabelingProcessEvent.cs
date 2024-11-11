@@ -562,9 +562,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             var beforeWfsInfoIncludeCurrentStep = WorkflowHelper.GetAllBeforeSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), true);
                                             // kiểm tra đã hoàn thành hết các meta chưa? không bao gồm các meta được đánh dấu bỏ qua
                                             var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                                            if (listDocTypeFieldResponse.Success == false)
+                                            if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                                             {
-                                                throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                                                return new Tuple<bool, string, string>(false,
+                                                    "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                                    null);
                                             }
 
                                             var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
@@ -655,9 +658,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     if (jobEnds.Any())
                     {
                         var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(jobEnds[0].ProjectInstanceId.GetValueOrDefault(), jobEnds[0].DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        if (listDocTypeFieldResponse.Success == false)
+                        if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                         {
-                            throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                            Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
+                            return new Tuple<bool, string, string>(false,
+                                "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
+                                null);
                         }
 
                         var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
