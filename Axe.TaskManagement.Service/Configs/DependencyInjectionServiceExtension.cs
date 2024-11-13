@@ -40,12 +40,12 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddSingleton<IExternalProviderServiceConfigClientService, ExternalProviderServiceConfigClientService>();
             services.AddSingleton<IConsumerConfigClientService, ConsumerConfigClientService>();
 
-            //// Outbox
-            //services.AddHostedService<OutboxPublisher>();
+            // Outbox
+            services.AddHostedService<OutboxPublisher>();
 
-            //// Inbox
-            //services.AddHostedService<InboxConsumer>();
-            //services.AddHostedService<InboxRecall>();
+            // Inbox
+            services.AddHostedService<InboxConsumer>();
+            services.AddHostedService<InboxRecall>();
 
             // Process Event
             services.AddTransient<IAfterProcessCheckFinalProcessEvent, AfterProcessCheckFinalProcessEvent>();
