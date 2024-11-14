@@ -14,10 +14,6 @@ using Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Dtos;
 using Ce.Constant.Lib.Dtos;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
-using System.Net;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
 {
@@ -29,26 +25,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
     {
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        private readonly TimeSpan _timeSpanInboxInterval = TimeSpan.FromSeconds(10);
+        private readonly TimeSpan _timeSpan = TimeSpan.FromSeconds(30);
         private readonly short _maxRetry = 5;
-        private readonly int _batchSize = 1;
+
         private static bool _isRunning;
-
-        protected struct ProcessEventResult
-        {
-            public Guid EventId { get; set; }
-            public bool IsAck { get; set; }
-            public string Message { get; set; }
-            public string StackTrace { get; set; }
-
-            public ProcessEventResult(Guid eventId)
-            {
-                EventId = eventId;
-                IsAck = false;
-                Message = string.Empty;
-                StackTrace = string.Empty;
-            }
-        }
+        private static int _tryDoWorkDuringRunning;
 
         public InboxConsumer(IConfiguration configuration, IServiceScopeFactory serviceScopeFactory)
         {
@@ -57,7 +38,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
             {
                 if (TimeSpan.TryParse(configuration["RabbitMq:InboxInterval"], out var temp))
                 {
-                    _timeSpanInboxInterval = temp;
+                    _timeSpan = temp;
                 }
             }
             if (configuration["RabbitMq:InboxMaxRetry"] != null)
@@ -67,353 +48,267 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                     _maxRetry = tempRetry;
                 }
             }
-            if (configuration["RabbitMq:PrefetchCount"] != null)
-            {
-                if (short.TryParse(configuration["RabbitMq:PrefetchCount"], out var tempBatchSize))
-                {
-                    _batchSize = tempBatchSize;
-                }
-            }
         }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
-                var isInboxEmpty = false;
-                try // try consume in batch
+                // Reset try do work during running
+                if (_tryDoWorkDuringRunning >= 3)
                 {
-                    if (!_isRunning)
+                    _tryDoWorkDuringRunning = 0;
+                }
+
+                if (!_isRunning)
+                {
+                    try
                     {
-                        _isRunning = true;
-
-                        using (var scope = _serviceScopeFactory.CreateScope())
+                        using var scope = _serviceScopeFactory.CreateScope();
+                        using (var inboxIntegrationEventRepository = scope.ServiceProvider.GetRequiredService<IExtendedInboxIntegrationEventRepository>())
                         {
-                            using (var inboxIntegrationEventRepository = scope.ServiceProvider.GetRequiredService<IExtendedInboxIntegrationEventRepository>())
+                            bool isAck = false;
+                            string message = null;
+                            string stackTrace = null;
+                            short inboxEventStatus = (short)EnumEventBus.ConsumMessageStatus.Received;
+                            ExtendedInboxIntegrationEvent inboxEvent = null;
+                            try
                             {
-                                var currentProcessingEventList = new Dictionary<Guid, ExtendedInboxIntegrationEvent>();
-                                var currentProcessingTaskList = new Dictionary<Guid, Task<ProcessEventResult>>();
-                                try
+                                inboxEvent = await inboxIntegrationEventRepository.GetInboxIntegrationEventAsync(_maxRetry);
+                                if (inboxEvent != null)
                                 {
-                                    var listInboxEvent = await inboxIntegrationEventRepository.GetsInboxIntegrationEventAsync(_batchSize, _maxRetry);
-                                    isInboxEmpty = !listInboxEvent.Any();
-                                    if (isInboxEmpty)
-                                    {
-                                        await Task.Delay(_timeSpanInboxInterval, stoppingToken);
-                                    }
+                                    _isRunning = true;
+                                    inboxEventStatus = inboxEvent.Status;
 
-
-                                    //step 1: mark process for event
-                                    foreach (var inboxEvent in listInboxEvent)
+                                    if (!string.IsNullOrEmpty(inboxEvent.ExchangeName) && !string.IsNullOrEmpty(inboxEvent.Data))
                                     {
-                                        try
+                                        // Process Event
+                                        inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
+                                        var rowAffected = await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
+                                        // Verify this inboxEvent record is processing
+                                        if (rowAffected > 0)
                                         {
-                                            inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
+                                            var consumerConfigClientService = scope.ServiceProvider.GetRequiredService<IConsumerConfigClientService>();
 
-                                            var rowAffected = await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
-                                            // Verify this inboxEvent record is processing
-                                            if (rowAffected > 0)
+                                            // Parse & Process event
+                                            if (inboxEvent.ExchangeName == nameof(AfterProcessCheckFinalEvent).ToLower())
                                             {
-                                                currentProcessingEventList.Add(inboxEvent.IntergrationEventId, inboxEvent);
-                                                currentProcessingTaskList.Add(inboxEvent.IntergrationEventId, ProcessInboxMessage(inboxEvent));
-                                            }
-                                        }
-                                        catch (Exception ex)
-                                        {
-                                            //do nothing
-                                        }
-                                    }
-                                    //release memory
-                                    listInboxEvent = null;
-
-                                    //step 2: update result of completed task then take more from DB
-                                    while (currentProcessingTaskList.Any())
-                                    {
-                                        var listCompletedTask = currentProcessingTaskList.Where(x => x.Value.IsCompleted);
-
-                                        // update result 
-                                        foreach (var task in listCompletedTask)
-                                        {
-                                            try
-                                            {
-                                                var processEventResult = task.Value.Result;
-                                                var inboxEvent = currentProcessingEventList[processEventResult.EventId];
-                                                //Todo: Debug
-                                                inboxEvent.Message = $"WorkerId:{Dns.GetHostName()}";
-                                                if (processEventResult.IsAck)
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessCheckFinalEvent>(inboxEvent.Data);
+                                                if (evt != null)
                                                 {
-                                                    // Acked
-                                                    //await inboxIntegrationEventRepository.DeleteAsync(inboxEvent);
-
-                                                    //Todo: Debug: not delete just update ack
-                                                    inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Ack;
-                                                    await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
-                                                }
-                                                else
-                                                {
-
-                                                    inboxEvent.RetryCount++;
-                                                    inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Nack;
-                                                    inboxEvent.Message = processEventResult.Message;
-                                                    inboxEvent.StackTrace = processEventResult.StackTrace;
-                                                    await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessCheckFinalProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
                                                 }
                                             }
-                                            catch (Exception ex)
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessDataCheckEvent).ToLower())
                                             {
-                                                Log.Error(ex, $"Exception ocrurred when update process event result: {ex.Message}");
-                                                //do nothing
-                                            }
-                                            finally
-                                            {
-                                                currentProcessingTaskList.Remove(task.Key);
-                                                currentProcessingEventList.Remove(task.Key);
-                                            }
-
-                                        }
-
-                                        //get more event from inbox 
-                                        if (currentProcessingTaskList.Any() && currentProcessingTaskList.Count() < _batchSize)
-                                        {
-                                            var moreItem = _batchSize - currentProcessingTaskList.Count();
-                                            var listMoreInboxEvent = await inboxIntegrationEventRepository.GetsInboxIntegrationEventAsync(moreItem, _maxRetry);
-                                            foreach (var inboxEvent in listMoreInboxEvent)
-                                            {
-                                                try
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessDataCheckEvent>(inboxEvent.Data);
+                                                if (evt != null)
                                                 {
-                                                    inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
-
-                                                    var rowAffected = await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
-                                                    // Verify this inboxEvent record is processing
-                                                    if (rowAffected > 0)
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataCheckProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessDataConfirmEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessDataConfirmEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataConfirmProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessDataEntryBoolEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryBoolEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryBoolProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessDataEntryEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessQaCheckFinalEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessQaCheckFinalEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessQaCheckFinalProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(AfterProcessSegmentLabelingEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<AfterProcessSegmentLabelingEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessSegmentLabelingProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(QueueLockEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<QueueLockEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IQueueLockProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(RetryDocEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<RetryDocEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<IRetryDocProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
+                                                }
+                                            }
+                                            else if (inboxEvent.ExchangeName == nameof(TaskEvent).ToLower())
+                                            {
+                                                var evt = JsonConvert.DeserializeObject<TaskEvent>(inboxEvent.Data);
+                                                if (evt != null)
+                                                {
+                                                    // Check is Retry or Not
+                                                    if (inboxEventStatus == (short)EnumEventBus.ConsumMessageStatus.Nack)
                                                     {
-                                                        currentProcessingEventList.Add(inboxEvent.IntergrationEventId, inboxEvent);
-                                                        currentProcessingTaskList.Add(inboxEvent.IntergrationEventId, ProcessInboxMessage(inboxEvent));
+                                                        evt.IsRetry = true;
                                                     }
-                                                }
-                                                catch (Exception ex)
-                                                {
-                                                    //do nothing ConcurrentDictionary 
+
+                                                    var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
+                                                    var ct = GetCancellationToken(exchangeConfigRs);
+                                                    using var processEventService = scope.ServiceProvider.GetRequiredService<ITaskProcessEvent>();
+                                                    var result = await processEventService.ProcessEvent(evt, ct);
+                                                    isAck = result.Item1;
+                                                    message = result.Item2;
+                                                    stackTrace = result.Item3;
                                                 }
                                             }
-
-                                            //release memory 
-                                            listMoreInboxEvent = null;
+                                            else
+                                            {
+                                                Log.Error("Exchange name is not registered or does not exist");
+                                            }
                                         }
                                     }
-
                                 }
-                                catch (Exception ex)
+                                else
                                 {
-                                    throw;
-                                }
-                                finally
-                                {
-                                    currentProcessingEventList = null;
-                                    currentProcessingTaskList = null;
-                                    _isRunning = false;
+                                    //  Không có dữ liệu thì 30s sau mới quét
+                                    await Task.Delay(_timeSpan, stoppingToken);
                                 }
                             }
-                        }
-                    }
-
-                }
-                catch (Exception ex)
-                {
-                    Log.Error(ex, $"Error in consuming inbox event: {ex.Message}");
-                    await Task.Delay(_timeSpanInboxInterval, stoppingToken);
-                    _isRunning = false;
-                }
-            }
-        }
-        public override Task StartAsync(CancellationToken cancellationToken)
-        {
-            Log.Information("Inbox Consumer background service start working");
-            return base.StartAsync(cancellationToken);
-        }
-        public override async Task StopAsync(CancellationToken stoppingToken)
-        {
-            Log.Information("Inbox Consumer background service stop working");
-            await base.StopAsync(stoppingToken);
-        }
-
-        /// <summary>
-        /// Call mail process event
-        /// </summary>
-        /// <param name="inboxEvent"></param>
-        /// <returns></returns>
-        private async Task<ProcessEventResult> ProcessInboxMessage(ExtendedInboxIntegrationEvent inboxEvent)
-        {
-
-            var processEventResult = new ProcessEventResult(inboxEvent.IntergrationEventId);
-
-            short inboxEventStatus = (short)EnumEventBus.ConsumMessageStatus.Received;
-            var sw = new Stopwatch();
-            using (var scope = _serviceScopeFactory.CreateScope())
-            {
-                try
-                {
-                    sw.Restart();
-                    Log.Information($"Start process inbox EventId:{inboxEvent.IntergrationEventId} - ExchangeName: {inboxEvent.ExchangeName} - DocInstanceId:{inboxEvent.DocInstanceId}");
-                    var consumerConfigClientService = scope.ServiceProvider.GetRequiredService<IConsumerConfigClientService>();
-
-                    // Parse & Process event
-                    if (inboxEvent.ExchangeName == nameof(AfterProcessCheckFinalEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessCheckFinalEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessCheckFinalProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessDataCheckEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessDataCheckEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataCheckProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessDataConfirmEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessDataConfirmEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataConfirmProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessDataEntryBoolEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryBoolEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryBoolProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessDataEntryEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessDataEntryEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessDataEntryProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessQaCheckFinalEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessQaCheckFinalEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessQaCheckFinalProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(AfterProcessSegmentLabelingEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<AfterProcessSegmentLabelingEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IAfterProcessSegmentLabelingProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(QueueLockEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<QueueLockEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IQueueLockProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(RetryDocEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<RetryDocEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<IRetryDocProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
-                        }
-                    }
-                    else if (inboxEvent.ExchangeName == nameof(TaskEvent).ToLower())
-                    {
-                        var evt = JsonConvert.DeserializeObject<TaskEvent>(inboxEvent.Data);
-                        if (evt != null)
-                        {
-                            // Check is Retry or Not
-                            if (inboxEventStatus == (short)EnumEventBus.ConsumMessageStatus.Nack)
+                            catch (OperationCanceledException ex)
                             {
-                                evt.IsRetry = true;
+                                Log.Error(ex, ex.Message);
+                                message = ex.Message;
+                                stackTrace = ex.StackTrace;
+                                isAck = false;
                             }
+                            catch (Exception e)
+                            {
+                                Log.Error(e, e.StackTrace);
+                                isAck = false;
+                            }
+                            finally
+                            {
+                                _isRunning = false;
 
-                            var exchangeConfigRs = await consumerConfigClientService.GetExchangeConfig(inboxEvent.ExchangeName, evt.AccessToken);
-                            var ct = GetCancellationToken(exchangeConfigRs);
-                            using var processEventService = scope.ServiceProvider.GetRequiredService<ITaskProcessEvent>();
-                            var result = await processEventService.ProcessEvent(evt, ct);
-                            processEventResult = UpdateProcessingEventResult(processEventResult, result);
+                                // Reset retry count when running
+                                _tryDoWorkDuringRunning = 0;
+
+                                if (inboxEvent != null)
+                                {
+                                    if (isAck)
+                                    {
+                                        // Acked
+                                        await inboxIntegrationEventRepository.DeleteAsync(inboxEvent);
+                                    }
+                                    else
+                                    {
+                                        if (inboxEventStatus == (short)EnumEventBus.ConsumMessageStatus.Nack)
+                                        {
+                                            inboxEvent.RetryCount++;
+                                        }
+
+                                        inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Nack;
+                                        inboxEvent.Message = message;
+                                        inboxEvent.StackTrace = stackTrace;
+                                        await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
+                                    }
+                                }
+                            }
                         }
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        Log.Error("Exchange name is not registered or does not exist");
+                        Log.Error($"Error in consuming inbox event: {ex.Message}");
                     }
                 }
-                catch (Exception ex)
+                else
                 {
-                    Log.Error($"Error in processing inbox message: {ex.Message}");
-                    processEventResult.IsAck = false;
-                    processEventResult.Message = ex.Message;
-                    processEventResult.StackTrace = ex.StackTrace;
-
-                }
-                finally
-                {
-                    sw.Stop();
-                    Log.Information($"End process inbox EventId:{inboxEvent.IntergrationEventId} - ExchangeName: {inboxEvent.ExchangeName} - DocInstanceId:{inboxEvent.DocInstanceId} - Elapsed time: {sw.ElapsedMilliseconds} ms");
+                    // _isRunning == true
+                    _tryDoWorkDuringRunning++;
+                    if (_tryDoWorkDuringRunning >= 3)
+                    {
+                        await Task.Delay(_timeSpan, stoppingToken);
+                    }
                 }
             }
-
-            return processEventResult;
         }
 
-        private ProcessEventResult UpdateProcessingEventResult(ProcessEventResult processEventResult, Tuple<bool, string, string> taskResult)
-        {
-            processEventResult.IsAck = taskResult.Item1;
-            processEventResult.Message = taskResult.Item2;
-            processEventResult.StackTrace = taskResult.Item3;
-            return processEventResult;
-        }
         private CancellationToken GetCancellationToken(GenericResponse<ExchangeConfigDto> exchangeConfigRs)
         {
             CancellationToken ct;
