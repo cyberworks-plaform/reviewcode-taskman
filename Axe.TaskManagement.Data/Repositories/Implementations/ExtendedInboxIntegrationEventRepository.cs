@@ -162,7 +162,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             if (_providerName == ProviderTypeConstants.Postgre)
             {
                 return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT {batchSize}");
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT {batchSize}");
             }
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
