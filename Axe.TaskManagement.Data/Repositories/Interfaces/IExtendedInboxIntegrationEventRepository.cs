@@ -12,6 +12,8 @@ public interface IExtendedInboxIntegrationEventRepository : IDapperBaseRepositor
 
     Task<ExtendedInboxIntegrationEvent> GetByKeyAsync(Guid intergrationEventId, string serviceCode);
 
+    Task<ExtendedInboxIntegrationEvent> GetByIntergrationEventIdAsync(Guid intergrationEventId);
+
     Task<ExtendedInboxIntegrationEvent> GetInboxIntegrationEventAsync(short maxRetry);
 
     Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsInboxIntegrationEventAsync(int batchSize, short maxRetry);

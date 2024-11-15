@@ -118,6 +118,22 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return await _conn.QueryFirstOrDefaultAsync<ExtendedInboxIntegrationEvent>(query, parameters);
         }
 
+        public async Task<ExtendedInboxIntegrationEvent> GetByIntergrationEventIdAsync(Guid intergrationEventId)
+        {
+            if (_providerName == "Npgsql")
+            {
+                return await _conn.QuerySingleOrDefaultAsync<ExtendedInboxIntegrationEvent>("SELECT * FROM " + _tableName + $" WHERE \"{nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)}\" =@IntergrationEventId", new
+                {
+                    IntergrationEventId = intergrationEventId
+                });
+            }
+
+            return await _conn.QuerySingleOrDefaultAsync<ExtendedInboxIntegrationEvent>("SELECT * FROM " + _tableName + $" WHERE \"{nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)}\" =@IntergrationEventId", new
+            {
+                IntergrationEventId = intergrationEventId
+            });
+        }
+
         public async Task<ExtendedInboxIntegrationEvent> GetInboxIntegrationEventAsync(short maxRetry)
         {
             if (_providerName == ProviderTypeConstants.Postgre)

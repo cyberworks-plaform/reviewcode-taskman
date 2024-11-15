@@ -43,6 +43,10 @@ namespace Axe.TaskManagement.Service.Mappers
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => src.Id.ToString()));
             CreateMap<ComplainDto, Complain>(MemberList.Source)
                 .ForMember(dest => dest.Id, opt => opt.MapFrom(src => new ObjectId(src.Id)));
+
+            //Inbox
+            CreateMap<ExtendedInboxIntegrationEventDto, ExtendedInboxIntegrationEvent>();
+            CreateMap<ExtendedInboxIntegrationEvent, ExtendedInboxIntegrationEventDto>();
         }
     }
 }

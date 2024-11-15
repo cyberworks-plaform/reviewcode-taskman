@@ -1,0 +1,117 @@
+﻿using AutoMapper;
+using Axe.TaskManagement.Data.Repositories.Interfaces;
+using Axe.TaskManagement.Model.Entities;
+using Axe.TaskManagement.Service.Dtos;
+using Ce.Common.Lib.Abstractions;
+using Ce.Common.Lib.Services;
+using Ce.Constant.Lib.Dtos;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+
+namespace Axe.TaskManagement.Service.Services.Implementations
+{
+    public class ExtendedInboxIntegrationEventService : Interfaces.IExtendedInboxIntegrationEventService
+    {
+        private readonly IExtendedInboxIntegrationEventRepository _repository;
+        private readonly IMapper _mapper;
+
+        public ExtendedInboxIntegrationEventService(
+            IExtendedInboxIntegrationEventRepository repos,
+            IMapper mapper,
+            IUserPrincipalService userPrincipalService)
+        {
+            _mapper = mapper;
+            _repository = repos;
+        }
+        public virtual async Task<GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>> GetPagingAsync(PagingRequest request, bool onlyActive = true)
+        {
+            if (request.PageInfo == null)
+            {
+                request.PageInfo = new PageInfo
+                {
+                    PageIndex = 1,
+                    PageSize = 10
+                };
+            }
+
+            if (request.PageInfo.PageIndex <= 0)
+            {
+                return GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>.ResultWithError(400, null, "Page index must be greater or than 1");
+            }
+
+            if (request.PageInfo.PageSize < 0)
+            {
+                return GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>.ResultWithError(400, null, "Page size must be greater or than 0");
+            }
+
+            GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>> result;
+            try
+            {
+                PagedList<ExtendedInboxIntegrationEvent> pagedList = await _repository.GetPagingAsync(request, onlyActive);
+                List<ExtendedInboxIntegrationEventDto> data = _mapper.Map<List<ExtendedInboxIntegrationEventDto>>(pagedList.Data);
+                result = GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>.ResultWithData(new PagedList<ExtendedInboxIntegrationEventDto>
+                {
+                    Data = data,
+                    PageIndex = pagedList.PageIndex,
+                    PageSize = pagedList.PageSize,
+                    TotalCount = pagedList.TotalCount,
+                    TotalFilter = pagedList.TotalFilter,
+                    TotalPages = pagedList.TotalPages
+                });
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public async Task<GenericResponse<ExtendedInboxIntegrationEventDto>> GetByIntergrationEventIdAsync(Guid intergrationEventId)
+        {
+            GenericResponse<ExtendedInboxIntegrationEventDto> result;
+            try
+            {
+                ExtendedInboxIntegrationEvent source = await _repository.GetByIntergrationEventIdAsync(intergrationEventId);
+                result = GenericResponse<ExtendedInboxIntegrationEventDto>.ResultWithData(_mapper.Map<ExtendedInboxIntegrationEventDto>(source));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<ExtendedInboxIntegrationEventDto>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public async Task<GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>>> GetByIdsAsync(string ids)
+        {
+            GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>> result;
+            try
+            {
+                IEnumerable<ExtendedInboxIntegrationEvent> source = await _repository.GetByIdsAsync(ids);
+                result = GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>>.ResultWithData(_mapper.Map<IEnumerable<ExtendedInboxIntegrationEvent>, IEnumerable<ExtendedInboxIntegrationEventDto>>(source));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public virtual async Task<GenericResponse<long>> TotalCountAsync()
+        {
+            GenericResponse<long> result;
+            try
+            {
+                result = GenericResponse<long>.ResultWithData(await _repository.TotaCountAsync());
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<long>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+    }
+}

@@ -20,6 +20,7 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddScoped<IQueueLockService, QueueLockService>();
             services.AddScoped<IComplainService, ComplainService>();
             services.AddScoped<ISequenceComplainService, SequenceComplainService>();
+            services.AddScoped<ExtendedInboxIntegrationEventService, ExtendedInboxIntegrationEventService>();
 
             // Common service
             services.AddScoped<IMoneyService, MoneyService>();
