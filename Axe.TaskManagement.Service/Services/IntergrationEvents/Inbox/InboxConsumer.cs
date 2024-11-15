@@ -32,7 +32,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
         private readonly TimeSpan _inboxProcessingTimeout = TimeSpan.FromMinutes(30);
         private readonly int _batchSize = 1;
         private static bool _isRunning;
-
+        private readonly bool _deleteAckedInbox = true;
         public InboxConsumer(IConfiguration configuration, IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
@@ -62,6 +62,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                 if (short.TryParse(configuration["RabbitMq:PrefetchCount"], out var tempBatchSize))
                 {
                     _batchSize = tempBatchSize;
+                }
+            }
+            if (configuration["RabbitMq:DeleteAckedInbox"] != null)
+            {
+                if (bool.TryParse(configuration["RabbitMq:DeleteAckedInbox"], out var tempDeleteAckedInbox))
+                {
+                    _deleteAckedInbox = tempDeleteAckedInbox;
                 }
             }
         }
@@ -133,11 +140,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                                 if (processEventResult.IsAck)
                                                 {
                                                     // Acked
-                                                    await inboxIntegrationEventRepository.DeleteAsync(inboxEvent);
-
-                                                    //Todo: Debug: not delete just update ack
-                                                    //inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Ack;
-                                                    //await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
+                                                    if (_deleteAckedInbox)
+                                                    {
+                                                        await inboxIntegrationEventRepository.DeleteAsync(inboxEvent);
+                                                    }
+                                                    else
+                                                    {
+                                                        inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Ack;
+                                                        await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
+                                                    }
                                                 }
                                                 else
                                                 {
@@ -381,7 +392,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
             return processEventResult;
         }
 
-        private ProcessEventResult UpdateProcessEventResult(ProcessEventResult processEventResult,Tuple<bool,string,string> taskResult)
+        private ProcessEventResult UpdateProcessEventResult(ProcessEventResult processEventResult, Tuple<bool, string, string> taskResult)
         {
             processEventResult.IsAck = taskResult.Item1;
             processEventResult.Message = taskResult.Item2;
