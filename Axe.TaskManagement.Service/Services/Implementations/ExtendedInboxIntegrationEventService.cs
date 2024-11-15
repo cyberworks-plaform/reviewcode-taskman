@@ -2,18 +2,17 @@
 using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
+using Axe.TaskManagement.Service.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
-    public class ExtendedInboxIntegrationEventService : Interfaces.IExtendedInboxIntegrationEventService
+    public class ExtendedInboxIntegrationEventService : IExtendedInboxIntegrationEventService
     {
         private readonly IExtendedInboxIntegrationEventRepository _repository;
         private readonly IMapper _mapper;
