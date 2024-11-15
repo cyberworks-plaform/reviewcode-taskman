@@ -5,8 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="CyberEye.Client.All" Version="2.0.11" />
-    <PackageReference Include="CyberEye.Interaction.Lib" Version="2.0.11" />
+    <PackageReference Include="CyberEye.Client.All" Version="2.0.16" />
+    <PackageReference Include="CyberEye.Interaction.Lib" Version="2.0.16" />
     <PackageReference Include="MiniExcel" Version="1.34.2" />
   </ItemGroup>
 

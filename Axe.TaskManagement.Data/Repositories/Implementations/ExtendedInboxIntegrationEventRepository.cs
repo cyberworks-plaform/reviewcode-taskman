@@ -5,6 +5,7 @@ using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Enums;
 using Dapper;
 using Microsoft.Data.SqlClient;
+using Microsoft.Extensions.Configuration;
 using Npgsql;
 using Serilog;
 using System;
@@ -21,10 +22,15 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         private readonly IDbConnection _conn;
         private const int BatchRecall = 100;
+        private static string _virtualHost;
 
-        public ExtendedInboxIntegrationEventRepository(IDbConnection conn) : base(conn)
+        public ExtendedInboxIntegrationEventRepository(IDbConnection conn, IConfiguration configuration) : base(conn)
         {
             _conn = (_conn ?? (IDbConnection)conn);
+            if (string.IsNullOrEmpty(_virtualHost))
+            {
+                _virtualHost = configuration.GetValue("RabbitMq:ConnectionStrings:VirtualHost", "/");
+            }
         }
 
         #endregion
@@ -58,6 +64,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 var existed = await GetByKeyAsync(entity.IntergrationEventId, entity.ServiceCode);
                 if (existed == null)
                 {
+                    if (string.IsNullOrEmpty(entity.VirtualHost))
+                    {
+                        entity.VirtualHost = _virtualHost;
+                    }
+
                     addInboxEntity = await AddAsyncV2(entity);
                     result = true;
                 }
@@ -139,11 +150,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             if (_providerName == ProviderTypeConstants.Postgre)
             {
                 return await _conn.QueryFirstOrDefaultAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE ((\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} AND \"{nameof(ExtendedInboxIntegrationEvent.TypeProcessing)}\" = {(short)EnumEventBus.ConsumerTypeProcessing.ProcessLater}) OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT 1");
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT 1");
             }
 
             return await _conn.QueryFirstOrDefaultAsync<ExtendedInboxIntegrationEvent>(
-                $"SELECT TOP (1) * FROM {_tableName} WHERE (({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} AND {nameof(ExtendedInboxIntegrationEvent.TypeProcessing)} = {(short)EnumEventBus.ConsumerTypeProcessing.ProcessLater}) OR ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY {nameof(ExtendedInboxIntegrationEvent.Priority)} DESC, {nameof(ExtendedInboxIntegrationEvent.Status)}, {nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}, (CASE WHEN {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)} IS NULL THEN 0 ELSE 1 END), {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}");
+                $"SELECT TOP (1) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} OR ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY {nameof(ExtendedInboxIntegrationEvent.Priority)} DESC, {nameof(ExtendedInboxIntegrationEvent.Status)}, {nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}, (CASE WHEN {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)} IS NULL THEN 0 ELSE 1 END), {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}");
         }
 
         public async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsInboxIntegrationEventAsync(int batchSize, short maxRetry)
@@ -151,11 +162,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             if (_providerName == ProviderTypeConstants.Postgre)
             {
                 return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE ((\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} AND \"{nameof(ExtendedInboxIntegrationEvent.TypeProcessing)}\" = {(short)EnumEventBus.ConsumerTypeProcessing.ProcessLater}) OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT {batchSize}");
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" DESC, \"{nameof(ExtendedInboxIntegrationEvent.Status)}\", \"{nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}\", \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\" NULLS FIRST LIMIT {batchSize}");
             }
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                $"SELECT TOP ({batchSize}) * FROM {_tableName} WHERE (({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} AND {nameof(ExtendedInboxIntegrationEvent.TypeProcessing)} = {(short)EnumEventBus.ConsumerTypeProcessing.ProcessLater}) OR ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY {nameof(ExtendedInboxIntegrationEvent.Priority)} DESC, {nameof(ExtendedInboxIntegrationEvent.Status)}, {nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}, (CASE WHEN {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)} IS NULL THEN 0 ELSE 1 END), {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}");
+                $"SELECT TOP ({batchSize}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} OR ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack} AND {nameof(ExtendedInboxIntegrationEvent.RetryCount)} < {maxRetry})) ORDER BY {nameof(ExtendedInboxIntegrationEvent.Priority)} DESC, {nameof(ExtendedInboxIntegrationEvent.Status)}, {nameof(ExtendedInboxIntegrationEvent.EventBusIntergrationEventCreationDate)}, (CASE WHEN {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)} IS NULL THEN 0 ELSE 1 END), {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}");
         }
 
         public async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsRecallInboxIntegrationEventAsync(int maxMinutesAllowedProcessing)
@@ -163,11 +174,11 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             if (_providerName == ProviderTypeConstants.Postgre)
             {
                 return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATE_PART('minute', AGE(now(), \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\")) >= {maxMinutesAllowedProcessing} LIMIT {BatchRecall}");
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATE_PART('minute', AGE(now(), \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\")) >= {maxMinutesAllowedProcessing} LIMIT {BatchRecall}");
             }
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                $"SELECT TOP ({BatchRecall}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATEDIFF(minute, {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
+                $"SELECT TOP ({BatchRecall}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATEDIFF(minute, {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
         }
 
         private string GenerateInboxIntegrationEventUpdateQuery()
