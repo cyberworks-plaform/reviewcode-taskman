@@ -1,7 +1,9 @@
 ﻿using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
+using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.DapperBase.Implementations;
 using Ce.Constant.Lib.Definitions;
+using Ce.Constant.Lib.Dtos;
 using Ce.Constant.Lib.Enums;
 using Dapper;
 using Microsoft.Data.SqlClient;
@@ -11,6 +13,7 @@ using Serilog;
 using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -106,6 +109,80 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             }
 
             return new Tuple<bool, ExtendedInboxIntegrationEvent>(result, addInboxEntity);
+        }
+
+        public async Task<PagedList<ExtendedInboxIntegrationEvent>> GetPagingCusAsync(PagingRequest request, CommandType commandType = CommandType.Text)
+        {
+            Guid? projectInstanceId = null;
+            if (request.Filters != null && request.Filters.Count > 0)
+            {
+                if (request.Filters.Count == 1 && request.Filters[0].Filters.Count > 0)
+                {
+                    var projectFilter = request.Filters[0].Filters.Where(x => x.Field.Equals("ProjectInstanceId"));
+
+                    if (projectFilter != null && projectFilter.Count() > 0)
+                    {
+                        try
+                        {
+                            projectInstanceId = Guid.Parse(projectFilter.FirstOrDefault().Value);
+                        }
+                        catch (Exception ex)
+                        {
+                        }
+                    }
+                    var anotherFilter = request.Filters[0].Filters.Where(x => !x.Field.Equals("ProjectInstanceId")).ToList(); //Lấy ra những filter khác
+                    request.Filters[0].Filters = anotherFilter; // gán lại vào filter gốc
+                }
+            }
+            string projectWhere = string.Empty;
+            if (projectInstanceId != null)
+            {
+                projectWhere = $"\"ExtendedInboxIntegrationEvents\".\"{nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)}\" = '{projectInstanceId.ToString()}'";
+            }
+            string sqlWhere = GenerateWhereClause(request.Filters);
+
+            string whereClause = string.Empty;
+            if ((!string.IsNullOrEmpty(sqlWhere) && sqlWhere == "()" && !string.IsNullOrEmpty(projectWhere)) || (string.IsNullOrEmpty(sqlWhere) && !string.IsNullOrEmpty(projectWhere)))
+            {
+                whereClause = $" WHERE {projectWhere}";
+            }
+            else if (!string.IsNullOrEmpty(sqlWhere) && sqlWhere != "()" && !string.IsNullOrEmpty(projectWhere))
+            {
+                whereClause = $" WHERE {projectWhere} OR {sqlWhere}";
+            }
+            else if (!string.IsNullOrEmpty(sqlWhere) && sqlWhere != "()" && string.IsNullOrEmpty(projectWhere))
+            {
+                whereClause = $" WHERE {sqlWhere}";
+            }
+            string sqlOrderBy = GenerateOrderClause(request.Sorts);
+            string orderByClause = string.IsNullOrEmpty(sqlOrderBy) ? string.Empty : $"ORDER BY {sqlOrderBy}";
+
+            string selectClause = GenerateSelectClause(request.Fields);
+
+            int skip = (request.PageInfo.PageIndex - 1) * request.PageInfo.PageSize;
+            var parameters = new DynamicParameters();
+            parameters.Add("@PageSize", request.PageInfo.PageSize, DbType.Int32);
+            parameters.Add("@Skip", skip, DbType.Int32);
+
+            var query = $"SELECT {selectClause} FROM {_tableName} {whereClause} {orderByClause} Limit @PageSize Offset @Skip;";
+            var queryTotalCount = $"SELECT COUNT(*) FROM {_tableName};";
+            var queryTotalFilter = $"SELECT COUNT(*) FROM {_tableName} {whereClause};";
+            query = $"{query} {queryTotalCount} {queryTotalFilter}";
+            var multi = await _conn.QueryMultipleAsync(query, parameters, commandType: commandType);
+
+            var data = multi.Read<ExtendedInboxIntegrationEvent>();
+            var total = multi.Read<long>().FirstOrDefault();
+            int totalfilter = multi.Read<int>().FirstOrDefault();
+
+            return new PagedList<ExtendedInboxIntegrationEvent>
+            {
+                Data = data.ToList(),
+                PageIndex = request.PageInfo.PageIndex,
+                PageSize = request.PageInfo.PageSize,
+                TotalCount = total,
+                TotalFilter = totalfilter,
+                TotalPages = (int)Math.Ceiling((decimal)totalfilter / request.PageInfo.PageSize)
+            };
         }
 
         public async Task<ExtendedInboxIntegrationEvent> GetByKeyAsync(Guid intergrationEventId, string serviceCode)

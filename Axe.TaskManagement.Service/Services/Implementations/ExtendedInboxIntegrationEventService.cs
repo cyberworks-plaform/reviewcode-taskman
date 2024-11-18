@@ -25,7 +25,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _mapper = mapper;
             _repository = repos;
         }
-        public virtual async Task<GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>> GetPagingAsync(PagingRequest request, bool onlyActive = true)
+        public virtual async Task<GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>> GetPagingAsync(PagingRequest request)
         {
             if (request.PageInfo == null)
             {
@@ -49,7 +49,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>> result;
             try
             {
-                PagedList<ExtendedInboxIntegrationEvent> pagedList = await _repository.GetPagingAsync(request, onlyActive);
+                PagedList<ExtendedInboxIntegrationEvent> pagedList = await _repository.GetPagingCusAsync(request);
                 List<ExtendedInboxIntegrationEventDto> data = _mapper.Map<List<ExtendedInboxIntegrationEventDto>>(pagedList.Data);
                 result = GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>.ResultWithData(new PagedList<ExtendedInboxIntegrationEventDto>
                 {

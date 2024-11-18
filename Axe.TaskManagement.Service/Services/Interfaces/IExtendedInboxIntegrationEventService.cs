@@ -11,7 +11,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 {
     public interface IExtendedInboxIntegrationEventService
     {
-        Task<GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>> GetPagingAsync(PagingRequest request, bool onlyActive = true);
+        Task<GenericResponse<PagedList<ExtendedInboxIntegrationEventDto>>> GetPagingAsync(PagingRequest request);
         Task<GenericResponse<ExtendedInboxIntegrationEventDto>> GetByIntergrationEventIdAsync(Guid intergrationEventId);
         Task<GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>>> GetByIdsAsync(string ids);
         Task<GenericResponse<long>> TotalCountAsync();

@@ -30,15 +30,18 @@ namespace Axe.TaskManagement.Service.Dtos
         public string ExchangeName { get; set; }
 
         [MaxLength(64)]
+        public string VirtualHost { get; set; } = "/";
+
+        [MaxLength(64)]
         public string ServiceCode { get; set; }
 
         [MaxLength(128)]
         public string ServiceInstanceId { get; set; } = Dns.GetHostName();
 
+        [MaxLength(128)]
+        public string ServiceInstanceIdProcessed { get; set; } = Dns.GetHostName();
 
         public string Data { get; set; }
-
-        public short TypeProcessing { get; set; }
 
         public short Priority { get; set; }
 
