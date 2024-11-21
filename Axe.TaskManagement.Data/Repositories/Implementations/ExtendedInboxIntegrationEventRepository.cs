@@ -64,10 +64,8 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 var existed = await GetByKeyAsync(entity.IntergrationEventId, entity.ServiceCode);
                 if (existed == null)
                 {
-                    if (string.IsNullOrEmpty(entity.VirtualHost))
-                    {
-                        entity.VirtualHost = _virtualHost;
-                    }
+
+                    entity.VirtualHost = _virtualHost;
 
                     addInboxEntity = await AddAsyncV2(entity);
                     result = true;
