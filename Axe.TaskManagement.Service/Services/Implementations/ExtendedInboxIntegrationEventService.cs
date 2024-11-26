@@ -8,6 +8,7 @@ using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
 using System;
 using System.Collections.Generic;
+using System.Net;
 using System.Threading.Tasks;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
@@ -108,6 +109,21 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             catch (Exception ex)
             {
                 result = GenericResponse<long>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+
+        public async Task<GenericResponse<int>> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        {
+            GenericResponse<int> result;
+            try
+            {
+                result = GenericResponse<int>.ResultWithData(await _repository.UpdateMultiPriorityAsync(projectInstanceId, priority, batchSize));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
             }
 
             return result;

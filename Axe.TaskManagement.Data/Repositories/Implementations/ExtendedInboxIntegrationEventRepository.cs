@@ -256,6 +256,52 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 $"SELECT TOP ({BatchRecall}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATEDIFF(minute, {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
         }
 
+        public async Task<int> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        {
+            var result = 0;
+
+            try
+            {
+                var hasInbox = true;
+                while (hasInbox)
+                {
+                    var listInboxEvent = await GetsUpdatePriorityAsync(projectInstanceId, priority, batchSize);
+                    if (listInboxEvent != null && listInboxEvent.Any())
+                    {
+                        foreach (var inboxEvent in listInboxEvent)
+                        {
+                            inboxEvent.Priority = priority;
+                            result += await UpdateAsync(inboxEvent);
+                        }
+                    }
+                    else
+                    {
+                        hasInbox = false;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Error($"Error: UpdateMultiPriorityAsync, Message: {ex.Message} ", ex);
+            }
+
+            return result;
+        }
+
+        #region Private methods
+
+        private async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsUpdatePriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        {
+            if (_providerName == ProviderTypeConstants.Postgre)
+            {
+                return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)}\" = '{projectInstanceId}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" != {priority} LIMIT {batchSize}");
+            }
+
+            return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
+                $"SELECT TOP ({batchSize}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)} = '{projectInstanceId}' AND ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} OR {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND {nameof(ExtendedInboxIntegrationEvent.Priority)} != {priority}");
+        }
+
         private string GenerateInboxIntegrationEventUpdateQuery()
         {
             var updateQuery = new StringBuilder($"UPDATE {_tableName} SET ");
@@ -302,5 +348,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
             return deleteQuery.ToString();
         }
+
+        #endregion
     }
 }

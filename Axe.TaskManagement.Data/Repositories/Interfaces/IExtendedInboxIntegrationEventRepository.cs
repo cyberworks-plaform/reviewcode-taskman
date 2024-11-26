@@ -22,4 +22,6 @@ public interface IExtendedInboxIntegrationEventRepository : IDapperBaseRepositor
     Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsInboxIntegrationEventAsync(int batchSize, short maxRetry);
 
     Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsRecallInboxIntegrationEventAsync(int maxMinutesAllowedProcessing);
+
+    Task<int> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100);
 }
