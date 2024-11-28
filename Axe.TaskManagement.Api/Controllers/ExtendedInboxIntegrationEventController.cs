@@ -43,9 +43,9 @@ namespace Axe.TaskManagement.Api.Controllers
 
         [HttpGet]
         [Route("update-multi-priority")]
-        public async Task<IActionResult> UpdateMultiPriority(Guid projectInstanceId, short priority, int batchSize = 100)
+        public async Task<IActionResult> UpdateMultiPriority(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
-            return ResponseResult(await _service.UpdateMultiPriorityAsync(projectInstanceId, priority, batchSize));
+            return ResponseResult(await _service.UpdateMultiPriorityAsync(serviceCode, exchangeName, projectInstanceId, priority, batchSize));
         }
     }
 }

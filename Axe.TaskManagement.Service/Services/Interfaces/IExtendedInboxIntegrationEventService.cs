@@ -13,6 +13,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<ExtendedInboxIntegrationEventDto>> GetByIntergrationEventIdAsync(Guid intergrationEventId);
         Task<GenericResponse<IEnumerable<ExtendedInboxIntegrationEventDto>>> GetByIdsAsync(string ids);
         Task<GenericResponse<long>> TotalCountAsync();
-        Task<GenericResponse<int>> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100);
+        Task<GenericResponse<int>> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100);
     }
 }

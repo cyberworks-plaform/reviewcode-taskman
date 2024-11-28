@@ -256,7 +256,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 $"SELECT TOP ({BatchRecall}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATEDIFF(minute, {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
         }
 
-        public async Task<int> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        public async Task<int> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
             var result = 0;
 
@@ -265,7 +265,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 var hasInbox = true;
                 while (hasInbox)
                 {
-                    var listInboxEvent = await GetsUpdatePriorityAsync(projectInstanceId, priority, batchSize);
+                    var listInboxEvent = await GetsUpdatePriorityAsync(serviceCode, exchangeName, projectInstanceId, priority, batchSize);
                     if (listInboxEvent != null && listInboxEvent.Any())
                     {
                         foreach (var inboxEvent in listInboxEvent)
@@ -290,16 +290,16 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         #region Private methods
 
-        private async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsUpdatePriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        private async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsUpdatePriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
             if (_providerName == ProviderTypeConstants.Postgre)
             {
                 return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)}\" = '{projectInstanceId}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" != {priority} LIMIT {batchSize}");
+                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.ServiceCode)}\" = '{serviceCode}' AND \"{nameof(ExtendedInboxIntegrationEvent.ExchangeName)}\" = '{exchangeName}' AND \"{nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)}\" = '{projectInstanceId}' AND (\"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Received} OR \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND \"{nameof(ExtendedInboxIntegrationEvent.Priority)}\" != {priority} LIMIT {batchSize}");
             }
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                $"SELECT TOP ({batchSize}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)} = '{projectInstanceId}' AND ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} OR {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND {nameof(ExtendedInboxIntegrationEvent.Priority)} != {priority}");
+                $"SELECT TOP ({batchSize}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.ServiceCode)} = '{serviceCode}' AND {nameof(ExtendedInboxIntegrationEvent.ExchangeName)} = '{exchangeName}' AND {nameof(ExtendedInboxIntegrationEvent.ProjectInstanceId)} = '{projectInstanceId}' AND ({nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Received} OR {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Nack}) AND {nameof(ExtendedInboxIntegrationEvent.Priority)} != {priority}");
         }
 
         private string GenerateInboxIntegrationEventUpdateQuery()

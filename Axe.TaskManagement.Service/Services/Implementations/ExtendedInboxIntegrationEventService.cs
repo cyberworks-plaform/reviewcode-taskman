@@ -114,12 +114,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return result;
         }
 
-        public async Task<GenericResponse<int>> UpdateMultiPriorityAsync(Guid projectInstanceId, short priority, int batchSize = 100)
+        public async Task<GenericResponse<int>> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
             GenericResponse<int> result;
             try
             {
-                result = GenericResponse<int>.ResultWithData(await _repository.UpdateMultiPriorityAsync(projectInstanceId, priority, batchSize));
+                result = GenericResponse<int>.ResultWithData(await _repository.UpdateMultiPriorityAsync(serviceCode, exchangeName, projectInstanceId, priority, batchSize));
             }
             catch (Exception ex)
             {
