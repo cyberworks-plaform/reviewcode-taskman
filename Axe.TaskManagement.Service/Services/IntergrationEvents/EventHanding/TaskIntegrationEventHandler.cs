@@ -1,4 +1,5 @@
-﻿using Axe.TaskManagement.Data.Repositories.Interfaces;
+﻿using System.Linq;
+using Axe.TaskManagement.Data.Repositories.Interfaces;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
@@ -8,12 +9,14 @@ using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Serilog;
 using System.Threading.Tasks;
+using Ce.Constant.Lib.Enums;
 
 namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 {
     public class TaskIntegrationEventHandler : IIntegrationEventHandler<TaskEvent>
     {
         private readonly IExtendedInboxIntegrationEventRepository _extendedInboxIntegrationEventRepository;
+        private readonly IExtendedMessagePriorityConfigClientService _extendedMessagePriorityConfigClientService;
         private readonly ICommonConsumerService _commonConsumerService;
 
         private static string _serviceCode;
@@ -21,9 +24,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
         public TaskIntegrationEventHandler(
             IConfiguration configuration,
             IExtendedInboxIntegrationEventRepository extendedInboxIntegrationEventRepository,
+            IExtendedMessagePriorityConfigClientService extendedMessagePriorityConfigClientService,
             ICommonConsumerService commonConsumerService)
         {
             _extendedInboxIntegrationEventRepository = extendedInboxIntegrationEventRepository;
+            _extendedMessagePriorityConfigClientService = extendedMessagePriorityConfigClientService;
             _commonConsumerService = commonConsumerService;
             if (string.IsNullOrEmpty(_serviceCode))
             {
@@ -36,6 +41,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
             if (@event != null)
             {
                 var exchangeName = await _commonConsumerService.GetExchangeName(GetType());
+                var priority = (short)EnumEventBus.ConsumMessagePriority.Normal;
+
                 var inboxEvent = new ExtendedInboxIntegrationEvent
                 {
                     IntergrationEventId = @event.IntergrationEventId,
@@ -44,7 +51,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     EntityName = nameof(TaskEvent),
                     ExchangeName = exchangeName,
                     ServiceCode = _serviceCode,
-                    Data = JsonConvert.SerializeObject(@event)
+                    Data = JsonConvert.SerializeObject(@event),
+                    Priority = priority
                 };
 
                 // Enrich inbox event
@@ -56,6 +64,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                     inboxEvent.Path = inputParam.DocPath;
                     inboxEvent.ProjectInstanceId = inputParam.ProjectInstanceId;
                     inboxEvent.DocInstanceId = inputParam.DocInstanceId;
+
+                    var extendedMessagePriorityConfigsRs =
+                        await _extendedMessagePriorityConfigClientService.GetByServiceExchangeProject(_serviceCode,
+                            exchangeName, inboxEvent.ProjectInstanceId);
+                    if (extendedMessagePriorityConfigsRs != null && extendedMessagePriorityConfigsRs.Success && extendedMessagePriorityConfigsRs.Data.Any())
+                    {
+                        inboxEvent.Priority = extendedMessagePriorityConfigsRs.Data.First().Priority;
+                    }
                 }
 
                 await _extendedInboxIntegrationEventRepository.TryInsertInbox(inboxEvent);
