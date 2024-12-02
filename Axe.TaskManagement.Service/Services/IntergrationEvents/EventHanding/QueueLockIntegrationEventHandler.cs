@@ -53,7 +53,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
                 var priority = (short)EnumEventBus.ConsumMessagePriority.Normal;
                 var extendedMessagePriorityConfigsRs =
                     await _extendedMessagePriorityConfigClientService.GetByServiceExchangeProject(_serviceCode,
-                        exchangeName, @event.ProjectInstanceId);
+                        exchangeName, @event.ProjectInstanceId, @event.AccessToken);
                 if (extendedMessagePriorityConfigsRs != null && extendedMessagePriorityConfigsRs.Success && extendedMessagePriorityConfigsRs.Data.Any())
                 {
                     priority = extendedMessagePriorityConfigsRs.Data.First().Priority;

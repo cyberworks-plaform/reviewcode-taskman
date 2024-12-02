@@ -22,8 +22,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         }
 
         public async Task<GenericResponse<IEnumerable<ExtendedMessagePriorityConfigDto>>> GetByServiceExchangeProject(
-            string serviceCode = null, string exchangeName = null, Guid? projectInstanceId = null,
-            string accessToken = null)
+            string serviceCode, string exchangeName, Guid? projectInstanceId,
+            string accessToken)
         {
             GenericResponse<IEnumerable<ExtendedMessagePriorityConfigDto>> response;
             try

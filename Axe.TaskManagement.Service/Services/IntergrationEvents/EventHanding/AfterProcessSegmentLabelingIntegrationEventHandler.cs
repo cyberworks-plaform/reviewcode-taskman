@@ -75,7 +75,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.EventHanding
 
                         var extendedMessagePriorityConfigsRs =
                             await _extendedMessagePriorityConfigClientService.GetByServiceExchangeProject(_serviceCode,
-                                exchangeName, inboxEvent.ProjectInstanceId);
+                                exchangeName, inboxEvent.ProjectInstanceId, @event.AccessToken);
                         if (extendedMessagePriorityConfigsRs != null && extendedMessagePriorityConfigsRs.Success && extendedMessagePriorityConfigsRs.Data.Any())
                         {
                             inboxEvent.Priority = extendedMessagePriorityConfigsRs.Data.First().Priority;
