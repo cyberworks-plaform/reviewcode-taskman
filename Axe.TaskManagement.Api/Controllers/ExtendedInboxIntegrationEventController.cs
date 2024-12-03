@@ -42,6 +42,13 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpGet]
+        [Route("get-total-and-status-count")]
+        public async Task<IActionResult> GetTotalAndStatusCountAsync()
+        {
+            return ResponseResult(await _service.GetTotalAndStatusCountAsync());
+        }
+
+        [HttpGet]
         [Route("update-multi-priority")]
         public async Task<IActionResult> UpdateMultiPriority(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
