@@ -8,5 +8,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Event
         public Guid DocInstanceId { get; set; }
 
         public string FinalValue { get; set; }
+
+        public short Status { get; set; }
     }
 }
