@@ -1651,6 +1651,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         {
                                             ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                                         };
+                                        // Outbox
+                                        //var outboxEntityDocFieldValue = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                                        //{
+                                        //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
+                                        //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                                        //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
+                                        //});
+                                        //var isAckDocFieldValue = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
+                                        //if (isAckDocFieldValue)
+                                        //{
+                                        //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityDocFieldValue);
+                                        //}
+                                        //else
+                                        //{
+                                        //    outboxEntityDocFieldValue.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                        //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValue);
+                                        //}
 
                                         // Call Api
                                         var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
