@@ -55,7 +55,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         private readonly ICachingHelper _cachingHelper;
         private readonly bool _useCache;
         private readonly IDocTypeFieldClientService _docTypeFieldClientService;
-
         public AfterProcessCheckFinalProcessEvent(
             IJobRepository repository,
             ITaskRepository taskRepository,
@@ -351,7 +350,19 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {job.ActionCode} with DocInstanceId: {job.DocInstanceId}");
 
-                    // 3. Cập nhật giá trị DocFieldValue & Doc
+                    // 3. Cập nhật giá trị DocFieldValue & Doc.FinalValue
+
+                    // Update FinalValue for Doc : Publish event
+                    var docUpdateFinalValueEvtByProcessing = new DocUpdateFinalValueEvent
+                    {
+                        DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                        FinalValue = job.Value,
+                        Status = (short)EnumDoc.Status.Processing
+                    };
+
+                    // Outbox
+                    await PublishEvent<DocUpdateFinalValueEvent>(docUpdateFinalValueEvtByProcessing);
+
                     var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
                     docItems.ForEach(x =>
                     {
@@ -1138,5 +1149,37 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         }
 
         #endregion
+
+        private async Task PublishEvent<T>(object eventData)
+        {
+            // Outbox LogJob
+            var outboxEvent = new OutboxIntegrationEvent
+            {
+                ExchangeName = typeof(T).Name.ToLower(),
+                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                Data = JsonConvert.SerializeObject(eventData),
+                LastModificationDate = DateTime.UtcNow,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+            try
+            {
+                _eventBus.Publish(eventData, outboxEvent.ExchangeName);
+            }
+            catch (Exception exPublishEvent)
+            {
+                Log.Error(exPublishEvent, $"Error publish for event {outboxEvent.ExchangeName}");
+
+                //save to DB for retry later
+                try
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEvent);
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, $"Error save DB for event {outboxEvent.ExchangeName}");
+                    throw;
+                }
+            }
+        }
     }
 }
