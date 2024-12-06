@@ -67,7 +67,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IExternalProviderServiceConfigClientService _providerConfig;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         private readonly ICachingHelper _cachingHelper;
@@ -127,7 +126,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _providerConfig = externalProviderServiceConfigClientService;
             _configuration = configuration;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
-            _docFieldValueClientService = docFieldValueClientService;
             _recallJobWorkerService = recallJobWorkerService;
         }
 
@@ -1586,8 +1584,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit with data value; not trigger if job ignore
                     if (!resultUpdateJob.IsIgnore)
                     {
-                        
-
                         var evt = new AfterProcessCheckFinalEvent
                         {
                             //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
