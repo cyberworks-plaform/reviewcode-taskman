@@ -1596,24 +1596,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 FinalValue = finalValue,
                                 Status = (short)EnumDoc.Status.Processing
                             };
-                            // Outbox
-                            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                            {
-                                ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
-                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
-                            });
-                            var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
-                            if (isAck)
-                            {
-                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                            }
-                            else
-                            {
-                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                            }
 
+                            // Outbox
+                            await PublishEvent <DocUpdateFinalValueEvent>(docUpdateFinalValueEvt);
+                            
                             // Update giá trị DocFieldValue: Chuẩn bị dữ liệu
                             var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
                             var docItems = JsonConvert.DeserializeObject<List<DocItem>>(resultUpdateJob.Value);
@@ -1651,26 +1637,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                         {
                                             ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                                         };
-                                        // Outbox
-                                        //var outboxEntityDocFieldValue = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                        //{
-                                        //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                        //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                        //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                                        //});
-                                        //var isAckDocFieldValue = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                        //if (isAckDocFieldValue)
-                                        //{
-                                        //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityDocFieldValue);
-                                        //}
-                                        //else
-                                        //{
-                                        //    outboxEntityDocFieldValue.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                        //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValue);
-                                        //}
 
-                                        // Call Api
-                                        var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
+
+                                        //Outbox
+                                        await PublishEvent<DocFieldValueUpdateMultiValueEvent>(docFieldValueUpdateMultiValueEvt);
+
+                                        // Call Api - thử nghiệm
+                                        //var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
                                     }
                                 }
                             }
