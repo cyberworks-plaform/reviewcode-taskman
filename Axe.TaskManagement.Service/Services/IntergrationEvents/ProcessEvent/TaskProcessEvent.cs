@@ -1114,12 +1114,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             // 2.1. Mark doc, task processing & update progress statistic
                             if (WorkflowHelper.IsMarkDocProcessing(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId))
                             {
-                                // Update current wfs status is processing
-                                var resultDocChangeCurrentWfsInfoAuto = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Processing, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
-                                if (!resultDocChangeCurrentWfsInfoAuto.Success)
-                                {
-                                    Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
-                                }
                                 var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(inputParam.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                                 if (!resultDocChangeProcessingStatus.Success)
                                 {
@@ -1175,6 +1169,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             // 2.2. Mark jobs processing
                             if (jobs.Any())
                             {
+                                // Update current wfs status is processing
+                                var resultDocChangeCurrentWfsInfoAuto = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(jobs.Select(x => x.DocInstanceId)), crrWfsInfo.Id, (short)EnumJob.Status.Processing, accessToken: accessToken);
+                                if (!resultDocChangeCurrentWfsInfoAuto.Success)
+                                {
+                                    Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                                }
                                 foreach (var job in jobs)
                                 {
                                     job.Status = (short)EnumJob.Status.Processing;
