@@ -114,6 +114,21 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return result;
         }
 
+        public async Task<GenericResponse<Dictionary<int, long>>> GetTotalAndStatusCountAsync()
+        {
+            GenericResponse<Dictionary<int, long>> result;
+            try
+            {
+                result = GenericResponse<Dictionary<int, long>>.ResultWithData(await _repository.GetTotalAndStatusCountAsync());
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<Dictionary<int, long>>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+
         public async Task<GenericResponse<int>> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
         {
             GenericResponse<int> result;

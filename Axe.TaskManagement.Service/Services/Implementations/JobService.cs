@@ -68,7 +68,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         private readonly IBaseHttpClientFactory _clientFatory;
         private readonly IExternalProviderServiceConfigClientService _providerConfig;
         private readonly IOutboxIntegrationEventRepository _outboxIntegrationEventRepository;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly Microsoft.Extensions.Configuration.IConfiguration _configuration;
 
         private readonly ICachingHelper _cachingHelper;
@@ -128,7 +127,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             _providerConfig = externalProviderServiceConfigClientService;
             _configuration = configuration;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
-            _docFieldValueClientService = docFieldValueClientService;
             _recallJobWorkerService = recallJobWorkerService;
         }
 
@@ -1600,96 +1598,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Trigger after jobs submit with data value; not trigger if job ignore
                     if (!resultUpdateJob.IsIgnore)
                     {
-                        if (resultUpdateJob.Value != null)
-                        {
-                            // Update FinalValue for Doc : Publish event
-                            var finalValue = resultUpdateJob.Value;
-                            var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
-                            {
-                                DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
-                                FinalValue = finalValue,
-                                Status = (short)EnumDoc.Status.Processing
-                            };
-                            // Outbox
-                            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                            {
-                                ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
-                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt)
-                            });
-                            var isAck = _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
-                            if (isAck)
-                            {
-                                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
-                            }
-                            else
-                            {
-                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
-                            }
-
-                            // Update giá trị DocFieldValue: Chuẩn bị dữ liệu
-                            var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                            var docItems = JsonConvert.DeserializeObject<List<DocItem>>(resultUpdateJob.Value);
-                            var isUpdateValue = false;
-                            if (docItems != null && docItems.Any())
-                            {
-                                var docTypeFieldInstanceIds = docItems.Select(x => x.DocTypeFieldInstanceId.GetValueOrDefault()).Distinct().ToList();
-                                var docFieldValuesRs = await _docFieldValueClientService.GetByDocTypeFieldInstanceIds(job.DocInstanceId.GetValueOrDefault(), JsonConvert.SerializeObject(docTypeFieldInstanceIds), accessToken);
-                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data != null)
-                                {
-                                    var docFieldValues = docFieldValuesRs.Data;
-                                    isUpdateValue = docItems.Any(x => docFieldValues.Any(y => y.InstanceId == x.DocFieldValueInstanceId && y.Value != x.Value));
-                                    if (isUpdateValue)
-                                    {
-                                        foreach (var docItem in docItems)
-                                        {
-                                            var crrDocFieldValue = docFieldValues.FirstOrDefault(x => x.InstanceId == docItem.DocFieldValueInstanceId);
-                                            if (crrDocFieldValue != null)
-                                            {
-                                                itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                                                {
-                                                    InstanceId = docItem.DocFieldValueInstanceId.GetValueOrDefault(),
-                                                    Value = docItem.Value,
-                                                    CoordinateArea = crrDocFieldValue.CoordinateArea,
-                                                    ActionCode = crrDocFieldValue.ActionCode
-                                                });
-                                            }
-                                        }
-                                    }
-                                    
-                                    // 1.Cập nhật giá trị DocFieldValue: Call API
-                                    if (itemDocFieldValueUpdateValues.Any())
-                                    {
-                                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                                        {
-                                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                                        };
-                                        // Outbox
-                                        //var outboxEntityDocFieldValue = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                        //{
-                                        //    ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                        //    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                        //    Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                                        //});
-                                        //var isAckDocFieldValue = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                        //if (isAckDocFieldValue)
-                                        //{
-                                        //    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityDocFieldValue);
-                                        //}
-                                        //else
-                                        //{
-                                        //    outboxEntityDocFieldValue.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                        //    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValue);
-                                        //}
-
-                                        // Call Api
-                                        var _ = await _docFieldValueClientService.UpdateMultiValue(docFieldValueUpdateMultiValueEvt, accessToken);
-                                    }
-                                }
-                            }
-                        }
-
                         var evt = new AfterProcessCheckFinalEvent
                         {
                             //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),

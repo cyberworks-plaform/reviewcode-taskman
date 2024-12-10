@@ -1,0 +1,109 @@
+﻿--- 
+ Note: Các lệnh tạo index cho bảng [ TaskMan_Pro ] -> [ Job ] 
+  Chạy các lệnh dưới dây với MongoDB Shell 
+---
+db[ "Job" ].createIndex( { status: 1 }) 
+---
+db [ "Job" ].createIndex( { instance_id: 1 }) 
+---
+db [ "Job" ].createIndex( 
+{
+	user_instance_id: 1,
+	action_code: 1,
+	status: 1
+}, 
+{
+	name: "get_processing_job_of_user"
+}) 
+---
+db [ "Job" ].createIndex( {
+	status: 1,
+	last_modification_date: 1,
+	project_instance_id: 1,
+	last_modified_by: 1,
+	user_instance_id: 1,
+	code: 1,
+	doc_instance_id: 1,
+	num_of_round: 1,
+	qa_status: 1,
+	action_code: 1,
+}, {
+	"name": "get_list_history_job"
+}) 
+---
+db [ "Job" ].createIndex( {
+	project_instance_id: 1,
+	action_code: 1,
+	work_flow_step_instance_id: 1,
+	status: 1,
+	doc_path: 1,
+
+}, 
+{
+	name: "GetAllJobByWfs"
+})
+
+---
+db["Job"].createIndex(
+{
+	doc_instance_id:1,
+	action_code:1,
+	status:1,
+}, 
+{
+	name: "Get_Job_By_Docs"
+})
+
+---
+db["Job"].createIndex(
+{
+	project_instance_id:1,
+	status:1,
+	action_code:1,
+	right_status:1,
+	is_ignore:1,
+	work_flow_step_instance_id:1,
+	last_modified_by:1,
+	user_instance_id:1,
+	last_modification_date:1,
+	code:1,
+	doc_instance_id:1,
+	num_of_round:1,
+	qa_status:1,
+	doc_name:1,
+}, 
+{
+	name: "get_list_history_job_2"
+})
+
+---
+db["Job"].createIndex(
+{
+	user_instance_id:1,
+	project_instance_id:1,
+	action_code:1,
+	status:1,
+	project_type_instance_id:1,
+	input_type:1,
+	doc_type_field_instance_id:1,
+	doc_path:1,
+	batch_job_instance_id:1,
+	num_of_round:1,
+	last_modified_by:1,
+	work_flow_step_instance_id:1,
+}, 
+{
+	name: "get_new_job_for_user"
+})
+
+---
+db["Job"].createIndex(
+{
+	
+	project_instance_id:1,
+	work_flow_step_instance_id:1,
+	status:1,
+}, 
+{
+	name: "report_job_groupby_project_step_status"
+})

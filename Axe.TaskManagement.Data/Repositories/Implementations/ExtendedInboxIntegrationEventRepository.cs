@@ -114,7 +114,7 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             Guid? projectInstanceId = null;
             if (request.Filters != null && request.Filters.Count > 0)
             {
-                if (request.Filters.Count == 1 && request.Filters[0].Filters.Count > 0)
+                if (request.Filters.Count == 1 && request.Filters[0].Filters != null && request.Filters[0].Filters.Count > 0)
                 {
                     var projectFilter = request.Filters[0].Filters.Where(x => x.Field.Equals("ProjectInstanceId"));
 
@@ -254,6 +254,26 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
                 $"SELECT TOP ({BatchRecall}) * FROM {_tableName} WHERE {nameof(ExtendedInboxIntegrationEvent.VirtualHost)} = '{_virtualHost}' AND {nameof(ExtendedInboxIntegrationEvent.Status)} = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATEDIFF(minute, {nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
+        }
+        public async Task<Dictionary<int, long>> GetTotalAndStatusCountAsync()
+        {
+            var result = new Dictionary<int, long>();
+
+            string sql = $"SELECT \"Status\", COUNT(*) AS Count FROM {_tableName} GROUP BY \"Status\"; SELECT COUNT(*) AS Total FROM {_tableName};";
+            using (var multi = await _conn.QueryMultipleAsync(sql, commandType: CommandType.Text))
+            {
+                var statusCounts = await multi.ReadAsync<(int Status, long Count)>();
+                foreach (var item in statusCounts)
+                {
+                    result[item.Status] = item.Count;
+                }
+
+                var total = await multi.ReadSingleAsync<long>();
+
+                result[-1] = total; //Total lưu tạm vào -1 
+            }
+
+            return result;
         }
 
         public async Task<int> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)
