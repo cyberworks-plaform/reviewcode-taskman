@@ -503,6 +503,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                                             if (isTriggerNextStep)
                                                             {
+                                                                // Update current wfs status is complete
+                                                                var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                                                if (!resultDocChangeCurrentWfsInfo.Success)
+                                                                {
+                                                                    Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                                                                }
                                                                 Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
                                                             }
                                                         }
@@ -626,7 +632,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             Log.Information($"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}");
                             return new Tuple<bool, string, string>(true, $"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}", null);
                         }
-
+                        // Update current wfs status is waiting
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Waiting, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                        }
                         // 1.0. Nếu job là manual thì gửi message sang DistributionJob
                         if (jobs.Any() && !crrWfsInfo.IsAuto)
                         {
@@ -1103,6 +1114,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             // 2.1. Mark doc, task processing & update progress statistic
                             if (WorkflowHelper.IsMarkDocProcessing(wfsInfoes, wfSchemaInfoes, crrWfsInfo.InstanceId))
                             {
+                                // Update current wfs status is processing
+                                var resultDocChangeCurrentWfsInfoAuto = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Processing, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                if (!resultDocChangeCurrentWfsInfoAuto.Success)
+                                {
+                                    Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                                }
                                 var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(inputParam.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                                 if (!resultDocChangeProcessingStatus.Success)
                                 {
@@ -1674,9 +1691,24 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                                     if (isTriggerNextStep)
                                                     {
+                                                        // Update current wfs status is complete
+                                                        var resultDocChangeCurrentWfsInfoAuto = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                                        if (!resultDocChangeCurrentWfsInfoAuto.Success)
+                                                        {
+                                                            Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                                                        }
                                                         Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
                                                     }
                                                 }
+                                            }
+                                        }
+                                        else
+                                        {
+                                            // Update current wfs status is complete
+                                            var resultDocChangeCurrentWfsInfoAuto = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                            if (!resultDocChangeCurrentWfsInfoAuto.Success)
+                                            {
+                                                Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
                                             }
                                         }
                                     }
@@ -2088,6 +2120,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 //response = GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
                 Log.Error(ex, ex.Message);
 
+                // Update current wfs status is error
+                var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), null, string.IsNullOrEmpty(inputParam.Note) ? string.Empty : inputParam.Note, null, accessToken: accessToken);
+                if (!resultDocChangeCurrentWfsInfo.Success)
+                {
+                    Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId: {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                }
                 // Mark doc, task error, job error
                 var resultDocChangeErrorStatus = await _docClientService.ChangeStatus(inputParam.DocInstanceId.GetValueOrDefault(), (short)EnumDoc.Status.Error, accessToken);
                 if (!resultDocChangeErrorStatus.Success)

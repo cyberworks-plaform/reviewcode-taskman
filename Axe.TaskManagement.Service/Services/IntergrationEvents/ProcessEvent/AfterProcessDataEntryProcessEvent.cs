@@ -611,6 +611,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                     if (isTriggerNextStep)
                                     {
+                                        // Update current wfs status is complete
+                                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                        if (!resultDocChangeCurrentWfsInfo.Success)
+                                        {
+                                            Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                                        }
                                         Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
                                     }
                                 }
@@ -753,6 +759,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     wfsInstanceId, ignoreListDocTypeField);
                             if (!hasJobWaitingOrProcessing)
                             {
+                                var crrWfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
+                                var crrWfsInfoes = crrWfInfoes.Item1;
+                                var crrWfSchemaInfoes = crrWfInfoes.Item2;
+                                var crrWfsInfo = crrWfsInfoes.First(x => x.InstanceId == wfsInstanceId);
                                 // Get lại toàn bộ job trong bước HIỆN TẠI đã Complete
                                 var crrJobsComplete = await _repository.GetJobByWfs(docInstanceId, actionCode,
                                     wfsInstanceId, (short)EnumJob.Status.Complete);
@@ -832,10 +842,23 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                 try // try to publish event
                                 {
+                                    // Update current wfs status is complete
+                                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, crrWfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
+                                    if (!resultDocChangeCurrentWfsInfo.Success)
+                                    {
+                                        Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault()} !");
+                                    }
                                     _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
                                 }
                                 catch (Exception exPublishEvent)
                                 {
+                                    // Update current wfs status is error
+                                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Error, crrWfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
+                                    if (!resultDocChangeCurrentWfsInfo.Success)
+                                    {
+                                        Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault()} !");
+                                    }
+
                                     Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateStatusCompleteEvent");
 
                                     try // try to save event to DB for retry later
@@ -848,9 +871,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         throw;
                                     }
                                 }
-                                var crrWfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
-                                var crrWfsInfoes = crrWfInfoes.Item1;
-                                var crrWfSchemaInfoes = crrWfInfoes.Item2;
                                 await _moneyService.ChargeMoneyForCompleteDoc(crrWfsInfoes, crrWfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
                         }

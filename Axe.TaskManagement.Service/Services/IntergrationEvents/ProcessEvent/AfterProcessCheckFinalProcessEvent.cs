@@ -116,6 +116,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     if (string.IsNullOrEmpty(job.Value))
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfoSpecial = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoSpecial.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessCheckFinalProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessCheckFinal value of job is null!");
                         return new Tuple<bool, string, string>(false, "ProcessCheckFinal value of job is null!", null);
                     }
@@ -123,6 +130,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
                     if (docItems == null || docItems.Count <= 0)
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfoSpecial = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoSpecial.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessCheckFinalProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessCheckFinal value of job can not be parse!");
                         return new Tuple<bool, string, string>(false, "ProcessCheckFinal value of job can not be parse!", null);
                     }
@@ -133,6 +147,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     if (wfsInfoes == null || wfsInfoes.Count <= 0)
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfoSpecial = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoSpecial.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessCheckFinalProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessCheckFinal can not get wfsInfoes!");
                         return new Tuple<bool, string, string>(false, "ProcessCheckFinal can not get wfsInfoes!", null);
                     }
@@ -309,6 +330,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
                     if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfoSpecial = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoSpecial.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessCheckFinalProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
                         Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
                         return new Tuple<bool, string, string>(false,
                             "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
@@ -938,6 +965,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
                         }
+                    }
+
+                    // Update current wfs status is complete
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(AfterProcessCheckFinalProcessEvent)}: Error change current work flow step info for Doc!");
                     }
                 }
                 catch (Exception ex)

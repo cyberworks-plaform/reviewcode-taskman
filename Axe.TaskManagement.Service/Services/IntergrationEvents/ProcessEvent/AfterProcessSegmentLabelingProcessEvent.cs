@@ -731,6 +731,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             }
                         }
                     }
+                    // Update current wfs status is complete
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(AfterProcessSegmentLabelingProcessEvent)}: Error change current work flow step info for Doc!");
+                    }
                 }
                 catch (Exception ex)
                 {
