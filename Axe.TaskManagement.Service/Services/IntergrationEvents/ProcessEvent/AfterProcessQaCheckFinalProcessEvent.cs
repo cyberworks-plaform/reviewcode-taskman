@@ -10,6 +10,7 @@ using Axe.Utility.EntityExtensions;
 using Axe.Utility.Enums;
 using Axe.Utility.Helpers;
 using Axe.Utility.MessageTemplate;
+using Azure.Core;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Constant.Lib.Dtos;
@@ -115,6 +116,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     if (string.IsNullOrEmpty(job.Value))
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(evt.Job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, evt.Job.WorkflowInstanceId.GetValueOrDefault(), null, "", null, accessToken: evt.AccessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{evt.Job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessQaCheckFinal value of job is null!");
                         return new Tuple<bool, string, string>(false, "ProcessQaCheckFinal value of job is null!", null);
                     }
@@ -122,6 +130,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
                     if (docItems == null || docItems.Count <= 0)
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(evt.Job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, evt.Job.WorkflowInstanceId.GetValueOrDefault(), null, "", null, accessToken: evt.AccessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{evt.Job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessQaCheckFinal value of job can not be parse!");
                         return new Tuple<bool, string, string>(false, "ProcessQaCheckFinal value of job can not be parse!", null);
                     }
@@ -132,6 +147,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     if (wfsInfoes == null || wfsInfoes.Count <= 0)
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(evt.Job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, evt.Job.WorkflowInstanceId.GetValueOrDefault(), null, "", null, accessToken: evt.AccessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{evt.Job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error("ProcessCheckFinal can not get wfsInfoes!");
                         return new Tuple<bool, string, string>(false, "ProcessCheckFinal can not get wfsInfoes!", null);
                     }
@@ -664,7 +686,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             }
 
                             await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, inputParams, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
-
+                            
+                            // Update current wfs status is complete
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{job.DocInstanceId.GetValueOrDefault()} !");
+                            }
                         }
                     }
 
@@ -673,6 +701,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 }
                 catch (Exception ex)
                 {
+                    // Update current wfs status is error
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(evt.Job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, evt.Job.WorkflowInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: evt.AccessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{evt.Job.DocInstanceId.GetValueOrDefault()} !");
+                    }
                     Log.Logger.Error(ex, ex.Message);
                     return new Tuple<bool, string, string>(false, ex.Message, ex.StackTrace);
                 }

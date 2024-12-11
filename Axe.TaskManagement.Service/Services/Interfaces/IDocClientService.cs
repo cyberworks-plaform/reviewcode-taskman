@@ -31,5 +31,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<int>> UpdateFinalValue(DocUpdateFinalValueEvent model, string accessToken = null);
         Task<GenericResponse<Dictionary<string, string>>> GetMultiPathNameByMultiDocPath(string docPaths, string accessToken = null);
         Task<GenericResponse<List<DocPathDto>>> GetListPath(int projectId, string accessToken = null);
+        Task<GenericResponse<int>> ChangeCurrentWorkFlowStepInfo(Guid docInstanceId, long wfsId, short wfsStatus, Guid? wfsInstanceId, bool? qaStatus, string qaNote, short? numOfRound, string accessToken = null);
+        Task<GenericResponse<int>> ChangeMultiCurrentWorkFlowStepInfo(string docInstanceIds, long wfsId, short wfsStatus, string accessToken = null);
     }
 }

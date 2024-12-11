@@ -5,6 +5,7 @@ using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
 using Axe.TaskManagement.Service.Services.IntergrationEvents.Event;
+using Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent;
 using Axe.Utility.Definitions;
 using Axe.Utility.Dtos;
 using Axe.Utility.EntityExtensions;
@@ -449,6 +450,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var resultUpdateJob = await _repos.UpdateMultiAsync(jobs);
                 if (resultUpdateJob > 0)
                 {
+                    // Update current wfs status is processing
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(jobs.Select(x => x.DocInstanceId.GetValueOrDefault())), -1, (short)EnumJob.Status.Processing, accessToken: accessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change multi current work flow step info for DocInstanceIds {JsonConvert.SerializeObject(jobs.Select(x => x.DocInstanceId.GetValueOrDefault()))} !");
+                    }
                     // Trigger after jobs submit
                     var evt = new AfterProcessDataEntryEvent
                     {
@@ -1574,6 +1581,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
                     else
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         Log.Error($"ProcessCheckFinal fail: job => {job.Code}");
                         response = GenericResponse<int>.ResultWithData(0);
                     }
@@ -1602,6 +1616,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         };
                         // Outbox
                         await PublishEvent<LogJobEvent>(logJobEvt);
+
+                        // Update current wfs status is complete
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
+                    }
+                    else
+                    {
+                        // trường hợp job bị bỏ qua
+                        // Update current wfs status is ignore
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Ignore, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                        }
                     }
 
                     var responseCode = 1; // Ghi nhận thành công
@@ -1852,10 +1883,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     // Outbox logjob
                     await PublishEvent<LogJobEvent>(logJobEvt);
 
+                    // Update current wfs status is complete
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                    }
+
                     response = GenericResponse<int>.ResultWithData(1);
                 }
                 else
                 {
+                    // Update current wfs status is error
+                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
+                    if (!resultDocChangeCurrentWfsInfo.Success)
+                    {
+                        Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
+                    }
+
                     Log.Error($"ProcessQaCheckFinal fail: job => {job.Code}");
                     response = GenericResponse<int>.ResultWithData(0);
                 }
@@ -1898,6 +1943,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     if (inputParam == null || inputParam.FileInstanceId == null || inputParam.DocInstanceId == null ||
                         string.IsNullOrEmpty(inputParam.Value))
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Error, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), inputParam.QaStatus, string.IsNullOrEmpty(inputParam.Note) ? string.Empty : inputParam.Note, inputParam.NumOfRound, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                        }
+
                         return GenericResponse<string>.ResultWithError((int)HttpStatusCode.BadRequest, null,
                             "Bad request!");
                     }
@@ -1955,10 +2007,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         if (resultUpdateJob)
                         {
+                            // Update current wfs status is complete
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Complete, inputParam.WorkflowStepInstanceId.GetValueOrDefault(), inputParam.QaStatus, string.IsNullOrEmpty(inputParam.Note) ? string.Empty : inputParam.Note, inputParam.NumOfRound, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                            }
                             Log.Logger.Information($"ProcessSyntheticData with DocInstanceId: {docInstanceId} success!");
                         }
                         else
                         {
+                            // Update current wfs status is error
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(docInstanceId, -1, (short)EnumJob.Status.Error, null, null, string.Empty, null, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {docInstanceId} !");
+                            }
+
                             Log.Logger.Error($"ProcessSyntheticData with DocInstanceId: {inputParam.DocInstanceId} failure!");
                         }
 
@@ -2044,16 +2109,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             }
                             else
                             {
+                                // Update current wfs status is error
+                                var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(docInstanceId, -1, (short)EnumJob.Status.Error, null, null, string.Empty, null, accessToken: accessToken);
+                                if (!resultDocChangeCurrentWfsInfo.Success)
+                                {
+                                    Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {docInstanceId} !");
+                                }
                                 response = GenericResponse<string>.ResultWithData(null, "Can not get next workflowstep!");
                             }
                         }
                         else
                         {
+                            // Update current wfs status is error
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(docInstanceId, -1, (short)EnumJob.Status.Error, null, null, string.Empty, null, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {docInstanceId} !");
+                            }
                             response = GenericResponse<string>.ResultWithData(null, "Can not get list WorkflowStepInfo!");
                         }
                     }
                     else
                     {
+                        // Update current wfs status is error
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(docInstanceId, -1, (short)EnumJob.Status.Error, null, null, string.Empty, null, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceId: {docInstanceId} !");
+                        }
                         response = GenericResponse<string>.ResultWithData(null);
                     }
                 }
@@ -2687,7 +2770,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             break;
                         }
                     }
-
+                    if (jobDtos.Any())
+                    {
+                        var docInstanceIds = jobDtos.Select(x => x.DocInstanceId).Distinct().ToList();
+                        // Update current wfs status is processing
+                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(docInstanceIds), -1, (short)EnumJob.Status.Processing, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfo.Success)
+                        {
+                            Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change multi current work flow step info for DocInstanceIds {JsonConvert.SerializeObject(docInstanceIds)} !");
+                        }
+                    }
                     response = GenericResponse<List<JobDto>>.ResultWithData(jobDtos);
                 }
                 else
@@ -6472,6 +6564,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         jobs = await AddDocTypeFieldExtraSetting(jobs, actionCode, accessToken);
                         if (jobs.Any())
                         {
+                            var docInstanceIds = jobs.Where(x => x.DocInstanceId != null).Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct();
+                            // Update current wfs status is processing
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(docInstanceIds), -1, (short)EnumJob.Status.Processing, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change multi current work flow step info for DocInstanceIds {JsonConvert.SerializeObject(docInstanceIds)} !");
+                            }
 
                             var now = DateTime.UtcNow;
                             foreach (var job in jobs)

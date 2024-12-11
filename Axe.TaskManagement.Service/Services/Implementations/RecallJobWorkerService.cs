@@ -186,6 +186,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             // Update ProjectStatistic
             if (resultUpdate > 0 && jobs.Any() && docInstanceIds.Any())
             {
+                var crrJob = jobs.First();
+                var crrWfsInfoes = await GetAvailableWfsInfoes(crrJob.WorkflowInstanceId.GetValueOrDefault(), accessToken);
+                var crrWfsInfoUpdate = crrWfsInfoes.First(x => x.InstanceId == crrJob.WorkflowStepInstanceId);
+                // Update current wfs status is waiting
+                var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(docInstanceIds), crrWfsInfoUpdate.Id, (short)EnumJob.Status.Waiting, accessToken: accessToken);
+                if (!resultDocChangeCurrentWfsInfo.Success)
+                {
+                    Log.Logger.Error($"{nameof(JobService)}: Error change current work flow step info for DocInstanceIds: {JsonConvert.SerializeObject(docInstanceIds)} to waiting !");
+                }
                 // Publish message sang DistributionJob
                 var publishJobs = jobs.Where(c => c.Status == (short)EnumJob.Status.Waiting).ToList();
                 if (publishJobs.Count > 0)

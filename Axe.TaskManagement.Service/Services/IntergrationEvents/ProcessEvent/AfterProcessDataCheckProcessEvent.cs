@@ -689,6 +689,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                     if (isTriggerNextStep)
                                     {
+                                        // Update current wfs status is complete
+                                        var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                        if (!resultDocChangeCurrentWfsInfo.Success)
+                                        {
+                                            Log.Logger.Error($"{nameof(AfterProcessDataCheckProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId}!");
+                                        }
                                         Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
                                     }
                                 }
@@ -894,6 +900,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 var crrWfInfoes = await GetWfInfoes(wfInstanceId.GetValueOrDefault(), accessToken);
                                 var crrWfsInfoes = crrWfInfoes.Item1;
                                 var crrWfSchemaInfoes = crrWfInfoes.Item2;
+                                var crrWfsInfo = crrWfsInfoes.First(x => x.InstanceId == wfsInstanceId);
+                                // Update current wfs status is complete
+                                var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(docInstanceId, crrWfsInfo.Id, (short)EnumJob.Status.Complete, crrWfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
+                                if (!resultDocChangeCurrentWfsInfo.Success)
+                                {
+                                    Log.Logger.Error($"{nameof(AfterProcessDataCheckProcessEvent)}: Error change current work flow step info for DocInstanceId: {docInstanceId}!");
+                                }
                                 await _moneyService.ChargeMoneyForCompleteDoc(crrWfsInfoes, crrWfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
                         }

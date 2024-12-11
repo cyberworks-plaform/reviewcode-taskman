@@ -344,5 +344,53 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+
+        public async Task<GenericResponse<int>> ChangeCurrentWorkFlowStepInfo(Guid docInstanceId, long wfsId, short wfsStatus, Guid? wfsInstanceId, bool? qaStatus, string qaNote, short? numOfRound, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "change-current-work-flow-step-info";
+                var requestParam = new Dictionary<string, string>
+                {
+                    { "docInstanceId",  docInstanceId.ToString()},
+                    { "wfsId",  wfsId.ToString()},
+                    { "wfsStatus",  wfsStatus.ToString()},
+                    { "wfsInstanceId",  wfsInstanceId.ToString()},
+                    { "qaStatus",  qaStatus.ToString()},
+                    { "qaNote",  qaNote.ToString()},
+                    { "numOfRound",  numOfRound.ToString()}
+                };
+                response = await client.PutAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, null, requestParam, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
+
+        public async Task<GenericResponse<int>> ChangeMultiCurrentWorkFlowStepInfo(string docInstanceIds, long wfsId, short wfsStatus, string accessToken = null)
+        {
+            GenericResponse<int> response;
+            try
+            {
+                var client = _clientFatory.Create();
+                var apiEndpoint = "change-multi-current-work-flow-step-info";
+                var requestParam = new Dictionary<string, string>
+                {
+                    { "wfsId",  wfsId.ToString()},
+                    { "wfsStatus",  wfsStatus.ToString()}
+                };
+                var model = new { InstanceIds = docInstanceIds };
+                response = await client.PutAsync<GenericResponse<int>>(_serviceUri, apiEndpoint, model, requestParam, null, accessToken);
+            }
+            catch (Exception ex)
+            {
+                response = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+            return response;
+        }
     }
 }
