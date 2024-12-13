@@ -251,8 +251,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                             ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                                                 inputParam.DigitizedTemplateInstanceId)
                                                             : 0;
-                                                        //Todo: Cân debug đoạn này để cho phép từ bước OCR đến thẳng bước check-final
-                                                        // cầm compare với các Handler DataEntry/Ocr khác
+                                                        
                                                         var output = new InputParam
                                                         {
                                                             FileInstanceId = inputParam.FileInstanceId,
@@ -1846,8 +1845,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 DigitizedTemplateCode = subInputParams.DigitizedTemplateCode,
                                 WorkflowInstanceId = subInputParams.WorkflowInstanceId,
                                 WorkflowStepInstanceId = subInputParams.WorkflowStepInstanceId,
-                                Value = subInputParams.IsConvergenceNextStep ? value : subInputParams.Value,
-                                OldValue = subInputParams.Value,
+                                Value = subInputParams.IsConvergenceNextStep ? RemoveUnwantedInputParamValue(value) : RemoveUnwantedInputParamValue(subInputParams.Value),
+                                OldValue = RemoveUnwantedInputParamValue(subInputParams.Value),
                                 //Input = null,
                                 ActionCode = subInputParams.ActionCode,
                                 //UserInstanceId = null,
@@ -1902,8 +1901,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             DigitizedTemplateCode = inputParam.DigitizedTemplateCode,
                             WorkflowInstanceId = inputParam.WorkflowInstanceId,
                             WorkflowStepInstanceId = inputParam.WorkflowStepInstanceId,
-                            Value = inputParam.IsConvergenceNextStep ? value : inputParam.Value,
-                            OldValue = inputParam.Value,
+                            Value = inputParam.IsConvergenceNextStep ? RemoveUnwantedInputParamValue(value) : RemoveUnwantedInputParamValue(inputParam.Value),
+                            OldValue = RemoveUnwantedInputParamValue(inputParam.Value),
                             //Input = null,
                             ActionCode = inputParam.ActionCode,
                             //UserInstanceId = null,
@@ -2594,6 +2593,22 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             return null;
         }
 
+        private string RemoveUnwantedInputParamValue(string inputParamValue)
+        {
+            if (!string.IsNullOrEmpty(inputParamValue))
+            {
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParamValue);
+                if (docItems != null && docItems.Any())
+                {
+                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                    return JsonConvert.SerializeObject(storedDocItems);
+                }
+
+                return null;
+            }
+
+            return null;
+        }
         #endregion
     }
 }
