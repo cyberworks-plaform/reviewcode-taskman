@@ -1780,6 +1780,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             return existedJob;
         }
 
+        /// <summary>
+        /// Tạo các job theo tham số 
+        /// Nếu Job đã tồn tại thì không tạo mới
+        /// Kết quả trả lại theo kiểu Tuple <isExist:boolen, List<job>
+        /// </summary>
+        /// <param name="inputParam"></param>
+        /// <param name="configStep"></param>
+        /// <param name="accessToken"></param>
+        /// <returns>
+        ///     Tuple <isExist:boolen, List<job>>
+        /// </returns>
         private async Task<Tuple<bool, List<Job>>> CreateJobs(InputParam inputParam, string configStep, string accessToken)
         {
             var jobs = new List<Job>();
