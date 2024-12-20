@@ -6030,7 +6030,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var wfsInfo = wfsInfoes.FirstOrDefault(c => c.InstanceId == job.WorkflowStepInstanceId);
                         if (wfsInfo == null)
                         {
-                            throw new Exception($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
+                            Log.Logger.Error($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
                         }
 
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
@@ -6180,7 +6180,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var wfsInfo = wfsInfoes.FirstOrDefault(c => c.InstanceId == job.WorkflowStepInstanceId);
                         if (wfsInfo == null)
                         {
-                            throw new Exception($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
+                            Log.Logger.Error($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
                         }
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                         if (!resultDocChangeProcessingStatus.Success)
