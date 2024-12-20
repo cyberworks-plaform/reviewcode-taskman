@@ -436,19 +436,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <returns></returns>
         private string RemoveUnwantedJobOldValue(string jobOldValue)
         {
-            if (!string.IsNullOrEmpty(jobOldValue))
+            var result = jobOldValue;  
+            try
             {
-                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
-                if (docItems != null && docItems.Any())
+                if (!string.IsNullOrEmpty(jobOldValue))
                 {
-                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
-                    return JsonConvert.SerializeObject(storedDocItems);
+                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
+                    if (docItems != null && docItems.Any())
+                    {
+                        var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                        result = JsonConvert.SerializeObject(storedDocItems);
+                    }
                 }
-
-                return null;
             }
-
-            return null;
+            catch (Exception ex)
+            {
+                //Do nothing
+            }
+            return result;
         }
 
         #endregion
