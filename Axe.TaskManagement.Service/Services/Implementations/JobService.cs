@@ -15,6 +15,7 @@ using Ce.Auth.Client.Dtos;
 using Ce.Auth.Client.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Caching.Interfaces;
+using Ce.Common.Lib.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
@@ -6026,6 +6027,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                         wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
 
+                        var wfsInfo = wfsInfoes.FirstOrDefault(c => c.InstanceId == job.WorkflowStepInstanceId);
+                        if (wfsInfo == null)
+                        {
+                            Log.Logger.Error($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
+                        }
+
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                         if (!resultDocChangeProcessingStatus.Success)
                         {
@@ -6091,6 +6098,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
 
                         await _repos.UpdateAsync(job);
+
+                        // Update current wfs status is processing
+                        var resultDocChangeCurrentWfsInfoChild = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), wfsInfo.Id, (short)EnumJob.Status.Processing, wfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoChild.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessDataEntryBoolProcessEvent)}: Error change current work flow step info for DocInstanceId: {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                        }
 
                         // 3. Trigger retry docs
                         var evt = new RetryDocEvent
@@ -6163,6 +6177,11 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         wfsInfoes = JsonConvert.DeserializeObject<List<WorkflowStepInfo>>(inputParam.WorkflowStepInfoes);
 
+                        var wfsInfo = wfsInfoes.FirstOrDefault(c => c.InstanceId == job.WorkflowStepInstanceId);
+                        if (wfsInfo == null)
+                        {
+                            Log.Logger.Error($"RetryErrorDocs: Error get workflow step info with WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} !");
+                        }
                         var resultDocChangeProcessingStatus = await _docClientService.ChangeStatus(job.DocInstanceId.GetValueOrDefault(), accessToken: accessToken);
                         if (!resultDocChangeProcessingStatus.Success)
                         {
@@ -6225,6 +6244,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         job.Status = (short)EnumJob.Status.Processing; //Todo: Cần refactor để chuyển status = Waiting -> đến lúc xử lý retry mới chuyển thành processing
                         job.RetryCount += 1;
                         await _repos.UpdateAsync(job);
+
+                        // Update current wfs status is processing
+                        var resultDocChangeCurrentWfsInfoChild = await _docClientService.ChangeCurrentWorkFlowStepInfo(inputParam.DocInstanceId.GetValueOrDefault(), wfsInfo.Id, (short)EnumJob.Status.Processing, wfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
+                        if (!resultDocChangeCurrentWfsInfoChild.Success)
+                        {
+                            Log.Logger.Error($"{nameof(AfterProcessDataEntryBoolProcessEvent)}: Error change current work flow step info for DocInstanceId: {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                        }
 
                         // 3. Trigger retry docs
                         var evt = new RetryDocEvent
@@ -7673,6 +7699,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == job.DocTypeFieldInstanceId);
 
+                    job.DocTypeFieldSortOrder = docItem?.SortOrder ?? 0;
                     job.MinValue = docItem?.MinValue;
                     job.MaxValue = docItem?.MaxValue;
                     job.MinLength = docItem?.MinLength ?? 0;
@@ -7711,6 +7738,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
+                            item.DocTypeFieldSortOrder = docItem?.SortOrder ?? 0;
                             item.MinValue = docItem?.MinValue;
                             item.MaxValue = docItem?.MaxValue;
                             item.MinLength = docItem?.MinLength ?? 0;
@@ -7737,6 +7765,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             var docItem = listDocTypeField.FirstOrDefault(x => x.InstanceId == item.DocTypeFieldInstanceId);
 
                             item.ShowForInput = docItem?.ShowForInput ?? false;
+                            item.DocTypeFieldSortOrder = docItem?.SortOrder ?? 0;
                             item.MinValue = docItem?.MinValue;
                             item.MaxValue = docItem?.MaxValue;
                             item.MinLength = docItem?.MinLength ?? 0;
