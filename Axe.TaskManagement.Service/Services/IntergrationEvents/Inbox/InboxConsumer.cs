@@ -358,7 +358,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                         if (evt != null)
                         {
                             // Check is Retry or Not
-                            if (inboxEventStatus == (short)EnumEventBus.ConsumMessageStatus.Nack)
+                            if (inboxEvent.RetryCount>0)
                             {
                                 evt.IsRetry = true;
                             }

@@ -1427,10 +1427,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     return GenericResponse<int>.ResultWithData(-1, "Không parse được Id");
                 }
-                var resultDocItems = new List<DocItem>();
+                var resultDocItems = new List<StoredDocItem>();
                 if (result.IsIgnore == false)
                 {
-                    resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+                    resultDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(result.Value);
 
                     if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
                     {
@@ -1464,24 +1464,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (result.IsIgnore == false) // nếu không phải bỏ qua phiếu thì thực hiện công việc như thông thường
                 {
                     //Validate Value
-                    var oldValue = job.Value;
-                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                    var isValidCheckFinalValue = IsValidCheckFinalValue(docItems, resultDocItems);
+                    var dbDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(job.Value);
+                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
                     if (!isValidCheckFinalValue)
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
-
-                    docItems.ForEach(x =>
+                    var storedDocItems = new List<StoredDocItem>(dbDocItems);
+                    storedDocItems.ForEach(x =>
                     {
                         var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
                         job.HasChange = x.Value != resultValue;
                         x.Value = resultValue;
                     });
-                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    var updatedValue = JsonConvert.SerializeObject(storedDocItems);
                     job.LastModificationDate = now;
                     job.LastModifiedBy = _userPrincipalService.UserInstanceId;
                     job.Value = updatedValue;
+                    job.OldValue = RemoveUnwantedJobOldValue(job.OldValue);
                     job.RightStatus = (short)EnumJob.RightStatus.Correct;
                     job.RightRatio = 1;
                     job.Status = (short)EnumJob.Status.Complete;
@@ -1504,7 +1504,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(crrWfsInfo.ConfigPrice);
 
                     // Tính toán Price
-                    var itemVals = JsonConvert.DeserializeObject<List<DocItem>>(oldValue);
+                    var oldValueDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(job.OldValue);
                     decimal price = 0;
                     var priceItems = new List<PriceItem>();
                     if (objConfigPrice != null)
@@ -1513,12 +1513,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             // Nếu tồn tại ít nhất 1 trường Edit thì tính theo giá Edit, nếu ko thì tính theo giá Review
                             var isPriceEditTotal = false;
-                            foreach (var itemVal in itemVals)
+                            foreach (var oldValueItem in oldValueDocItems)
                             {
-                                var docItem = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                var docItem = storedDocItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == oldValueItem.DocTypeFieldInstanceId);
                                 if (docItem != null)
                                 {
-                                    var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, itemVal.Value, docItem?.Value);
+                                    var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValueItem.Value, docItem?.Value);
                                     if (isPriceEdit)
                                     {
                                         isPriceEditTotal = true;
@@ -1539,13 +1539,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                         else if (objConfigPrice.Status == (short) EnumWorkflowStep.UnitPriceConfigType.ByField)
                         {
-                            foreach (var itemVal in itemVals)
+                            foreach (var oldValueItem in oldValueDocItems)
                             {
-                                var docItem = docItems
-                                    .FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, itemVal.Value, docItem?.Value);
+                                var docItem = storedDocItems
+                                    .FirstOrDefault(x => x.DocTypeFieldInstanceId == oldValueItem.DocTypeFieldInstanceId);
+                                var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValueItem.Value, docItem?.Value);
                                 var itemPrice = MoneyHelper.GetPriceByConfigPriceV2(crrWfsInfo.ConfigPrice,
-                                    job.DigitizedTemplateInstanceId, itemVal.DocTypeFieldInstanceId,
+                                    job.DigitizedTemplateInstanceId, oldValueItem.DocTypeFieldInstanceId,
                                     isPriceEdit);
                                 price += itemPrice;
                                 priceItems.Add(new PriceItem
@@ -1719,8 +1719,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
                 var objConfigPrice = JsonConvert.DeserializeObject<ConfigPriceV2>(crrWfsInfo.ConfigPrice);
 
-                var oldValue = job.Value;
-                var itemVals = JsonConvert.DeserializeObject<List<DocItem>>(oldValue);
+                //var oldValue = job.Value;
+                var oldValueDocItem = JsonConvert.DeserializeObject<List<DocItem>>(job.OldValue);
 
                 decimal price = 0;
                 var priceItems = new List<PriceItem>();
@@ -1728,7 +1728,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 if (result.QAStatus == true)
                 {
-                    var resultDocItems = JsonConvert.DeserializeObject<List<DocItem>>(result.Value);
+                    var resultDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(result.Value);
 
                     if (resultDocItems == null || resultDocItems.Count == 0 || resultDocItems.All(x => string.IsNullOrEmpty(x.Value)))
                     {
@@ -1736,21 +1736,22 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //Validate Value
-                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(job.Value);
-                    var isValidCheckFinalValue = IsValidCheckFinalValue(docItems, resultDocItems);
+                    var dbDocItems = JsonConvert.DeserializeObject<List<StoredDocItem>>(job.Value);
+                    var isValidCheckFinalValue = IsValidCheckFinalValue(dbDocItems, resultDocItems);
                     if (!isValidCheckFinalValue)
                     {
                         return GenericResponse<int>.ResultWithData(-1, "Dữ liệu không chính xác");
                     }
-
-                    docItems.ForEach(x =>
+                    var storedDocItems = new List<StoredDocItem>(dbDocItems);
+                    storedDocItems.ForEach(x =>
                     {
                         var resultValue = resultDocItems.FirstOrDefault(_ => _.DocTypeFieldInstanceId == x.DocTypeFieldInstanceId)?.Value;
                         job.HasChange = x.Value != resultValue;
                         x.Value = resultValue;
                     });
-                    var updatedValue = JsonConvert.SerializeObject(docItems);
+                    var updatedValue = JsonConvert.SerializeObject(storedDocItems);
                     job.Value = updatedValue;
+                    job.OldValue = RemoveUnwantedJobOldValue(job.OldValue);
 
                     // Tính toán Price
                     if (objConfigPrice != null)
@@ -1759,12 +1760,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             // Nếu tồn tại ít nhất 1 trường Edit thì tính theo giá Edit, nếu ko thì tính theo giá Review
                             var isPriceEditTotal = false;
-                            foreach (var itemVal in itemVals)
+                            foreach (var oldValueItem in oldValueDocItem)
                             {
-                                var docItem = docItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
+                                var docItem = storedDocItems.FirstOrDefault(x => x.DocTypeFieldInstanceId == oldValueItem.DocTypeFieldInstanceId);
                                 if (docItem != null)
                                 {
-                                    var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, itemVal.Value, docItem?.Value);
+                                    var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValueItem.Value, docItem?.Value);
                                     if (isPriceEdit)
                                     {
                                         isPriceEditTotal = true;
@@ -1785,13 +1786,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                         else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
                         {
-                            foreach (var itemVal in itemVals)
+                            foreach (var oldValueItem in oldValueDocItem)
                             {
-                                var docItem = docItems
-                                    .FirstOrDefault(x => x.DocTypeFieldInstanceId == itemVal.DocTypeFieldInstanceId);
-                                var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, itemVal.Value, docItem?.Value);
+                                var docItem = storedDocItems
+                                    .FirstOrDefault(x => x.DocTypeFieldInstanceId == oldValueItem.DocTypeFieldInstanceId);
+                                var isPriceEdit = MoneyHelper.IsPriceEdit(job.ActionCode, oldValueItem.Value, docItem?.Value);
                                 var itemPrice = MoneyHelper.GetPriceByConfigPriceV2(crrWfsInfo.ConfigPrice,
-                                    job.DigitizedTemplateInstanceId, itemVal.DocTypeFieldInstanceId,
+                                    job.DigitizedTemplateInstanceId, oldValueItem.DocTypeFieldInstanceId,
                                     isPriceEdit);
                                 price += itemPrice;
                                 priceItems.Add(new PriceItem
@@ -1823,7 +1824,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                         else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
                         {
-                            foreach (var itemVal in itemVals)
+                            foreach (var itemVal in oldValueDocItem)
                             {
                                 price += MoneyHelper.GetPriceByConfigPriceV2(
                                     crrWfsInfo.ConfigPrice, job.DigitizedTemplateInstanceId, itemVal.DocTypeFieldInstanceId,
@@ -1996,8 +1997,15 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);
                         var filter3 = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Processing);
 
+                        var storedFinalValue = string.Empty;
+                        if (docItems != null && docItems.Any())
+                        {
+                            var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                            storedFinalValue = JsonConvert.SerializeObject(storedDocItems);
+                        }
+
                         var updateValue = Builders<Job>.Update
-                            .Set(s => s.Value, finalValue)
+                            .Set(s => s.Value, storedFinalValue)
                             .Set(s => s.RightStatus, (short)EnumJob.RightStatus.Correct)
                             .Set(s => s.Status, (short)EnumJob.Status.Complete);
 
@@ -2192,6 +2200,30 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 }
             }
         }
+
+        /// <summary>
+        /// Convert DocItem -> StoredDocItem để tiết kiệm dung lượng lưu trữ
+        /// </summary>
+        /// <param name="jobOldValue"></param>
+        /// <returns></returns>
+        private string RemoveUnwantedJobOldValue(string jobOldValue)
+        {
+            if (!string.IsNullOrEmpty(jobOldValue))
+            {
+                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
+                if (docItems != null && docItems.Any())
+                {
+                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                    return JsonConvert.SerializeObject(storedDocItems);
+                }
+
+                return null;
+            }
+
+            return null;
+        }
+
+
     }
 
     public partial class JobService
@@ -7278,7 +7310,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
         }
 
-        private bool IsValidCheckFinalValue(List<DocItem> oldValue, List<DocItem> newValue)
+        private bool IsValidCheckFinalValue(List<StoredDocItem> oldValue, List<StoredDocItem> newValue)
         {
             if (oldValue == null || oldValue.Count == 0 || newValue == null || newValue.Count == 0)
             {

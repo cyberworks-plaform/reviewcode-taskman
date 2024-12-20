@@ -248,8 +248,15 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
         {
             if (_providerName == ProviderTypeConstants.Postgre)
             {
-                return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(
-                    $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND DATE_PART('minute', AGE(now(), \"{nameof(ExtendedInboxIntegrationEvent.LastModificationDate)}\")) >= {maxMinutesAllowedProcessing} LIMIT {BatchRecall}");
+                var sql = $"SELECT * FROM {_tableName} WHERE \"{nameof(ExtendedInboxIntegrationEvent.VirtualHost)}\" = '{_virtualHost}' AND \"{nameof(ExtendedInboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.ConsumMessageStatus.Processing} AND extract(epoch FROM (NOW() - \"LastModificationDate\")/60)::INT >= {maxMinutesAllowedProcessing} LIMIT {BatchRecall}";
+                try
+                {
+                    return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(sql);
+                }
+                catch (Exception ex)
+                {
+                    throw;
+                }
             }
 
             return await _conn.QueryAsync<ExtendedInboxIntegrationEvent>(

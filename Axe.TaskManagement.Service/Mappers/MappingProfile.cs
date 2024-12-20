@@ -47,6 +47,9 @@ namespace Axe.TaskManagement.Service.Mappers
             //Inbox
             CreateMap<ExtendedInboxIntegrationEventDto, ExtendedInboxIntegrationEvent>();
             CreateMap<ExtendedInboxIntegrationEvent, ExtendedInboxIntegrationEventDto>();
+
+            CreateMap<DocItem, StoredDocItem>();
+            CreateMap<StoredDocItem, DocItem>();
         }
     }
 }
