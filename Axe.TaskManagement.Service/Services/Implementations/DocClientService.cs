@@ -9,6 +9,7 @@ using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -71,7 +72,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
+        [SuppressMessage("Need refactor - Core service: remove DocFieldValue", "DocFieldValue")]
         public async Task<GenericResponse<List<DocItem>>> GetDocItemByDocInstanceId(Guid instanceId, string accessToken = null)
         {
             GenericResponse<List<DocItem>> response;
@@ -87,7 +88,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
+        [Obsolete("Need refactor - Core service: remove DocFieldValue")]
         public async Task<GenericResponse<List<GroupDocItem>>> GetGroupDocItemByDocInstanceIds(string instanceIds, string accessToken = null)
         {
             GenericResponse<List<GroupDocItem>> response;

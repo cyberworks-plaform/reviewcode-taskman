@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 
 namespace Axe.TaskManagement.Service.Services.Implementations
 {
+    [Obsolete("Need refactor - Core service: remove DocFieldValue", true)]
     public class DocFieldValueClientService : IDocFieldValueClientService
     {
         private readonly IBaseHttpClientFactory _clientFatory;

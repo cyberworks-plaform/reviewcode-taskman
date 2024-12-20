@@ -14,9 +14,9 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<int>> ChangeStatus(Guid instanceId, short newStatus = (short)EnumDoc.Status.Processing, string accessToken = null);
 
         Task<GenericResponse<int>> ChangeStatusMulti(string instanceIds, short newStatus = (short)EnumDoc.Status.Processing, string accessToken = null);
-
+        [Obsolete("Need refactor - Core service: remove DocFieldValue")]
         Task<GenericResponse<List<DocItem>>> GetDocItemByDocInstanceId(Guid instanceId, string accessToken = null);
-
+        [Obsolete("Need refactor - Core service: remove DocFieldValue")]
         Task<GenericResponse<List<GroupDocItem>>> GetGroupDocItemByDocInstanceIds(string instanceIds, string accessToken = null);
 
         Task<GenericResponse<bool>> CheckLockDoc(Guid docInstanceId, string accessToken = null);

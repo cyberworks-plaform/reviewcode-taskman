@@ -51,7 +51,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
         private readonly IDocTypeFieldClientService _docTypeFieldClientService;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -83,7 +82,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             IQueueLockRepository queueLockRepository,
             IMapper mapper,
             IDocTypeFieldClientService docTypeFieldClientService,
-            IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
         {
@@ -100,7 +98,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             _queueLockRepository = queueLockRepository;
             _mapper = mapper;
             _docTypeFieldClientService = docTypeFieldClientService;
-            _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
             _cachingHelper = provider.GetService<ICachingHelper>();
@@ -2453,9 +2450,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
                             inputParam.ProjectInstanceId.GetValueOrDefault(),
                             inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        var docFieldValuesRs =
-                            await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
-                                inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        //var docFieldValuesRs =
+                        //    await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
+                        //        inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
                         if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
                         {
                             var docTypeFields = docTypeFieldsRs.Data;
@@ -2478,14 +2475,14 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     IsMultipleSelection = dtf.IsMultipleSelection,
                                     CoordinateArea = dtf.CoordinateArea
                                 };
-                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
-                                {
-                                    var docFieldValues = docFieldValuesRs.Data;
-                                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
-                                    item.DocFieldValueInstanceId = dfv?.InstanceId;
-                                    item.Value = dfv?.Value;
-                                    item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
-                                }
+                                //if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
+                                //{
+                                //    var docFieldValues = docFieldValuesRs.Data;
+                                //    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
+                                //    item.DocFieldValueInstanceId = dfv?.InstanceId;
+                                //    item.Value = dfv?.Value;
+                                //}
+                                item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
 
                                 itemInputParams.Add(item);
                             }

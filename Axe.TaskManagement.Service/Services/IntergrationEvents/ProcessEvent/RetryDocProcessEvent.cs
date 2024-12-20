@@ -42,7 +42,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
         private readonly IDocTypeFieldClientService _docTypeFieldClientService;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -61,7 +60,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             IWorkflowClientService workflowClientService,
             IDocClientService docClientService,
             IDocTypeFieldClientService docTypeFieldClientService,
-            IDocFieldValueClientService docFieldValueClientService,
             IUserProjectClientService userProjectClientService,
             ITransactionClientService transactionClientService,
             IProjectStatisticClientService projectStatisticClientService,
@@ -76,7 +74,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             _workflowClientService = workflowClientService;
             _docClientService = docClientService;
             _docTypeFieldClientService = docTypeFieldClientService;
-            _docFieldValueClientService = docFieldValueClientService;
             _userProjectClientService = userProjectClientService;
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
@@ -713,9 +710,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
                             inputParam.ProjectInstanceId.GetValueOrDefault(),
                             inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        var docFieldValuesRs =
-                            await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
-                                inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        
                         if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
                         {
                             var docTypeFields = docTypeFieldsRs.Data;
@@ -738,15 +733,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     IsMultipleSelection = dtf.IsMultipleSelection,
                                     CoordinateArea = dtf.CoordinateArea
                                 };
-                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
-                                {
-                                    var docFieldValues = docFieldValuesRs.Data;
-                                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
-                                    item.DocFieldValueInstanceId = dfv?.InstanceId;
-                                    item.Value = dfv?.Value;
-                                    item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
-                                }
-
+                                
+                                item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
                                 itemInputParams.Add(item);
                             }
                         }

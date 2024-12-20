@@ -45,7 +45,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         private readonly IMapper _mapper;
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -67,7 +66,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             IProjectStatisticClientService projectStatisticClientService,
             IDocClientService docClientService,
             IServiceProvider provider,
-            IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration,
             IDocTypeFieldClientService docTypeFieldClientService)
@@ -81,7 +79,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             _transactionClientService = transactionClientService;
             _projectStatisticClientService = projectStatisticClientService;
             _docClientService = docClientService;
-            _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
             _cachingHelper = provider.GetService<ICachingHelper>();

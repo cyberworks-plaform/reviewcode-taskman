@@ -86,7 +86,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             ICachingHelper cachingHelper,
             IEventBus eventBus,
             ITaskRepository taskRepository,
-            IDocFieldValueClientService docFieldValueClientService,
             IProjectTypeClientService projectTypeClientService,
             IProjectClientService projectClientService,
             IWorkflowStepTypeClientService workflowStepTypeClientService,
