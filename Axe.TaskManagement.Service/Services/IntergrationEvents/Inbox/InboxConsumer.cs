@@ -105,6 +105,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                     {
                                         try
                                         {
+                                            if(inboxEvent.Status == (short)EnumEventBus.ConsumMessageStatus.Nack && inboxEvent.RetryCount<=0)
+                                            {
+                                                inboxEvent.RetryCount = 1;
+                                            }    
                                             inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
                                             inboxEvent.ServiceInstanceIdProcessed = Dns.GetHostName();
 
@@ -182,7 +186,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                             {
                                                 try
                                                 {
+                                                    if (inboxEvent.Status == (short)EnumEventBus.ConsumMessageStatus.Nack && inboxEvent.RetryCount <= 0)
+                                                    {
+                                                        inboxEvent.RetryCount = 1;
+                                                    }
                                                     inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
+                                                    inboxEvent.ServiceInstanceIdProcessed = Dns.GetHostName();
+
 
                                                     var rowAffected = await inboxIntegrationEventRepository.UpdateAsync(inboxEvent);
                                                     // Verify this inboxEvent record is processing
