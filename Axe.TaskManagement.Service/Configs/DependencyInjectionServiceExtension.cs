@@ -43,6 +43,7 @@ namespace Axe.TaskManagement.Service.Configs
 
             // Outbox
             services.AddHostedService<OutboxPublisher>();
+            services.AddScoped<IOutBoxIntegrationEventService, OutBoxIntegrationEventService>();
 
             // Inbox
             services.AddHostedService<InboxConsumer>();

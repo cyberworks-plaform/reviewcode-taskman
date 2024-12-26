@@ -3,6 +3,7 @@ using Axe.TaskManagement.Data.EntityExtensions;
 using Axe.TaskManagement.Model.Entities;
 using Axe.TaskManagement.Service.Dtos;
 using Axe.Utility.EntityExtensions;
+using Ce.Constant.Lib.Dtos;
 using MongoDB.Bson;
 
 namespace Axe.TaskManagement.Service.Mappers
@@ -47,6 +48,10 @@ namespace Axe.TaskManagement.Service.Mappers
             //Inbox
             CreateMap<ExtendedInboxIntegrationEventDto, ExtendedInboxIntegrationEvent>();
             CreateMap<ExtendedInboxIntegrationEvent, ExtendedInboxIntegrationEventDto>();
+
+            //Outbox
+            CreateMap<OutboxIntegrationEventDto, OutboxIntegrationEvent>();
+            CreateMap<OutboxIntegrationEvent, OutboxIntegrationEventDto>();
 
             CreateMap<DocItem, StoredDocItem>();
             CreateMap<StoredDocItem, DocItem>();
