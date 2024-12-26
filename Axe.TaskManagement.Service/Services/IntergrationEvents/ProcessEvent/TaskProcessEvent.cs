@@ -2450,9 +2450,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
                             inputParam.ProjectInstanceId.GetValueOrDefault(),
                             inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        //var docFieldValuesRs =
-                        //    await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
-                        //        inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        
                         if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
                         {
                             var docTypeFields = docTypeFieldsRs.Data;
@@ -2473,15 +2471,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     MaxValue = dtf.MaxValue,
                                     PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
                                     IsMultipleSelection = dtf.IsMultipleSelection,
-                                    CoordinateArea = dtf.CoordinateArea
+                                    CoordinateArea = dtf.CoordinateArea,
+                                    Value = string.Empty,
                                 };
-                                //if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
-                                //{
-                                //    var docFieldValues = docFieldValuesRs.Data;
-                                //    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
-                                //    item.DocFieldValueInstanceId = dfv?.InstanceId;
-                                //    item.Value = dfv?.Value;
-                                //}
                                 item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
 
                                 itemInputParams.Add(item);

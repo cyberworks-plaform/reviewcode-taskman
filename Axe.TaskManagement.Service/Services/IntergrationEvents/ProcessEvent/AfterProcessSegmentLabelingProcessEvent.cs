@@ -334,7 +334,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
                     var docTypeFieldInstanceIds = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
 
-
                     foreach (var docItem in docItems)
                     {
                         if (!string.IsNullOrEmpty(docItem.CoordinateArea))
@@ -349,7 +348,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         }
                     }
 
-
                     if (itemDocFieldValueUpdateValues.Any())
                     {
                         var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
@@ -357,22 +355,34 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
                         };
                         // Outbox
-                        var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+                        var outboxEntity = new OutboxIntegrationEvent
                         {
                             ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
                             ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt)
-                        });
-                        var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                        if (isAck)
+                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
+                        };
+                        try
                         {
-                            await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                            var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
                         }
-                        else
+                        catch (Exception ex)
                         {
-                            outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                            await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                            Log.Logger.Error(ex, "Error publish message for event: DocFieldValueUpdateMultiValueEvent");
+                            try
+                            {
+                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                outboxEntity.LastModificationDate = DateTime.UtcNow;
+                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+
+                            }
+                            catch (Exception exDB)
+                            {
+                                Log.Logger.Error(exDB, "Error add outbox message to DB for event: DocFieldValueUpdateMultiValueEvent");
+                                throw;
+                            }
+
                         }
+
                     }
 
                     // 4. Trigger bước tiếp theo
@@ -742,21 +752,30 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         {
             bool isNextStepHeavyJob = WorkflowHelper.IsHeavyJob(nextWfsActionCode);
             // Outbox
-            var outboxEntity = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
+            var outboxEntity = new OutboxIntegrationEvent
             {
                 ExchangeName = isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower(),
                 ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
                 Data = JsonConvert.SerializeObject(evt)
-            });
-            var isAck = _eventBus.Publish(evt, isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower());
-            if (isAck)
+            };
+            try
             {
-                await _outboxIntegrationEventRepository.DeleteAsync(outboxEntity);
+                _eventBus.Publish(evt, isNextStepHeavyJob ? EventBusConstants.EXCHANGE_HEAVY_JOB : nameof(TaskEvent).ToLower());
             }
-            else
+            catch (Exception ex)
             {
-                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
+                Log.Logger.Error(ex, "Error publish message for event: TaskEvent");
+                try
+                {
+                    outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                    outboxEntity.LastModificationDate = DateTime.UtcNow;
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+                }
+                catch (Exception exDB)
+                {
+                    Log.Logger.Error(exDB, "Error add outbox message to DB for event: TaskEvent");
+                    throw;
+                }
             }
         }
 

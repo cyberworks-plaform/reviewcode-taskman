@@ -731,7 +731,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     MaxValue = dtf.MaxValue,
                                     PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
                                     IsMultipleSelection = dtf.IsMultipleSelection,
-                                    CoordinateArea = dtf.CoordinateArea
+                                    CoordinateArea = dtf.CoordinateArea,
+                                    Value = string.Empty,
                                 };
                                 
                                 item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
