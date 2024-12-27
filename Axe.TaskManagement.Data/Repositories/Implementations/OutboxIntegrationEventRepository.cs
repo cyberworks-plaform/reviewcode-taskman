@@ -73,7 +73,10 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
         public async Task<PagedList<OutboxIntegrationEvent>> GetPagingCusAsync(PagingRequest request, CommandType commandType = CommandType.Text)
         {
-
+            if (request != null && request.Filters != null && request.Filters.Count() == 1)
+            {
+                request.Filters[0].Logic = LogicType.None;
+            }
             string sqlWhere = GenerateWhereClause(request.Filters);
 
             string whereClause = string.Empty;
