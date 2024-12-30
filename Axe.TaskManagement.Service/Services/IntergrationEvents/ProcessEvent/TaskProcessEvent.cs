@@ -300,10 +300,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         else if (prevWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)   // Điều kiện Đúng/Sai theo Meta
                                         {
                                             var lstDocItemFull = new List<DocItem>();
-                                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                                            var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                            if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                                             {
-                                                lstDocItemFull = lstDocItemFullRs.Data;
+                                                lstDocItemFull = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
                                             }
 
                                             foreach (var itemInput in inputParam.ItemInputParams)
@@ -872,10 +872,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 if (isNextStepRequiredAllBeforeStepComplete)
                                                 {
                                                     var lstDocItemFull = new List<DocItem>();
-                                                    var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                                                    if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                                                    var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                    if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                                                     {
-                                                        lstDocItemFull = lstDocItemFullRs.Data;
+                                                        lstDocItemFull = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
                                                     }
                                                     if (lstDocItemFull != null && lstDocItemFull.Any())
                                                     {

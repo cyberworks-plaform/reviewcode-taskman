@@ -788,22 +788,19 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
                         if (isNextStepRequiredAllBeforeStepComplete)
                         {
-                            var lstDocItemFull = new List<DocItem>();
-                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                            var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                            if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                             {
-                                lstDocItemFull = lstDocItemFullRs.Data;
-                            }
-
-                            if (lstDocItemFull != null && lstDocItemFull.Any())
-                            {
-                                var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
-                                var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
-                                if (missDocItem != null && missDocItem.Count > 0)
+                                var listDocTypeFields = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
+                                foreach (var field in listDocTypeFields)
                                 {
-                                    docItems.AddRange(missDocItem);
+                                    if (!docItems.Any(x => x.DocTypeFieldInstanceId == field.DocTypeFieldInstanceId))
+                                    {
+                                        docItems.Add(field); // add missing field
+                                    }
                                 }
                             }
+
                             value = JsonConvert.SerializeObject(docItems);
                         }
                         else
@@ -1325,20 +1322,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var isNextStepRequiredAllBeforeStepComplete = WorkflowHelper.IsRequiredAllBeforeStepComplete(wfsInfoes, wfSchemaInfoes, nextWfsInfo.InstanceId);
                         if (isNextStepRequiredAllBeforeStepComplete)
                         {
-                            var lstDocItemFull = new List<DocItem>();
-                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                            var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                            if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                             {
-                                lstDocItemFull = lstDocItemFullRs.Data;
-                            }
-
-                            if (lstDocItemFull != null && lstDocItemFull.Any())
-                            {
-                                var existDocTypeFieldInstanceId = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
-                                var missDocItem = lstDocItemFull.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
-                                if (missDocItem != null && missDocItem.Count > 0)
+                                var listDocTypeFields = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
+                                foreach (var field in listDocTypeFields)
                                 {
-                                    docItems.AddRange(missDocItem);
+                                    if (!docItems.Any(x => x.DocTypeFieldInstanceId == field.DocTypeFieldInstanceId))
+                                    {
+                                        docItems.Add(field); // add missing field
+                                    }
                                 }
                             }
                             value = JsonConvert.SerializeObject(docItems);
@@ -1507,7 +1500,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     var priceItems = new List<PriceItem>();
                     if (objConfigPrice != null)
                     {
-                        if (objConfigPrice.Status == (short) EnumWorkflowStep.UnitPriceConfigType.ByStep)
+                        if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByStep)
                         {
                             // Nếu tồn tại ít nhất 1 trường Edit thì tính theo giá Edit, nếu ko thì tính theo giá Review
                             var isPriceEditTotal = false;
@@ -1535,7 +1528,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 RightStatus = (short)EnumJob.RightStatus.Correct
                             });
                         }
-                        else if (objConfigPrice.Status == (short) EnumWorkflowStep.UnitPriceConfigType.ByField)
+                        else if (objConfigPrice.Status == (short)EnumWorkflowStep.UnitPriceConfigType.ByField)
                         {
                             foreach (var oldValueItem in oldValueDocItems)
                             {
@@ -7559,17 +7552,32 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             //Bắt đầu tiến trình xử lý: tìm metadata còn thiếu trong value của job so với bộ meta đầy đủ của loại tài liệu
             // lấy danh sách bộ Field cho từng loại tài liệu -> với mỗi job -> kiểm tra xem trong value còn thiếu Field nào  còn thiếu trường nào thì bổ sung
-
+            var tempDictionaryDocItemByTemplate = new Dictionary<Guid, List<DocItem>>();
             var lstDocItemFull = new List<GroupDocItem>();
 
-            //lấy danh sách các bộ metadata field
-            var listGuid = updatedJobs.Select(x => x.DocInstanceId.Value).Distinct().ToList<Guid>();
-            var listDocInstanceId = JsonConvert.SerializeObject(listGuid);
-
-            var groupDocItemResponse = await _docClientService.GetGroupDocItemByDocInstanceIds(listDocInstanceId, accessToken);
-            if (groupDocItemResponse.Success && groupDocItemResponse.Data != null)
+            //lấy danh sách các bộ metadata field cho từng loại tài liệu
+            foreach (var job in updatedJobs)
             {
-                lstDocItemFull = groupDocItemResponse.Data;
+                //lấy danh sách DocItem theo mẫu số hóa 
+                if (!tempDictionaryDocItemByTemplate.ContainsKey(job.DigitizedTemplateInstanceId.Value))
+                {
+                    var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                    if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
+                    {
+                        var listDocItemByTemplate = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
+                        tempDictionaryDocItemByTemplate.Add(job.DigitizedTemplateInstanceId.Value, listDocItemByTemplate);
+                    }
+                }
+
+                if (tempDictionaryDocItemByTemplate.ContainsKey(job.DigitizedTemplateInstanceId.Value))
+                {
+                    var listDocItem = tempDictionaryDocItemByTemplate[job.DigitizedTemplateInstanceId.Value];
+                    lstDocItemFull.Add(new GroupDocItem()
+                    {
+                        DocInstanceId = job.DocInstanceId.GetValueOrDefault(),
+                        DocItems = listDocItem
+                    });
+                }
             }
 
             //duyệt từng job -> kiểm tra trong value nếu thiếu thì bổ sung

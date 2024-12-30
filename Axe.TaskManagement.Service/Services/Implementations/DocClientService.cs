@@ -72,6 +72,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+        /// <summary>
+        /// Hàm này sẽ lấy giá trị từ Docs.FinalValue của một DocInstance
+        /// Nếu chỉ cần lấy danh sách các DocItem mà không cần value thì sử dụng class DocTypeField
+        /// </summary>
+        /// <param name="instanceId"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         [SuppressMessage("Need refactor - Core service: remove DocFieldValue", "DocFieldValue")]
         public async Task<GenericResponse<List<DocItem>>> GetDocItemByDocInstanceId(Guid instanceId, string accessToken = null)
         {
@@ -88,6 +95,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
+        /// <summary>
+        /// Hàm này sẽ lấy một danh sách các DocItem được chuyển đổi từ Docs.FinalValue 
+        /// Nếu chỉ cần lấy danh sách các DocItem mà không cần value thì sử dụng class DocTypeField
+        /// </summary>
+        /// <param name="instanceIds"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         [Obsolete("Need refactor - Core service: remove DocFieldValue")]
         public async Task<GenericResponse<List<GroupDocItem>>> GetGroupDocItemByDocInstanceIds(string instanceIds, string accessToken = null)
         {
