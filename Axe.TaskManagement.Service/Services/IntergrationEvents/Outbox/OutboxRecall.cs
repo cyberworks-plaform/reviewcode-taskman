@@ -8,38 +8,33 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
+namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
 {
-    public class InboxRecall : BackgroundService
+    /// <summary>
+    /// Thu hồi các message trong outbox đang ở treo ở trạng thái sending (status = 1) lâu hơn 5 phút
+    /// Tự động check 5 phút 1 lần
+    /// </summary>
+    public class OutboxRecall : BackgroundService
     {
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
-        private readonly TimeSpan _timeSpan = TimeSpan.FromMinutes(5);
-        private readonly TimeSpan _inboxRecallHangingMessage = TimeSpan.FromMinutes(30);
+        private readonly TimeSpan _timeSpan = TimeSpan.FromMinutes(5); // 5 phút chạy 1 lần
         private bool _isFirstTime = true;
 
-        public InboxRecall(IConfiguration configuration, IServiceScopeFactory serviceScopeFactory)
+        public OutboxRecall(IConfiguration configuration, IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
-            if (configuration["RabbitMq:InboxRecallHangingMessage"] != null)
-            {
-                if (TimeSpan.TryParse(configuration["RabbitMq:InboxRecallHangingMessage"], out var temp))
-                {
-                    _inboxRecallHangingMessage = temp;
-                }
-            }
         }
         public override Task StartAsync(CancellationToken cancellationToken)
         {
-            Log.Information("InboxRecall background service start working");
+            Log.Information("OutboxRecall background service start working");
             return base.StartAsync(cancellationToken);
         }
         public override async Task StopAsync(CancellationToken stoppingToken)
         {
-            Log.Information("InboxRecall background service stop working");
+            Log.Information("OutboxRecall background service stop working");
             await base.StopAsync(stoppingToken);
         }
-
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
@@ -54,20 +49,28 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                     }
 
                     using var scope = _serviceScopeFactory.CreateScope();
-                    using (var inboxIntegrationEventRepository = scope.ServiceProvider.GetRequiredService<IExtendedInboxIntegrationEventRepository>())
+                    using (var outboxRepo = scope.ServiceProvider.GetRequiredService<IOutboxIntegrationEventRepository>())
                     {
-                        var recallInboxEvents = await inboxIntegrationEventRepository.GetsRecallInboxIntegrationEventAsync((int)_inboxRecallHangingMessage.TotalMinutes);
-                        foreach (var recallInboxEvent in recallInboxEvents)
+                        var recallOutboxMesssages = await outboxRepo.GetsRecallOutboxIntegrationEventAsync((int)_timeSpan.TotalMinutes);
+                        foreach (var message in recallOutboxMesssages)
                         {
-                            recallInboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Nack;
-                            recallInboxEvent.Message = $"InboxRecallHangingMessage: {_inboxRecallHangingMessage}";
-                            await inboxIntegrationEventRepository.UpdateAsync(recallInboxEvent);
+                            try
+                            {
+                                message.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
+                                message.LastModificationDate = DateTime.UtcNow;
+                                await outboxRepo.UpdateAsync(message);
+                            }
+                            catch (Exception exMessage)
+                            {
+                                //do nothing just log error
+                                Log.Error(exMessage, $"Error in recall messsage: {exMessage.Message}");
+                            }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, $"Error in InboxRecall background service: {ex.Message}");
+                    Log.Error(ex, $"Error in OutboxRecall background service: {ex.Message}");
                 }
                 finally
                 {
