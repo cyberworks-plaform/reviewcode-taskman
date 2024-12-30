@@ -54,5 +54,17 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.UpdateMultiPriorityAsync(serviceCode, exchangeName, projectInstanceId, priority, batchSize));
         }
+        [HttpGet]
+        [Route("reset-retry-count/{intergrationEventId}/{retryCount}")]
+        public async Task<IActionResult> ResetRetryCountAsync(Guid intergrationEventId, short retryCount = 1)
+        {
+            return ResponseResult(await _service.ResetRetryCountAsync(intergrationEventId, retryCount));
+        }
+        [HttpPost]
+        [Route("reset-multi-retry-count")]
+        public async Task<IActionResult> ResetMultiRetryCountsAsync(string intergrationEventIds, short retryCount = 1)
+        {
+            return ResponseResult(await _service.ResetMultiRetryCountsAsync(intergrationEventIds, retryCount));
+        }
     }
 }

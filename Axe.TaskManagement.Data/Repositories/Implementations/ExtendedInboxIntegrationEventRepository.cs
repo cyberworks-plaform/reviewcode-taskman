@@ -314,7 +314,47 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
 
             return result;
         }
+        public async Task<int> ResetRetryCountAsync(Guid intergrationEventId, short retryCount)
+        {
+            if (_providerName == "Npgsql")
+            {
+                return await _conn.ExecuteAsync($"UPDATE {_tableName} SET \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" = @RetryCount  WHERE \"{nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)}\"=@IntergrationEventId", new
+                {
+                    IntergrationEventId = intergrationEventId,
+                    RetryCount = retryCount
+                });
+            }
 
+            return await _conn.ExecuteAsync($"DELETE {_tableName} SET {nameof(ExtendedInboxIntegrationEvent.RetryCount)} = @RetryCount WHERE {nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)}=@IntergrationEventId", new
+            {
+                IntergrationEventId = intergrationEventId,
+                RetryCount = retryCount
+            });
+        }
+
+        public async Task<int> ResetMultiRetryCountsAsync(List<Guid> intergrationEventIds, short retryCount)
+        {
+            if (_providerName == "Npgsql")
+            {
+                var sql = $"UPDATE {_tableName} SET \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" = @RetryCount WHERE \"{nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)}\" = ANY(@IntergrationEventIds)";
+
+                return await _conn.ExecuteAsync(sql, new
+                {
+                    RetryCount = retryCount,
+                    IntergrationEventIds = intergrationEventIds.ToArray()
+                });
+            }
+            else
+            {
+                var sql = $@" UPDATE {_tableName} SET {nameof(ExtendedInboxIntegrationEvent.RetryCount)} = @RetryCount WHERE {nameof(ExtendedInboxIntegrationEvent.IntergrationEventId)} IN @IntergrationEventIds";
+
+                return await _conn.ExecuteAsync(sql, new
+                {
+                    RetryCount = retryCount,
+                    IntergrationEventIds = intergrationEventIds
+                });
+            }
+        }
         #region Private methods
 
         private async Task<IEnumerable<ExtendedInboxIntegrationEvent>> GetsUpdatePriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100)

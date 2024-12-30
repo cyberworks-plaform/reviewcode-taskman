@@ -25,4 +25,6 @@ public interface IExtendedInboxIntegrationEventRepository : IDapperBaseRepositor
     Task<Dictionary<int, long>> GetTotalAndStatusCountAsync();
 
     Task<int> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100);
+    Task<int> ResetRetryCountAsync(Guid intergrationEventId, short retryCount);
+    Task<int> ResetMultiRetryCountsAsync(List<Guid> intergrationEventIds, short retryCount);
 }
