@@ -14,4 +14,5 @@ public interface IOutboxIntegrationEventRepository : IDapperBaseRepository<Outbo
     Task<IEnumerable<OutboxIntegrationEvent>> GetOutboxIntegrationEventV2();
     Task<Dictionary<int, long>> GetTotalAndStatusCountAsync();
     Task<PagedList<OutboxIntegrationEvent>> GetPagingCusAsync(PagingRequest request, CommandType commandType = CommandType.Text);
+    Task<IEnumerable<OutboxIntegrationEvent>> GetsRecallOutboxIntegrationEventAsync(int maxMinutesAllowedProcessing);
 }

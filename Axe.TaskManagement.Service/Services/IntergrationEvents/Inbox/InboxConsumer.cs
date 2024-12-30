@@ -33,6 +33,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
         private readonly int _batchSize = 1;
         private static bool _isRunning;
         private readonly bool _deleteAckedInbox = true;
+        private bool _isFirstTime = true;
+
         public InboxConsumer(IConfiguration configuration, IServiceScopeFactory serviceScopeFactory)
         {
             _serviceScopeFactory = serviceScopeFactory;
@@ -80,6 +82,13 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                 var isInboxEmpty = false;
                 try // try consume in batch
                 {
+                    if (_isFirstTime) // if is first time, wait 1 minute before start => this is strick to avoid service crash at startup time
+                    {
+                        _isFirstTime = false;
+                        await Task.Delay(TimeSpan.FromMinutes(1));
+                        continue;
+                    }
+
                     if (!_isRunning)
                     {
                         _isRunning = true;
@@ -105,10 +114,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                     {
                                         try
                                         {
-                                            if(inboxEvent.Status == (short)EnumEventBus.ConsumMessageStatus.Nack && inboxEvent.RetryCount<=0)
+                                            if (inboxEvent.Status == (short)EnumEventBus.ConsumMessageStatus.Nack && inboxEvent.RetryCount <= 0)
                                             {
                                                 inboxEvent.RetryCount = 1;
-                                            }    
+                                            }
                                             inboxEvent.Status = (short)EnumEventBus.ConsumMessageStatus.Processing;
                                             inboxEvent.ServiceInstanceIdProcessed = Dns.GetHostName();
 
@@ -231,7 +240,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                 }
                 catch (Exception ex)
                 {
-                    Log.Error(ex, $"Error in consuming inbox event: {ex.Message}");
+                    Log.Error(ex, $"Error in InboxConsumer background service: {ex.Message}");
                     await Task.Delay(_timeSpanInboxInterval, stoppingToken);
                     _isRunning = false;
                 }
@@ -239,12 +248,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
         }
         public override Task StartAsync(CancellationToken cancellationToken)
         {
-            Log.Information("Inbox Consumer background service start working");
+            Log.Information("InboxConsumer background service start working");
             return base.StartAsync(cancellationToken);
         }
         public override async Task StopAsync(CancellationToken stoppingToken)
         {
-            Log.Information("Inbox Consumer background service stop working");
+            Log.Information("InboxConsumer background service stop working");
             await base.StopAsync(stoppingToken);
         }
 
@@ -368,7 +377,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                         if (evt != null)
                         {
                             // Check is Retry or Not
-                            if (inboxEvent.RetryCount>0)
+                            if (inboxEvent.RetryCount > 0)
                             {
                                 evt.IsRetry = true;
                             }
@@ -386,7 +395,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"Error in processing inbox message: {ex.Message}");
+                    Log.Error(ex, $"Error in processing inbox message: {ex.Message}");
                     processEventResult.IsAck = false;
                     processEventResult.Message = ex.Message;
                     processEventResult.StackTrace = ex.StackTrace;

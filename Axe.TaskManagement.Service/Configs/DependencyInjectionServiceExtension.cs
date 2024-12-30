@@ -44,6 +44,7 @@ namespace Axe.TaskManagement.Service.Configs
             // Outbox
             services.AddHostedService<OutboxPublisher>();
             services.AddScoped<IOutBoxIntegrationEventService, OutBoxIntegrationEventService>();
+            services.AddHostedService<OutboxRecall>();
 
             // Inbox
             services.AddHostedService<InboxConsumer>();
