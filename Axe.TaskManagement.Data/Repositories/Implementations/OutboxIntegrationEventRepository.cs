@@ -114,5 +114,32 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
                 TotalPages = (int)Math.Ceiling((decimal)totalfilter / request.PageInfo.PageSize)
             };
         }
+
+
+
+        /// <summary>
+        /// Lấy ra các message trong outbox đang ở trạng thái sending (status = 1) lâu hơn thời gian cho phép
+        /// </summary>
+        /// <param name="maxMinutesAllowedProcessing"></param>
+        /// <returns></returns>
+        public async Task<IEnumerable<OutboxIntegrationEvent>> GetsRecallOutboxIntegrationEventAsync(int maxMinutesAllowedProcessing)
+        {
+            if (_providerName == ProviderTypeConstants.Postgre)
+            {
+                var sql = $"SELECT * FROM {_tableName} WHERE \"{nameof(OutboxIntegrationEvent.Status)}\" = {(short)EnumEventBus.PublishMessageStatus.Publishing} AND extract(epoch FROM (NOW() - \"LastModificationDate\")/60)::INT >= {maxMinutesAllowedProcessing} LIMIT {BatchPublish}";
+                try
+                {
+                    return await _conn.QueryAsync<OutboxIntegrationEvent>(sql);
+                }
+                catch (Exception ex)
+                {
+                    throw;
+                }
+
+            }
+
+            return await _conn.QueryAsync<OutboxIntegrationEvent>(
+                $"SELECT TOP ({BatchPublish}) * FROM {_tableName} WHERE {nameof(OutboxIntegrationEvent.Status)} = {(short)EnumEventBus.PublishMessageStatus.Publishing} AND DATEDIFF(minute, {nameof(OutboxIntegrationEvent.LastModificationDate)}, GETUTCDATE()) >= {maxMinutesAllowedProcessing}");
+        }
     }
 }
