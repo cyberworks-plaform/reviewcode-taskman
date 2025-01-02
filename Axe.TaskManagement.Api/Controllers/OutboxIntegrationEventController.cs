@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using System.Threading.Tasks;
 using System;
+using Ce.Constant.Lib.Dtos;
 
 namespace Axe.TaskManagement.Api.Controllers
 {
@@ -46,6 +47,18 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetById(long id)
         {
             return ResponseResult(await _service.GetByIdAsync(id));
+        }
+        [HttpPost]
+        [Route("add-async")]
+        public async Task<IActionResult> AddAsync(OutboxIntegrationEvent model) 
+        {
+            return ResponseResult(await _service.AddAsync(model));
+        }
+        [HttpPost]
+        [Route("add-async-v2")]
+        public async Task<IActionResult> AddAsyncV2(OutboxIntegrationEvent model)
+        {
+            return ResponseResult(await _service.AddAsyncV2(model));
         }
     }
 }

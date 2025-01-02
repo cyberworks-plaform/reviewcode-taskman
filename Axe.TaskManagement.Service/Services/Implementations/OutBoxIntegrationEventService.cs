@@ -117,5 +117,33 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             return result;
         }
+        public async Task<GenericResponse<long>> AddAsync(OutboxIntegrationEvent model)
+        {
+            GenericResponse<long> result;
+            try
+            {
+                result = GenericResponse<long>.ResultWithData(await _outboxIntegrationEventRepository.AddAsync(model));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<long>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public async Task<GenericResponse<OutboxIntegrationEvent>> AddAsyncV2(OutboxIntegrationEvent model)
+        {
+            GenericResponse<OutboxIntegrationEvent> result;
+            try
+            {
+                result = GenericResponse<OutboxIntegrationEvent>.ResultWithData(await _outboxIntegrationEventRepository.AddAsyncV2(model));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<OutboxIntegrationEvent>.ResultWithError(400, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
     }
 }
