@@ -397,7 +397,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <returns></returns>
         private string RemoveUnwantedJobOldValue(string jobOldValue)
         {
-            var result = jobOldValue;
+            var result = jobOldValue;  
             try
             {
                 if (!string.IsNullOrEmpty(jobOldValue))
@@ -411,9 +411,9 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                 }
             }
-            catch 
-            { 
-                //do nothing
+            catch (Exception ex)
+            {
+                //Do nothing
             }
             return result;
         }

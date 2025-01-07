@@ -15,5 +15,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<long>> TotalCountAsync();
         Task<GenericResponse<Dictionary<int, long>>> GetTotalAndStatusCountAsync();
         Task<GenericResponse<int>> UpdateMultiPriorityAsync(string serviceCode, string exchangeName, Guid projectInstanceId, short priority, int batchSize = 100);
+        Task<GenericResponse<int>> ResetRetryCountAsync(Guid intergrationEventId, short retryCount);
+        Task<GenericResponse<int>> ResetMultiRetryCountsAsync(string intergrationEventIds, short retryCount);
     }
 }

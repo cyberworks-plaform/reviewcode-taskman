@@ -25,6 +25,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
         private readonly IServiceScopeFactory _serviceScopeFactory;
 
         private readonly TimeSpan _timeSpan = TimeSpan.FromSeconds(30);
+        private bool _isFirstTime = true;
 
         public OutboxPublisher(IConfiguration configuration, IEventBus eventBus, IServiceScopeFactory serviceScopeFactory)
         {
@@ -39,12 +40,30 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
             }
         }
 
+        public override Task StartAsync(CancellationToken cancellationToken)
+        {
+            Log.Information("OutboxPublisher background service start working");
+            return base.StartAsync(cancellationToken);
+        }
+        public override async Task StopAsync(CancellationToken stoppingToken)
+        {
+            Log.Information("OutboxPublisher background service stop working");
+            await base.StopAsync(stoppingToken);
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             while (!stoppingToken.IsCancellationRequested)
             {
                 try
                 {
+                    if (_isFirstTime) // if is first time, wait 1 minute before start => this is strick to avoid service crash at startup time
+                    {
+                        _isFirstTime = false;
+                        await Task.Delay(TimeSpan.FromMinutes(1));
+                        continue;
+                    }
+
                     using var scope = _serviceScopeFactory.CreateScope();
                     using (var outboxIntegrationEventRepository = scope.ServiceProvider.GetRequiredService<IOutboxIntegrationEventRepository>())
                     {
@@ -126,7 +145,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                         var evt = JsonConvert.DeserializeObject<TaskEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
-                                   
+
                                     else
                                     {
                                         Log.Error($"Can not publish: {outboxEvent.ExchangeName}");
@@ -149,7 +168,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                 }
                 catch (Exception ex)
                 {
-                    Log.Error($"Error in publishing outbox event: {ex.Message}");
+                    Log.Error(ex, $"Error in OutboxPublisher background service: {ex.Message}");
                 }
                 finally
                 {

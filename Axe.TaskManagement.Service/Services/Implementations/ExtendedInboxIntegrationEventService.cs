@@ -6,8 +6,10 @@ using Axe.TaskManagement.Service.Services.Interfaces;
 using Ce.Common.Lib.Abstractions;
 using Ce.Common.Lib.Services;
 using Ce.Constant.Lib.Dtos;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -135,6 +137,49 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             try
             {
                 result = GenericResponse<int>.ResultWithData(await _repository.UpdateMultiPriorityAsync(serviceCode, exchangeName, projectInstanceId, priority, batchSize));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public async Task<GenericResponse<int>> ResetRetryCountAsync(Guid intergrationEventId, short retryCount)
+        {
+            GenericResponse<int> result;
+            try
+            {
+                result = GenericResponse<int>.ResultWithData(await _repository.ResetRetryCountAsync(intergrationEventId, retryCount));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
+        public async Task<GenericResponse<int>> ResetMultiRetryCountsAsync(string intergrationEventIds, short retryCount)
+        {
+            GenericResponse<int> result;
+            try
+            {
+                if (!string.IsNullOrEmpty(intergrationEventIds))
+                {
+                    var lstIntergrationEventId = JsonConvert.DeserializeObject<List<Guid>>(intergrationEventIds);
+                    if (intergrationEventIds != null && intergrationEventIds.Any())
+                    {
+                        result = GenericResponse<int>.ResultWithData(await _repository.ResetMultiRetryCountsAsync(lstIntergrationEventId, retryCount));
+                    }
+                    else
+                    {
+                        result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, "IntergrationEventIds is empty", "IntergrationEventIds is empty");
+                    }
+                }
+                else
+                {
+                    result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, "IntergrationEventIds is empty", "IntergrationEventIds is empty");
+                }
             }
             catch (Exception ex)
             {
