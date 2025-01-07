@@ -23,7 +23,6 @@ using Ce.EventBus.Lib.Abstractions;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Ce.Workflow.Client.Dtos;
 using Ce.Workflow.Client.Services.Interfaces;
-using DocumentFormat.OpenXml.Vml.Office;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.Extensions.Configuration;
 using MiniExcelLibs;
@@ -1975,14 +1974,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         // Update all status DocFieldValues is complete
                         var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParam.Value);
-                        var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
-                        {
-                            DocFieldValueInstanceIds = docItems
-                                .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
-                        };
-                        // Outbox
-                        await PublishEvent<DocFieldValueUpdateStatusCompleteEvent>(docFieldValueUpdateStatusCompleteEvt);
-
+                       
                         // Cập nhật giá trị value
                         var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
                         var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);

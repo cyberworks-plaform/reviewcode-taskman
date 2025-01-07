@@ -107,21 +107,15 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     var jobs = evt.Jobs;
                     var userInstanceId = jobs.First().UserInstanceId.GetValueOrDefault();
                     var jobEnds = new List<JobDto>();
-                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
                     var projectInstanceId = jobs.FirstOrDefault()?.ProjectInstanceId;
                     var clientInstanceId = await GetClientInstanceIdByProject(projectInstanceId.GetValueOrDefault(), accessToken);
                     var itemTransactionAdds = new List<ItemTransactionAddDto>();
                     var itemTransactionToSysWalletAdds = new List<ItemTransactionToSysWalletAddDto>();
                     var completeJobCodes = new List<string>();
                     var lstDocInstanceIds = jobs.Select(x => x.DocInstanceId).Distinct().ToList();
-                    var lstDocItemFull = new List<GroupDocItem>();
-                    var groupDocItemResponse = await _docClientService.GetGroupDocItemByDocInstanceIds(JsonConvert.SerializeObject(lstDocInstanceIds), accessToken);
-                    if (groupDocItemResponse.Success && groupDocItemResponse.Data != null)
-                    {
-                        lstDocItemFull = groupDocItemResponse.Data;
-                    }
-                    var lstJobEntrySkipCheckCorrect = new List<Job>();
 
+                    var lstJobEntrySkipCheckCorrect = new List<Job>();
+                    var dicDocItemByTemplate = new Dictionary<Guid, List<DocItem>>();
                     foreach (var job in jobs)
                     {
                         var wfInfoes = await GetWfInfoes(job.WorkflowInstanceId.GetValueOrDefault(), accessToken);
@@ -130,8 +124,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                         if (wfsInfoes == null || wfsInfoes.Count <= 0)
                         {
-                            Log.Error("ProcessDataEntry can not get wfsInfoes!");
-                            continue;
+                            throw new Exception("AfterProcessDataEntryEvent can not get wfsInfoes!");
                         }
 
                         var crrWfsInfo = wfsInfoes.First(x => x.InstanceId == job.WorkflowStepInstanceId);
@@ -288,10 +281,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var listDocTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
                         if (listDocTypeFieldResponse == null || !listDocTypeFieldResponse.Success)
                         {
-                            Log.Error("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
-                            return new Tuple<bool, string, string>(false,
-                                "Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId",
-                                null);
+                            throw new Exception("Error call service: _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId");
                         }
 
                         var ignoreListDocTypeField = listDocTypeFieldResponse.Data.Where(x => x.ShowForInput == false).Select(x => new Nullable<Guid>(x.InstanceId)).ToList();
@@ -331,14 +321,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                         Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {job.ActionCode} with DocInstanceId: {job.DocInstanceId}");
 
-                        // 3.1. Cập nhật giá trị DocFieldValue & Doc
-                        itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                        {
-                            InstanceId = job.DocFieldValueInstanceId.GetValueOrDefault(),
-                            Value = job.Value,
-                            CoordinateArea = job.CoordinateArea,
-                            ActionCode = job.ActionCode
-                        });
 
                         // 4. Trigger bước tiếp theo
                         // 4.1. Tổng hợp dữ liệu itemInputParams
@@ -428,9 +410,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 job.DigitizedTemplateInstanceId)
                                             : 0;
 
+                                        //Todo: Lấy ra value của các mảnh dữ liệu đã hoàn thành => để tổng hợp cho bước sau => Cần review logic => Nếu không lấy các mảnh bỏ qua thì có thể bị miss value
                                         var crrWfsJobsComplete = await _repository.GetJobByWfs(
                                             job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.ActionCode,
-                                            crrWfsInfo.InstanceId, (short)EnumJob.Status.Complete);
+                                            crrWfsInfo.InstanceId);
                                         if (crrWfsJobsComplete != null && crrWfsJobsComplete.Any())
                                         {
                                             var docItems = crrWfsJobsComplete.Select(x => new DocItem
@@ -448,18 +431,32 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 PrivateCategoryInstanceId = x.PrivateCategoryInstanceId,
                                                 IsMultipleSelection = x.IsMultipleSelection,
                                                 CoordinateArea = x.CoordinateArea,
-                                                //DocFieldValueId = 0,
-                                                DocFieldValueInstanceId = x.DocFieldValueInstanceId,
                                                 Value = x.Value
                                             }).ToList();
 
                                             if (isNextStepRequiredAllBeforeStepComplete)
                                             {
-                                                var fullDocItemForDoc = lstDocItemFull.FirstOrDefault(x => x.DocInstanceId == job.DocInstanceId);
-                                                if (fullDocItemForDoc != null && fullDocItemForDoc.DocItems != null && fullDocItemForDoc.DocItems.Count > 0)
+                                                var fullDocItemForDoc = new List<DocItem>();
+
+                                                //use dictionary to store docItem by template for reduce call service
+                                                if (dicDocItemByTemplate.ContainsKey(job.DigitizedTemplateInstanceId.GetValueOrDefault()))
+                                                {
+                                                    fullDocItemForDoc = dicDocItemByTemplate[job.DigitizedTemplateInstanceId.GetValueOrDefault()];
+                                                }
+                                                else
+                                                {
+                                                    var docTypeFieldResponse = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(job.ProjectInstanceId.GetValueOrDefault(), job.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                    if (docTypeFieldResponse.Success && docTypeFieldResponse.Data != null)
+                                                    {
+                                                        fullDocItemForDoc = _docTypeFieldClientService.ConvertToDocItem(docTypeFieldResponse.Data);
+                                                        dicDocItemByTemplate.Add(job.DigitizedTemplateInstanceId.GetValueOrDefault(), fullDocItemForDoc);
+                                                    }
+                                                }
+
+                                                if (fullDocItemForDoc != null && fullDocItemForDoc != null && fullDocItemForDoc.Count > 0)
                                                 {
                                                     var existDocTypeFieldInstanceId = crrWfsJobsComplete.Select(x => x.DocTypeFieldInstanceId).ToList();
-                                                    var missDocItem = fullDocItemForDoc.DocItems.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
+                                                    var missDocItem = fullDocItemForDoc.Where(x => !existDocTypeFieldInstanceId.Contains(x.DocTypeFieldInstanceId)).ToList();
                                                     if (missDocItem != null && missDocItem.Count > 0)
                                                     {
                                                         docItems.AddRange(missDocItem);
@@ -614,7 +611,31 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         {
                                             Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {job.DocInstanceId.GetValueOrDefault()} !");
                                         }
+
+
+                                        // Update FinalValue cho Doc
+                                        var crrJobsComplete = await _repository.GetJobByWfs(job.DocInstanceId.GetValueOrDefault(), job.ActionCode, job.WorkflowStepInstanceId);
+                                        var docItems = crrJobsComplete.Select(x => new DocItem
+                                        {
+                                            FilePartInstanceId = x.FilePartInstanceId,
+                                            DocTypeFieldInstanceId = x.DocTypeFieldInstanceId,
+                                            DocTypeFieldName = x.DocTypeFieldName,
+                                            DocTypeFieldSortOrder = x.DocTypeFieldSortOrder,
+                                            InputType = x.InputType,
+                                            MaxLength = x.MaxLength,
+                                            MinLength = x.MinLength,
+                                            MaxValue = x.MaxValue,
+                                            MinValue = x.MinValue,
+                                            PrivateCategoryInstanceId = x.PrivateCategoryInstanceId,
+                                            IsMultipleSelection = x.IsMultipleSelection,
+                                            CoordinateArea = x.CoordinateArea,
+                                            Value = x.Value,
+                                        }).ToList();
+
+                                        await PublishDocUpdateFinalValueEvent(job.DocInstanceId.GetValueOrDefault(), docItems, status: (short)EnumDoc.Status.Processing);
+
                                         Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
+
                                     }
                                 }
                             }
@@ -693,44 +714,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         await _transactionClientService.AddMultiTransactionAsync(transactionAddMulti, accessToken);
                     }
 
-                    // 3.2. Cập nhật giá trị DocFieldValue & Doc
-                    if (itemDocFieldValueUpdateValues.Any())
-                    {
-                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                        {
-                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                        };
-                        // Outbox
-                        var outboxEntity = new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                            LastModificationDate = DateTime.UtcNow,
-                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                        };
-
-                        try // try to publish event
-                        {
-                            _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                        }
-                        catch (Exception exPublishEvent)
-                        {
-                            Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateMultiValueEvent");
-
-                            try // try to save event to DB for retry later
-                            {
-                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-
-                            }
-                            catch (Exception exSaveDB)
-                            {
-                                Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent");
-                                throw;
-                            }
-                        }
-                    }
-
                     // 4.2. Sau bước HIỆN TẠI là End (ko có bước SyntheticData) thì cập nhật FinalValue cho Doc và chuyển all trạng thái DocFieldValues sang Complete
                     if (jobEnds.Any())
                     {
@@ -762,7 +745,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 var crrWfsInfo = crrWfsInfoes.First(x => x.InstanceId == wfsInstanceId);
                                 // Get lại toàn bộ job trong bước HIỆN TẠI đã Complete
                                 var crrJobsComplete = await _repository.GetJobByWfs(docInstanceId, actionCode,
-                                    wfsInstanceId, (short)EnumJob.Status.Complete);
+                                    wfsInstanceId);
                                 var docItems = crrJobsComplete.Select(x => new DocItem
                                 {
                                     //DocTypeFieldId = 0,
@@ -778,96 +761,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     PrivateCategoryInstanceId = x.PrivateCategoryInstanceId,
                                     IsMultipleSelection = x.IsMultipleSelection,
                                     CoordinateArea = x.CoordinateArea,
-                                    //DocFieldValueId = 0,
-                                    DocFieldValueInstanceId = x.DocFieldValueInstanceId,
                                     Value = x.Value,
                                 }).ToList();
-                                var finalValue = JsonConvert.SerializeObject(docItems);
 
-                                // Update FinalValue for Doc
-                                var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
-                                {
-                                    DocInstanceId = docInstanceId,
-                                    FinalValue = finalValue
-                                };
-                                // Outbox
-                                var outboxEntity = new OutboxIntegrationEvent
-                                {
-                                    ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
-                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt),
-                                    LastModificationDate = DateTime.UtcNow,
-                                    Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                                };
+                                await PublishDocUpdateFinalValueEvent(docInstanceId, docItems, status: (short)EnumDoc.Status.Complete);
 
-                                try // try to publish event
-                                {
-                                    _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
-                                }
-                                catch (Exception exPublishEvent)
-                                {
-                                    Log.Error(exPublishEvent, "Error publish for event DocUpdateFinalValueEvent");
-
-                                    try // try to save event to DB for retry later
-                                    {
-                                        await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-
-                                    }
-                                    catch (Exception exSaveDB)
-                                    {
-                                        Log.Error(exSaveDB, "Error save DB for event DocUpdateFinalValueEvent");
-                                        throw;
-                                    }
-                                }
-
-                                // Update all status DocFieldValues is complete
-                                var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
-                                {
-                                    DocFieldValueInstanceIds = crrJobsComplete
-                                        .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
-                                };
-                                // Outbox
-                                var outboxEntityDocFieldValueUpdateStatusCompleteEvent = new OutboxIntegrationEvent
-                                {
-                                    ExchangeName = nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower(),
-                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    Data = JsonConvert.SerializeObject(docFieldValueUpdateStatusCompleteEvt),
-                                    LastModificationDate = DateTime.UtcNow,
-                                    Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                                };
-
-
-                                try // try to publish event
-                                {
-                                    // Update current wfs status is complete
-                                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, crrWfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
-                                    if (!resultDocChangeCurrentWfsInfo.Success)
-                                    {
-                                        Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault()} !");
-                                    }
-                                    _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
-                                }
-                                catch (Exception exPublishEvent)
-                                {
-                                    // Update current wfs status is error
-                                    var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Error, crrWfsInfo.InstanceId, null, string.Empty, null, accessToken: accessToken);
-                                    if (!resultDocChangeCurrentWfsInfo.Success)
-                                    {
-                                        Log.Logger.Error($"{nameof(AfterProcessDataEntryProcessEvent)}: Error change current work flow step info for DocInstanceId: {crrJobsComplete.FirstOrDefault().DocInstanceId.GetValueOrDefault()} !");
-                                    }
-
-                                    Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateStatusCompleteEvent");
-
-                                    try // try to save event to DB for retry later
-                                    {
-                                        await _outboxIntegrationEventRepository.AddAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
-                                    }
-                                    catch (Exception exSaveDB)
-                                    {
-                                        Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateStatusCompleteEvent");
-                                        throw;
-                                    }
-                                }
                                 await _moneyService.ChargeMoneyForCompleteDoc(crrWfsInfoes, crrWfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
                         }
@@ -1012,6 +910,47 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             return null;
         }
 
+        private async Task PublishDocUpdateFinalValueEvent(Guid docInstanceId,List<DocItem> docItems, short status)
+        {
+            var finalValue = JsonConvert.SerializeObject(docItems);
+
+            // Update FinalValue for Doc
+            var docUpdateFinalValueEvt = new DocUpdateFinalValueEvent
+            {
+                DocInstanceId = docInstanceId,
+                FinalValue = finalValue,
+                Status = status
+            };
+            // Outbox
+            var outboxEntity = new OutboxIntegrationEvent
+            {
+                ExchangeName = nameof(DocUpdateFinalValueEvent).ToLower(),
+                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
+                Data = JsonConvert.SerializeObject(docUpdateFinalValueEvt),
+                LastModificationDate = DateTime.UtcNow,
+                Status = (short)EnumEventBus.PublishMessageStatus.Nack
+            };
+
+            try // try to publish event
+            {
+                _eventBus.Publish(docUpdateFinalValueEvt, nameof(DocUpdateFinalValueEvent).ToLower());
+            }
+            catch (Exception exPublishEvent)
+            {
+                Log.Error(exPublishEvent, "Error publish for event DocUpdateFinalValueEvent");
+
+                try // try to save event to DB for retry later
+                {
+                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
+
+                }
+                catch (Exception exSaveDB)
+                {
+                    Log.Error(exSaveDB, "Error save DB for event DocUpdateFinalValueEvent");
+                    throw;
+                }
+            }
+        }
         #region Enrich data for InputParam
 
         private async Task EnrichDataJob(AfterProcessDataEntryEvent evt)

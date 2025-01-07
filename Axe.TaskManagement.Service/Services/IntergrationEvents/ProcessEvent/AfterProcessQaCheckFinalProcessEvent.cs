@@ -358,55 +358,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {job.ActionCode} with DocInstanceId: {job.DocInstanceId}");
 
-                    // 3. Cập nhật giá trị DocFieldValue & Doc
-                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                    docItems.ForEach(x =>
-                    {
-                        itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                        {
-                            InstanceId = x.DocFieldValueInstanceId.GetValueOrDefault(),
-                            Value = x.Value,
-                            CoordinateArea = x.CoordinateArea,
-                            ActionCode = job.ActionCode
-                        });
-                    });
-
-                    if (itemDocFieldValueUpdateValues.Any())
-                    {
-                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                        {
-                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                        };
-                        // Outbox
-                        var outboxEntity = new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                            LastModificationDate = DateTime.UtcNow,
-                            Status = (short)EnumEventBus.PublishMessageStatus.Nack,
-                        };
-
-                        try // try to publish event
-                        {
-                            _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                        }
-                        catch (Exception exPublishEvent)
-                        {
-                            Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateMultiValueEvent");
-
-                            try // try to save event to DB for retry later
-                            {
-                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-                            }
-                            catch (Exception exSaveDB)
-                            {
-                                Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent");
-                                throw;
-                            }
-                        }
-
-                    }
 
                     // 4. Trigger bước tiếp theo
                     // Tổng hợp dữ liệu itemInputParams

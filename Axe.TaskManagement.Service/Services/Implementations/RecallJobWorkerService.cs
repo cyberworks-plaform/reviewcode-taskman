@@ -325,45 +325,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
         }
 
-        /// <summary>
-        /// This function extreamly slow -> if using need to refactor
-        /// </summary>
-        /// <param name="lstDocFieldValue"></param>
-        /// <returns></returns>
-        private async Task UpdateDocFieldValueStatus(List<Guid?> lstDocFieldValue)
-        {
-            if (lstDocFieldValue != null && lstDocFieldValue.Count > 0)
-            {
-                var lstDocFieldValueUpdate = new List<Guid>();
-                foreach (var item in lstDocFieldValue)
-                {
-                    var fitler = Builders<Job>.Filter.Eq(x => x.DocFieldValueInstanceId, item);
-
-                    var filterWaiting = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
-
-                    var countOfAll = await _repository.CountAsync(fitler);
-                    var countOfWaiting = await _repository.CountAsync(fitler & filterWaiting);
-                    if (countOfAll == countOfWaiting)
-                    {
-                        lstDocFieldValueUpdate.Add(item.Value);
-                    }
-                }
-
-                if (lstDocFieldValueUpdate.Count > 0)
-                {
-                    var evt = new DocFieldValueUpdateStatusWaitingEvent
-                    {
-                        DocFieldValueInstanceIds = lstDocFieldValueUpdate
-                    };
-                    if (_useRabbitMq)
-                    {
-                        // Outbox
-                        await PublishEvent<DocFieldValueUpdateStatusWaitingEvent>(evt);
-                    }
-                }
-            }
-        }
-
         private async Task<List<WorkflowStepInfo>> GetAvailableWfsInfoes(Guid workflowInstanceId, string accessToken = null)
         {
             var wfResult = await _workflowClientService.GetByInstanceIdAsync(workflowInstanceId, accessToken);
@@ -436,19 +397,25 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         /// <returns></returns>
         private string RemoveUnwantedJobOldValue(string jobOldValue)
         {
-            if (!string.IsNullOrEmpty(jobOldValue))
+            var result = jobOldValue;
+            try
             {
-                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
-                if (docItems != null && docItems.Any())
+                if (!string.IsNullOrEmpty(jobOldValue))
                 {
-                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
-                    return JsonConvert.SerializeObject(storedDocItems);
+                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(jobOldValue);
+                    if (docItems != null && docItems.Any())
+                    {
+                        var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                        result = JsonConvert.SerializeObject(storedDocItems);
+                    }
+
                 }
-
-                return null;
             }
-
-            return null;
+            catch 
+            { 
+                //do nothing
+            }
+            return result;
         }
 
         #endregion

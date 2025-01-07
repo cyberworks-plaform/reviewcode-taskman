@@ -330,60 +330,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                     Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {job.ActionCode} with DocInstanceId: {job.DocInstanceId}");
 
-                    // 3. Cập nhật giá trị DocFieldValue & Doc
-                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                    var docTypeFieldInstanceIds = docItems.Select(x => x.DocTypeFieldInstanceId).ToList();
-
-                    foreach (var docItem in docItems)
-                    {
-                        if (!string.IsNullOrEmpty(docItem.CoordinateArea))
-                        {
-                            itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                            {
-                                InstanceId = docItem.DocTypeFieldInstanceId.GetValueOrDefault(),
-                                Value = docItem.Value,
-                                CoordinateArea = docItem.CoordinateArea,
-                                ActionCode = job.ActionCode
-                            });
-                        }
-                    }
-
-                    if (itemDocFieldValueUpdateValues.Any())
-                    {
-                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                        {
-                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                        };
-                        // Outbox
-                        var outboxEntity = new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                        };
-                        try
-                        {
-                            var isAck = _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                        }
-                        catch (Exception ex)
-                        {
-                            Log.Logger.Error(ex, "Error publish message for event: DocFieldValueUpdateMultiValueEvent");
-                            try
-                            {
-                                outboxEntity.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                outboxEntity.LastModificationDate = DateTime.UtcNow;
-                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-
-                            }
-                            catch (Exception exDB)
-                            {
-                                Log.Logger.Error(exDB, "Error add outbox message to DB for event: DocFieldValueUpdateMultiValueEvent");
-                                throw;
-                            }
-
-                        }
-
-                    }
 
                     // 4. Trigger bước tiếp theo
                     var nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
@@ -693,29 +639,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     await _outboxIntegrationEventRepository.UpdateAsync(outboxEntity);
                                 }
 
-                                // Update all status DocFieldValues is complete
-                                var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
-                                {
-                                    DocFieldValueInstanceIds = docItems
-                                        .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
-                                };
-                                // Outbox
-                                var outboxEntityDocFieldValueUpdateStatusCompleteEvent = await _outboxIntegrationEventRepository.AddAsyncV2(new OutboxIntegrationEvent
-                                {
-                                    ExchangeName = nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower(),
-                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    Data = JsonConvert.SerializeObject(docFieldValueUpdateStatusCompleteEvt)
-                                });
-                                var isAckDocFieldValueUpdateStatusCompleteEvent = _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
-                                if (isAckDocFieldValueUpdateStatusCompleteEvent)
-                                {
-                                    await _outboxIntegrationEventRepository.DeleteAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
-                                }
-                                else
-                                {
-                                    outboxEntityDocFieldValueUpdateStatusCompleteEvent.Status = (short)EnumEventBus.PublishMessageStatus.Nack;
-                                    await _outboxIntegrationEventRepository.UpdateAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
-                                }
 
                                 await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, docInstanceId, accessToken);
                             }
