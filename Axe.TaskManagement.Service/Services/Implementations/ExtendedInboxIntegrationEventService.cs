@@ -159,6 +159,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
             return result;
         }
+        public async Task<GenericResponse<int>> ResetAllRetryCountAsync(short status, short retryCount)
+        {
+            GenericResponse<int> result;
+            try
+            {
+                result = GenericResponse<int>.ResultWithData(await _repository.ResetAllRetryCountAsync(status, retryCount));
+            }
+            catch (Exception ex)
+            {
+                result = GenericResponse<int>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return result;
+        }
         public async Task<GenericResponse<int>> ResetMultiRetryCountsAsync(string intergrationEventIds, short retryCount)
         {
             GenericResponse<int> result;

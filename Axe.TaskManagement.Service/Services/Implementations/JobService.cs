@@ -3685,7 +3685,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.Code, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim().ToUpper()));
                         }
-                        else lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.DocName, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim()));
+                        else
+                        {
+                            var reasonIgnoreFilter = Builders<Job>.Filter.Regex(x => x.ReasonIgnore, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim()));
+                            var docNameRegexFilter = Builders<Job>.Filter.Regex(x => x.DocName, new MongoDB.Bson.BsonRegularExpression(docNameFilter.Value.Trim()));
+                            lastFilter = lastFilter & (reasonIgnoreFilter | docNameRegexFilter);
+                        }
                     }
 
                     //JobCode

@@ -14,4 +14,6 @@ public interface IOutBoxIntegrationEventService
     Task<GenericResponse<long>> TotalCountAsync();
     Task<GenericResponse<Dictionary<int, long>>> GetTotalAndStatusCountAsync();
     Task<GenericResponse<OutboxIntegrationEventDto>> GetByIdAsync(long id);
+    Task<GenericResponse<long>> AddAsync(OutboxIntegrationEvent model);
+    Task<GenericResponse<OutboxIntegrationEvent>> AddAsyncV2(OutboxIntegrationEvent model);
 }

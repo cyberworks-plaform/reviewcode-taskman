@@ -66,5 +66,11 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.ResetMultiRetryCountsAsync(intergrationEventIds, retryCount));
         }
+        [HttpGet]
+        [Route("reset-all-retry-count/{status}/{retryCount}")]
+        public async Task<IActionResult> ResetAllRetryCountAsync(short status, short retryCount = 1)
+        {
+            return ResponseResult(await _service.ResetAllRetryCountAsync(status, retryCount));
+        }
     }
 }

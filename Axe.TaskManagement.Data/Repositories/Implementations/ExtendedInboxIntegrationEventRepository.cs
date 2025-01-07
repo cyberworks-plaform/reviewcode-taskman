@@ -332,6 +332,24 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             });
         }
 
+        public async Task<int> ResetAllRetryCountAsync(short status, short retryCount)
+        {
+            if (_providerName == "Npgsql")
+            {
+                return await _conn.ExecuteAsync($"UPDATE {_tableName} SET \"{nameof(ExtendedInboxIntegrationEvent.RetryCount)}\" = @RetryCount  WHERE \"{nameof(ExtendedInboxIntegrationEvent.Status)}\"=@Status", new
+                {
+                    Status = status,
+                    RetryCount = retryCount
+                });
+            }
+
+            return await _conn.ExecuteAsync($"DELETE {_tableName} SET {nameof(ExtendedInboxIntegrationEvent.RetryCount)} = @RetryCount WHERE {nameof(ExtendedInboxIntegrationEvent.Status)}=@Status", new
+            {
+                Status = status,
+                RetryCount = retryCount
+            });
+        }
+
         public async Task<int> ResetMultiRetryCountsAsync(List<Guid> intergrationEventIds, short retryCount)
         {
             if (_providerName == "Npgsql")
