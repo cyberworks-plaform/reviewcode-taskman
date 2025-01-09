@@ -84,19 +84,9 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                         var evt = JsonConvert.DeserializeObject<LogJobEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
-                                    else if (outboxEvent.ExchangeName == nameof(DocFieldValueUpdateMultiValueEvent).ToLower())
-                                    {
-                                        var evt = JsonConvert.DeserializeObject<DocFieldValueUpdateMultiValueEvent>(outboxEvent.Data);
-                                        isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
-                                    }
                                     else if (outboxEvent.ExchangeName == nameof(DocUpdateFinalValueEvent).ToLower())
                                     {
                                         var evt = JsonConvert.DeserializeObject<DocUpdateFinalValueEvent>(outboxEvent.Data);
-                                        isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
-                                    }
-                                    else if (outboxEvent.ExchangeName == nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower())
-                                    {
-                                        var evt = JsonConvert.DeserializeObject<DocFieldValueUpdateStatusCompleteEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
                                     else if (outboxEvent.ExchangeName == nameof(DocChangeDeleteableEvent).ToLower())
@@ -104,11 +94,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Outbox
                                         var evt = JsonConvert.DeserializeObject<DocChangeDeleteableEvent>(outboxEvent.Data);
                                         isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
                                     }
-                                    else if (outboxEvent.ExchangeName == nameof(DocFieldValueUpdateStatusWaitingEvent).ToLower())
-                                    {
-                                        var evt = JsonConvert.DeserializeObject<DocFieldValueUpdateStatusWaitingEvent>(outboxEvent.Data);
-                                        isAck = _eventBus.Publish(evt, outboxEvent.ExchangeName);
-                                    }
+                                  
                                     else if (outboxEvent.ExchangeName == nameof(AfterProcessSegmentLabelingEvent).ToLower())
                                     {
                                         var evt = JsonConvert.DeserializeObject<AfterProcessSegmentLabelingEvent>(outboxEvent.Data);

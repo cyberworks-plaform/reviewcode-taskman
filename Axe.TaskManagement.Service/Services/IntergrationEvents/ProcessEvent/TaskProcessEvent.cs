@@ -51,7 +51,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
         private readonly IWorkflowClientService _workflowClientService;
         private readonly IDocClientService _docClientService;
         private readonly IDocTypeFieldClientService _docTypeFieldClientService;
-        private readonly IDocFieldValueClientService _docFieldValueClientService;
         private readonly IUserProjectClientService _userProjectClientService;
         private readonly ITransactionClientService _transactionClientService;
         private readonly IProjectStatisticClientService _projectStatisticClientService;
@@ -83,7 +82,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             IQueueLockRepository queueLockRepository,
             IMapper mapper,
             IDocTypeFieldClientService docTypeFieldClientService,
-            IDocFieldValueClientService docFieldValueClientService,
             IOutboxIntegrationEventRepository outboxIntegrationEventRepository,
             IConfiguration configuration)
         {
@@ -100,7 +98,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             _queueLockRepository = queueLockRepository;
             _mapper = mapper;
             _docTypeFieldClientService = docTypeFieldClientService;
-            _docFieldValueClientService = docFieldValueClientService;
             _outboxIntegrationEventRepository = outboxIntegrationEventRepository;
             _configuration = configuration;
             _cachingHelper = provider.GetService<ICachingHelper>();
@@ -303,10 +300,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                         else if (prevWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.Meta)   // Điều kiện Đúng/Sai theo Meta
                                         {
                                             var lstDocItemFull = new List<DocItem>();
-                                            var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                                            if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                                            var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                            if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                                             {
-                                                lstDocItemFull = lstDocItemFullRs.Data;
+                                                lstDocItemFull = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
                                             }
 
                                             foreach (var itemInput in inputParam.ItemInputParams)
@@ -749,54 +746,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                 // TODO: Cập nhật thống kê, report
 
-                                // Cập nhật giá trị DocFieldValue & Doc cho ignoreJobs
-                                var ignoreItemDocFieldValueUpdateValues =
-                                    ignoreJobs.Select(x => new ItemDocFieldValueUpdateValue
-                                    {
-                                        InstanceId = x.DocFieldValueInstanceId.GetValueOrDefault(),
-                                        //Value = x.Value,
-                                        Value = x.ActionCode == ActionCodeConstants.DataEntryBool
-                                            ? x.OldValue
-                                            : x.Value, // Trường hợp DataEntryBool thì lưu giá trị OldValue
-                                        CoordinateArea = x.CoordinateArea,
-                                        ActionCode = x.ActionCode
-                                    }).ToList();
-                                if (ignoreItemDocFieldValueUpdateValues.Any())
-                                {
-                                    var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                                    {
-                                        ItemDocFieldValueUpdateValues = ignoreItemDocFieldValueUpdateValues
-                                    };
-                                    // Outbox
-                                    var outboxEntity = new OutboxIntegrationEvent
-                                    {
-                                        ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                        ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                        Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                                        LastModificationDate = DateTime.UtcNow,
-                                        Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                                    };
-                                    try //try to publish event
-                                    {
-                                        _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                    }
-                                    catch (Exception exPublishEvent)
-                                    {
-                                        Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateMultiValueEvent ");
-
-                                        try // try to save event to DB for retry later
-                                        {
-                                            await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-
-                                        }
-                                        catch (Exception exSaveDB)
-                                        {
-                                            Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent ");
-                                            throw;
-                                        }
-                                    }
-                                }
-
                                 // 1.2. Trigger next step ignore
                                 if (nextWfsInfoes != null && nextWfsInfoes.All(x => x.ActionCode != ActionCodeConstants.End))
                                 {
@@ -854,7 +803,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             {
                                                 var docItems = crrWfsJobsComplete.Select(x => new DocItem
                                                 {
-                                                    //DocTypeFieldId = 0,
+                                                    //DocTypeFieldId = 0
                                                     FilePartInstanceId = x.FilePartInstanceId,
                                                     DocTypeFieldInstanceId = x.DocTypeFieldInstanceId,
                                                     DocTypeFieldName = x.DocTypeFieldName,
@@ -875,10 +824,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 if (isNextStepRequiredAllBeforeStepComplete)
                                                 {
                                                     var lstDocItemFull = new List<DocItem>();
-                                                    var lstDocItemFullRs = await _docClientService.GetDocItemByDocInstanceId(inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
-                                                    if (lstDocItemFullRs.Success && lstDocItemFullRs.Data != null)
+                                                    var listDocTypeFieldRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(inputParam.ProjectInstanceId.GetValueOrDefault(), inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
+                                                    if (listDocTypeFieldRs.Success && listDocTypeFieldRs.Data.Any())
                                                     {
-                                                        lstDocItemFull = lstDocItemFullRs.Data;
+                                                        lstDocItemFull = _docTypeFieldClientService.ConvertToDocItem(listDocTypeFieldRs.Data);
                                                     }
                                                     if (lstDocItemFull != null && lstDocItemFull.Any())
                                                     {
@@ -1448,79 +1397,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                         Log.Logger.Information($"Published {nameof(ProjectStatisticUpdateProgressEvent)}: ProjectStatistic: +1 CompleteFile in step {inputParam.ActionCode} with DocInstanceId: {inputParam.DocInstanceId}");
                                         Log.Logger.Information($"Acked {nameof(TaskEvent)} step {inputParam.ActionCode}, WorkflowStepInstanceId: {inputParam.WorkflowStepInstanceId} with DocInstanceId: {inputParam.DocInstanceId}");
-
-                                        // 3.1. Cập nhật giá trị DocFieldValue & Doc
-                                        var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                                        if (_isCreateSingleJob)
-                                        {
-                                            var crrJob = jobs.FirstOrDefault();
-                                            if (crrJob != null && !string.IsNullOrEmpty(crrJob.Value))
-                                            {
-                                                var crrDocItems = JsonConvert.DeserializeObject<List<DocItem>>(crrJob.Value);
-                                                foreach (var docItem in crrDocItems)
-                                                {
-                                                    itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                                                    {
-                                                        InstanceId = docItem.DocFieldValueInstanceId.GetValueOrDefault(),
-                                                        Value = docItem.Value,
-                                                        CoordinateArea = docItem.CoordinateArea,
-                                                        ActionCode = crrJob.ActionCode
-                                                    });
-                                                }
-                                            }
-                                        }
-                                        else
-                                        {
-                                            foreach (var job in jobs)
-                                            {
-                                                itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                                                {
-                                                    InstanceId = job.DocFieldValueInstanceId.GetValueOrDefault(),
-                                                    Value = job.Value,
-                                                    CoordinateArea = job.CoordinateArea,
-                                                    ActionCode = job.ActionCode
-                                                });
-                                            }
-                                        }
-                                        // 3.2. Cập nhật giá trị DocFieldValue & Doc
-                                        if (itemDocFieldValueUpdateValues.Any())
-                                        {
-                                            var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                                            {
-                                                ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                                            };
-                                            // Outbox
-                                            var outboxEntity = new OutboxIntegrationEvent
-                                            {
-                                                ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                                                ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                                Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                                                LastModificationDate = DateTime.UtcNow,
-                                                Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                                            };
-
-                                            try // try to publish event
-                                            {
-                                                _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                                            }
-                                            catch (Exception exPublishEvent)
-                                            {
-                                                Log.Error(exPublishEvent, $"Error publish for event DocFieldValueUpdateMultiValueEvent ");
-
-                                                try // try to save event to DB for retry later
-                                                {
-                                                    await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-                                                }
-                                                catch (Exception exSaveDB)
-                                                {
-                                                    Log.Error(exSaveDB, $"Error save DB for event DocFieldValueUpdateMultiValueEvent ");
-                                                    throw;
-                                                }
-                                            }
-
-
-                                        }
-
 
                                         // 4. Trigger bước tiếp theo
 
@@ -2453,9 +2329,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
                             inputParam.ProjectInstanceId.GetValueOrDefault(),
                             inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        var docFieldValuesRs =
-                            await _docFieldValueClientService.GetListDocTypeValueByDocInstanceId(
-                                inputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                        
                         if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
                         {
                             var docTypeFields = docTypeFieldsRs.Data;
@@ -2476,16 +2350,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     MaxValue = dtf.MaxValue,
                                     PrivateCategoryInstanceId = dtf.PrivateCategoryInstanceId,
                                     IsMultipleSelection = dtf.IsMultipleSelection,
-                                    CoordinateArea = dtf.CoordinateArea
+                                    CoordinateArea = dtf.CoordinateArea,
+                                    Value = string.Empty,
                                 };
-                                if (docFieldValuesRs != null && docFieldValuesRs.Success && docFieldValuesRs.Data.Any())
-                                {
-                                    var docFieldValues = docFieldValuesRs.Data;
-                                    var dfv = docFieldValues.FirstOrDefault(x => x.DocTypeFieldId == dtf.Id);
-                                    item.DocFieldValueInstanceId = dfv?.InstanceId;
-                                    item.Value = dfv?.Value;
-                                    item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
-                                }
+                                item.Price = crrWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File ? 0 : isPaid ? price : 0;
 
                                 itemInputParams.Add(item);
                             }

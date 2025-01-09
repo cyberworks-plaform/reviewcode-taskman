@@ -1,5 +1,6 @@
 ﻿using Axe.TaskManagement.Service.Dtos;
 using Axe.TaskManagement.Service.Services.Interfaces;
+using Axe.Utility.EntityExtensions;
 using Ce.Constant.Lib.Definitions;
 using Ce.Constant.Lib.Dtos;
 using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
@@ -47,6 +48,34 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
 
             return response;
+        }
+        public List<DocItem> ConvertToDocItem(List<DocTypeFieldDto> listDocTypeField)
+        {
+            List<DocItem> listDocItem = new List<DocItem>();
+            foreach (var docTypeField in listDocTypeField)
+            {
+                var docItem = new DocItem()
+                {
+                    DocTypeFieldInstanceId = docTypeField.InstanceId,
+                    DocTypeFieldId = docTypeField.Id,
+                    DocTypeFieldCode = docTypeField.Code,
+                    DocTypeFieldName = docTypeField.Name,
+                    DocTypeFieldSortOrder = docTypeField.SortOrder.GetValueOrDefault(),
+                    InputType = docTypeField.InputType,
+                    MaxLength = docTypeField.MaxLength,
+                    MinLength = docTypeField.MinLength,
+                    MaxValue = docTypeField.MaxValue,
+                    MinValue = docTypeField.MinValue,
+                    PrivateCategoryInstanceId = docTypeField.PrivateCategoryInstanceId,
+                    IsMultipleSelection = docTypeField.IsMultipleSelection,
+                    CoordinateArea = docTypeField.CoordinateArea,
+                    ShowForInput = docTypeField.ShowForInput,
+                    Format = docTypeField.Format,
+                    InputShortNote = docTypeField.InputShortNote,
+                };
+                listDocItem.Add(docItem);
+            }
+            return listDocItem;
         }
     }
 }

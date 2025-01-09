@@ -390,53 +390,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                     // Outbox
                     await PublishEvent<DocUpdateFinalValueEvent>(docUpdateFinalValueEvtByProcessing);
 
-                    var itemDocFieldValueUpdateValues = new List<ItemDocFieldValueUpdateValue>();
-                    docItems.ForEach(x =>
-                    {
-                        itemDocFieldValueUpdateValues.Add(new ItemDocFieldValueUpdateValue
-                        {
-                            InstanceId = x.DocFieldValueInstanceId.GetValueOrDefault(),
-                            Value = x.Value,
-                            CoordinateArea = x.CoordinateArea,
-                            ActionCode = job.ActionCode
-                        });
-                    });
-
-                    if (itemDocFieldValueUpdateValues.Any())
-                    {
-                        var docFieldValueUpdateMultiValueEvt = new DocFieldValueUpdateMultiValueEvent
-                        {
-                            ItemDocFieldValueUpdateValues = itemDocFieldValueUpdateValues
-                        };
-                        // Outbox
-                        var outboxEntity = new OutboxIntegrationEvent
-                        {
-                            ExchangeName = nameof(DocFieldValueUpdateMultiValueEvent).ToLower(),
-                            ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                            Data = JsonConvert.SerializeObject(docFieldValueUpdateMultiValueEvt),
-                            LastModificationDate = DateTime.UtcNow,
-                            Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                        };
-
-                        try //try to publish event
-                        {
-                            _eventBus.Publish(docFieldValueUpdateMultiValueEvt, nameof(DocFieldValueUpdateMultiValueEvent).ToLower());
-                        }
-                        catch (Exception exPublishEvent)
-                        {
-                            Log.Error(exPublishEvent, "Error publish for event DocFieldValueUpdateMultiValueEvent");
-
-                            try // try to save event to DB for retry later
-                            {
-                                await _outboxIntegrationEventRepository.AddAsync(outboxEntity);
-                            }
-                            catch (Exception exSaveDB)
-                            {
-                                Log.Error(exSaveDB, "Error save DB for event DocFieldValueUpdateMultiValueEvent");
-                                throw;
-                            }
-                        }
-                    }
 
                     // 4. Trigger bước tiếp theo
                     // Tổng hợp dữ liệu itemInputParams
@@ -934,41 +887,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     catch (Exception exSaveDB)
                                     {
                                         Log.Error(exSaveDB, "Error save DB for event DocUpdateFinalValueEvent");
-                                        throw;
-                                    }
-                                }
-
-                                // Update all status DocFieldValues is complete
-                                var docFieldValueUpdateStatusCompleteEvt = new DocFieldValueUpdateStatusCompleteEvent
-                                {
-                                    DocFieldValueInstanceIds = docItems
-                                        .Select(x => x.DocFieldValueInstanceId.GetValueOrDefault()).ToList()
-                                };
-                                // Outbox
-                                var outboxEntityDocFieldValueUpdateStatusCompleteEvent = new OutboxIntegrationEvent
-                                {
-                                    ExchangeName = nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower(),
-                                    ServiceCode = _configuration.GetValue("ServiceCode", string.Empty),
-                                    Data = JsonConvert.SerializeObject(docFieldValueUpdateStatusCompleteEvt),
-                                    LastModificationDate = DateTime.UtcNow,
-                                    Status = (short)EnumEventBus.PublishMessageStatus.Nack
-                                };
-
-                                try // try to publish event
-                                {
-                                    _eventBus.Publish(docFieldValueUpdateStatusCompleteEvt, nameof(DocFieldValueUpdateStatusCompleteEvent).ToLower());
-                                }
-                                catch (Exception exPublishEvent)
-                                {
-                                    Log.Error(exPublishEvent, "Error publish for event docFieldValueUpdateStatusCompleteEvt");
-
-                                    try // try to save event to DB for retry later
-                                    {
-                                        await _outboxIntegrationEventRepository.AddAsync(outboxEntityDocFieldValueUpdateStatusCompleteEvent);
-                                    }
-                                    catch (Exception exSaveDB)
-                                    {
-                                        Log.Error(exSaveDB, "Error save DB for event docFieldValueUpdateStatusCompleteEvt");
                                         throw;
                                     }
                                 }

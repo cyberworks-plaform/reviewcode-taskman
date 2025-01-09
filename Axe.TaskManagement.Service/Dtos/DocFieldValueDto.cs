@@ -7,6 +7,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Axe.TaskManagement.Service.Dtos
 {
+    [Obsolete("Need refactor - Core service: remove DocFieldValue",true)]
     [Description("Dữ liệu các trường của tài liệu thu thập")]
     public class DocFieldValueDto : Auditable<long>, IInstanceId, ISwitchable, IStatusable, IMultiTenant, IDeletable
     {

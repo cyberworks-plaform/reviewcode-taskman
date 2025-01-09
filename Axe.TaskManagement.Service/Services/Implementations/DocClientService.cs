@@ -9,6 +9,7 @@ using Ce.Interaction.Lib.HttpClientAccessors.Interfaces;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Threading.Tasks;
 
@@ -59,7 +60,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 var apiEndpoint = "change-status-multi";
                 var requestParam = new Dictionary<string, string>
                 {
-                  
+
                     { "newStatus",  newStatus.ToString()}
                 };
                 var model = new { InstanceIds = instanceIds };
@@ -71,7 +72,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
+        /// <summary>
+        /// Hàm này sẽ lấy giá trị từ Docs.FinalValue của một DocInstance
+        /// Nếu chỉ cần lấy danh sách các DocItem mà không cần value thì sử dụng class DocTypeField
+        /// </summary>
+        /// <param name="instanceId"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         public async Task<GenericResponse<List<DocItem>>> GetDocItemByDocInstanceId(Guid instanceId, string accessToken = null)
         {
             GenericResponse<List<DocItem>> response;
@@ -87,7 +94,13 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             return response;
         }
-
+        /// <summary>
+        /// Hàm này sẽ lấy một danh sách các DocItem được chuyển đổi từ Docs.FinalValue 
+        /// Nếu chỉ cần lấy danh sách các DocItem mà không cần value thì sử dụng class DocTypeField
+        /// </summary>
+        /// <param name="instanceIds"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         public async Task<GenericResponse<List<GroupDocItem>>> GetGroupDocItemByDocInstanceIds(string instanceIds, string accessToken = null)
         {
             GenericResponse<List<GroupDocItem>> response;
@@ -158,7 +171,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     { "syncTypeInstanceId", syncTypeInstanceId.ToString() },
                     { "path", path }
                 };
-                response = await client.GetAsync<GenericResponse<PathStatusDto>>(_serviceUri, apiEndpoint, requestParam, null, accessToken : accessToken);
+                response = await client.GetAsync<GenericResponse<PathStatusDto>>(_serviceUri, apiEndpoint, requestParam, null, accessToken: accessToken);
                 if (!response.Success)
                 {
                     Log.Error(response.Message);
@@ -167,7 +180,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
             catch (Exception ex)
             {
-                response = GenericResponse<PathStatusDto>.ResultWithError((int)HttpStatusCode.BadRequest,ex.Data.ToString(),ex.Message);
+                response = GenericResponse<PathStatusDto>.ResultWithError((int)HttpStatusCode.BadRequest, ex.Data.ToString(), ex.Message);
                 Log.Error(ex, ex.Message);
             }
             return response;

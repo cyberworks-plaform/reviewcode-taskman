@@ -325,45 +325,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             }
         }
 
-        /// <summary>
-        /// This function extreamly slow -> if using need to refactor
-        /// </summary>
-        /// <param name="lstDocFieldValue"></param>
-        /// <returns></returns>
-        private async Task UpdateDocFieldValueStatus(List<Guid?> lstDocFieldValue)
-        {
-            if (lstDocFieldValue != null && lstDocFieldValue.Count > 0)
-            {
-                var lstDocFieldValueUpdate = new List<Guid>();
-                foreach (var item in lstDocFieldValue)
-                {
-                    var fitler = Builders<Job>.Filter.Eq(x => x.DocFieldValueInstanceId, item);
-
-                    var filterWaiting = Builders<Job>.Filter.Eq(x => x.Status, (short)EnumJob.Status.Waiting);
-
-                    var countOfAll = await _repository.CountAsync(fitler);
-                    var countOfWaiting = await _repository.CountAsync(fitler & filterWaiting);
-                    if (countOfAll == countOfWaiting)
-                    {
-                        lstDocFieldValueUpdate.Add(item.Value);
-                    }
-                }
-
-                if (lstDocFieldValueUpdate.Count > 0)
-                {
-                    var evt = new DocFieldValueUpdateStatusWaitingEvent
-                    {
-                        DocFieldValueInstanceIds = lstDocFieldValueUpdate
-                    };
-                    if (_useRabbitMq)
-                    {
-                        // Outbox
-                        await PublishEvent<DocFieldValueUpdateStatusWaitingEvent>(evt);
-                    }
-                }
-            }
-        }
-
         private async Task<List<WorkflowStepInfo>> GetAvailableWfsInfoes(Guid workflowInstanceId, string accessToken = null)
         {
             var wfResult = await _workflowClientService.GetByInstanceIdAsync(workflowInstanceId, accessToken);
@@ -447,6 +408,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
                         result = JsonConvert.SerializeObject(storedDocItems);
                     }
+
                 }
             }
             catch (Exception ex)

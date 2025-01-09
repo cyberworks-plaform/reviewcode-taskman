@@ -7,6 +7,7 @@ using Ce.Constant.Lib.Dtos;
 
 namespace Axe.TaskManagement.Service.Services.Interfaces
 {
+    [Obsolete("Need refactor - Core service: remove DocFieldValue", true)]
     public interface IDocFieldValueClientService
     {
         Task<GenericResponse<IEnumerable<DocFieldValueDto>>> GetByDocTypeFieldInstanceIds(Guid docInstanceId, string docTypeFieldIntanceIds, string accessToken = null);
