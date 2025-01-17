@@ -543,8 +543,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 var batchQASampling = 100;  // % lấy mẫu trong lô 
                                 var batchQAFalseThreshold = 100; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
-                                if (isNextStepQa)
-                                {
+                                if (isNextStepQa) //nếu bước tiếp theo là QA 
+                                { 
                                     var configQa = WorkflowHelper.GetConfigQa(nextWfsInfo.ConfigStep);
                                     batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
                                     batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
@@ -557,66 +557,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     {
                                         isProcessQAInBatchMode = false;
                                     }
-                                }
 
-                                //nếu bước tiếp theo là QA theo batch mode hoặc là các bước yêu cầu cùng hoàn thành đồng thời
-                                if ((isNextStepQa && isProcessQAInBatchMode) || isNextStepRequiredAllBeforeStepComplete || job.IsParallelJob)
-                                {
-                                    if (job.IsParallelJob)
-                                    {
-                                        bool hasJobWaitingOrProcessingByDocFieldValueAndParallelJob =
-                                            await _repository
-                                                .CheckHasJobWaitingOrProcessingByDocFieldValueAndParallelJob(
-                                                    job.DocInstanceId.GetValueOrDefault(),
-                                                    job.DocFieldValueInstanceId,
-                                                    job.ParallelJobInstanceId);
-                                        if (!hasJobWaitingOrProcessingByDocFieldValueAndParallelJob)
-                                        {
-                                            var countOfExpectParallelJobs = WorkflowHelper.CountOfExpectParallelJobs(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), job.DocTypeFieldInstanceId);
-                                            // Điều chỉnh lại value của ItemInputParams cho evt
-                                            var parallelJobs =
-                                                await _repository
-                                                    .GetJobCompleteByDocFieldValueAndParallelJob(
-                                                        job.DocInstanceId.GetValueOrDefault(),
-                                                        job.DocFieldValueInstanceId, job.ParallelJobInstanceId);
-                                            if (parallelJobs.Count ==
-                                                countOfExpectParallelJobs) // Số lượng parallelJobs bằng với countOfExpectParallelJobs thì mới next step
-                                            {
-                                                // Xét trường hợp tất cả parallelJobs cùng done tại 1 thời điểm
-                                                bool triggerNextStepHappend =
-                                                    await TriggerNextStepHappened(job.DocInstanceId.GetValueOrDefault(),
-                                                        job.WorkflowStepInstanceId.GetValueOrDefault(),
-                                                        job.DocTypeFieldInstanceId, job.DocFieldValueInstanceId);
-                                                if (!triggerNextStepHappend)
-                                                {
-                                                    var oldValues = parallelJobs.Select(x => x.Value);
-                                                    output.Value = JsonConvert.SerializeObject(oldValues);
-                                                    output.IsConvergenceNextStep = true;
-                                                    taskEvt.Input = JsonConvert.SerializeObject(output);
-
-                                                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                                    isTriggerNextStep = true;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    else if (isNextStepRequiredAllBeforeStepComplete)
-                                    {
-                                        // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
-                                        if (!hasJobWaitingOrProcessing)
-                                        {
-                                            // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
-                                            bool triggerNextStepHappend =
-                                                await TriggerNextStepHappened(job.DocInstanceId.GetValueOrDefault(),
-                                                    job.WorkflowStepInstanceId.GetValueOrDefault());
-                                            if (!triggerNextStepHappend)
-                                            {
-                                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                                isTriggerNextStep = true;
-                                            }
-                                        }
-                                    }
-                                    else if (isNextStepQa && isProcessQAInBatchMode)
+                                    if (isProcessQAInBatchMode) // QA theo lô
                                     {
                                         /*
                                          * Rule => Mỗi lô chỉ chứa job CheckFinal của 1 người
@@ -773,11 +715,73 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             }
                                         }
                                     }
+                                    else //nếu là ( QA nhưng đơn file ) hoặc ( các điều kiện khác ) thì next step luôn
+                                    {
+                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                        isTriggerNextStep = true;
+                                    }
                                 }
-                                else //nếu là ( QA nhưng đơn file ) hoặc ( các điều kiện khác ) thì next step luôn
+                                else // bước tiếp theo không phải là QA
                                 {
-                                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                    isTriggerNextStep = true;
+                                    if (job.IsParallelJob)
+                                    {
+                                        bool hasJobWaitingOrProcessingByDocFieldValueAndParallelJob =
+                                            await _repository
+                                                .CheckHasJobWaitingOrProcessingByDocFieldValueAndParallelJob(
+                                                    job.DocInstanceId.GetValueOrDefault(),
+                                                    job.DocFieldValueInstanceId,
+                                                    job.ParallelJobInstanceId);
+                                        if (!hasJobWaitingOrProcessingByDocFieldValueAndParallelJob)
+                                        {
+                                            var countOfExpectParallelJobs = WorkflowHelper.CountOfExpectParallelJobs(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault(), job.DocTypeFieldInstanceId);
+                                            // Điều chỉnh lại value của ItemInputParams cho evt
+                                            var parallelJobs =
+                                                await _repository
+                                                    .GetJobCompleteByDocFieldValueAndParallelJob(
+                                                        job.DocInstanceId.GetValueOrDefault(),
+                                                        job.DocFieldValueInstanceId, job.ParallelJobInstanceId);
+                                            if (parallelJobs.Count ==
+                                                countOfExpectParallelJobs) // Số lượng parallelJobs bằng với countOfExpectParallelJobs thì mới next step
+                                            {
+                                                // Xét trường hợp tất cả parallelJobs cùng done tại 1 thời điểm
+                                                bool triggerNextStepHappend =
+                                                    await TriggerNextStepHappened(job.DocInstanceId.GetValueOrDefault(),
+                                                        job.WorkflowStepInstanceId.GetValueOrDefault(),
+                                                        job.DocTypeFieldInstanceId, job.DocFieldValueInstanceId);
+                                                if (!triggerNextStepHappend)
+                                                {
+                                                    var oldValues = parallelJobs.Select(x => x.Value);
+                                                    output.Value = JsonConvert.SerializeObject(oldValues);
+                                                    output.IsConvergenceNextStep = true;
+                                                    taskEvt.Input = JsonConvert.SerializeObject(output);
+
+                                                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                    isTriggerNextStep = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else if (isNextStepRequiredAllBeforeStepComplete)
+                                    {
+                                        // Nếu bước TIẾP THEO yêu cầu phải đợi tất cả các job ở bước TRƯỚC Complete thì mới trigger bước tiếp theo
+                                        if (!hasJobWaitingOrProcessing)
+                                        {
+                                            // Xét trường hợp tất cả prevJobs cùng done tại 1 thời điểm
+                                            bool triggerNextStepHappend =
+                                                await TriggerNextStepHappened(job.DocInstanceId.GetValueOrDefault(),
+                                                    job.WorkflowStepInstanceId.GetValueOrDefault());
+                                            if (!triggerNextStepHappend)
+                                            {
+                                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                isTriggerNextStep = true;
+                                            }
+                                        }
+                                    }
+                                    else
+                                    {
+                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                        isTriggerNextStep = true;
+                                    }
                                 }
 
                                 if (isTriggerNextStep)
