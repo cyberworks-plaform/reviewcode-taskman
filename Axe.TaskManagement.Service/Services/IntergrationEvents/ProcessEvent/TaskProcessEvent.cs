@@ -634,6 +634,23 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         {
                             Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
                         }
+
+                        if (inputParam.InputParams != null && inputParam.InputParams.Any()) // Tạo job cho nhiều file cùng lúc
+                        {
+                            foreach(var job in jobs)
+                            {
+                                var subInput = inputParam.InputParams.FirstOrDefault(x => x.DocInstanceId == job.DocInstanceId);
+                                if (subInput != null)
+                                {
+                                    resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(subInput.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Waiting, subInput.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
+                                    if (!resultDocChangeCurrentWfsInfo.Success)
+                                    {
+                                        Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
+                                    }
+                                }
+                            }
+                        }
+                       
                         // 1.0. Nếu job là manual thì gửi message sang DistributionJob
                         if (jobs.Any() && !crrWfsInfo.IsAuto)
                         {
