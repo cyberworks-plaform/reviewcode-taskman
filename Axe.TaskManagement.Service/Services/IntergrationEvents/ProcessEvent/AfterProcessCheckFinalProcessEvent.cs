@@ -596,18 +596,25 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                                                 (short)EnumJob.Status.Complete,
                                                                                 job.DocPath, null, 0);
 
+                                            var allIgnoreJob = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                                                                job.ActionCode,
+                                                                                job.WorkflowStepInstanceId,
+                                                                                (short)EnumJob.Status.Ignore,
+                                                                                job.DocPath, null, 0);
+
                                             sw.Stop();
                                             Log.Debug($"{methodName} - allCompleteJobs-GetAllJobByWfs - Elapsed time {sw.ElapsedMilliseconds} ms ");
 
                                             var total_Job_Round_0_has_batch = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() != Guid.Empty).Count();
-
+                                            var totalIgnore = allIgnoreJob.Count();
+                                            
                                             allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
 
                                             var isCreateNewBatch = false;
 
 
-                                            // nếu tất cả các file trong cùng 1 path đã hoàn thành hết thì tạo ra tất cả các lô cho từng user
-                                            if (allCompleteJobs.Count == totalDocInPath - total_Job_Round_0_has_batch)
+                                            // nếu tất cả các file trong cùng 1 path đã hoàn thành hết thì tạo ra tất cả các lô cho từng user (không gồm các file bị bỏ qua)
+                                            if (allCompleteJobs.Count == totalDocInPath - total_Job_Round_0_has_batch - totalIgnore)
                                             {
                                                 isCreateNewBatch = true;
                                             }
