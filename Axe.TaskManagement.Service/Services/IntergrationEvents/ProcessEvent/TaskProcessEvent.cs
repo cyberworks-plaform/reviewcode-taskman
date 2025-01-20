@@ -248,7 +248,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                             ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                                                                 inputParam.DigitizedTemplateInstanceId)
                                                             : 0;
-                                                        
+
                                                         var output = new InputParam
                                                         {
                                                             FileInstanceId = inputParam.FileInstanceId,
@@ -620,6 +620,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             }
                         }
 
+                        //Note: từ phiên bản refator này (2025-01-20) sẽ tách 1 file 1 message vì vậy không dùng => inputParam.inputParams
+
                         // 1. Tạo jobs Waitting cho bước hiện tại; nếu job đã được tạo trước đó rồi thì sẽ không tạo lại-> tránh duplicate job
                         var jobsResponse = await CreateJobs(inputParam, crrWfsInfo.ConfigStep, accessToken);
                         var jobs = jobsResponse.Item2;
@@ -635,22 +637,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                             Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
                         }
 
-                        if (inputParam.InputParams != null && inputParam.InputParams.Any()) // Tạo job cho nhiều file cùng lúc
-                        {
-                            foreach(var job in jobs)
-                            {
-                                var subInput = inputParam.InputParams.FirstOrDefault(x => x.DocInstanceId == job.DocInstanceId);
-                                if (subInput != null)
-                                {
-                                    resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(subInput.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Waiting, subInput.WorkflowStepInstanceId.GetValueOrDefault(), null, string.Empty, null, accessToken: accessToken);
-                                    if (!resultDocChangeCurrentWfsInfo.Success)
-                                    {
-                                        Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change current work flow step info for DocInstanceId {inputParam.DocInstanceId.GetValueOrDefault()} !");
-                                    }
-                                }
-                            }
-                        }
-                       
                         // 1.0. Nếu job là manual thì gửi message sang DistributionJob
                         if (jobs.Any() && !crrWfsInfo.IsAuto)
                         {
@@ -1427,6 +1413,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                             //Kiểm tra nếu bước hiện tại trả lại nhiều kết quả hay không 
                                             // ví dụ: OCR_A3 -> trả lại nhiều Doc-Copy cho 1 file-input -> thì cần tạo nhiều job
+                                            //Todo: Cần refactor lại phần này loại bỏ không dùng tham số .InputParams
                                             if (currentJobResult.InputParams != null && currentJobResult.InputParams.Any())
                                             {
                                                 newListInputParam.AddRange(currentJobResult.InputParams);
@@ -1692,6 +1679,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 //check job exist
                 var randomDelayTime = new Random().Next(10, 100); // 10-100 ms
                 await Task.Delay(randomDelayTime);
+
                 var existedJob = await GetExisteJob(inputParam);
 
                 bool isExistedJob;
@@ -2346,7 +2334,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var docTypeFieldsRs = await _docTypeFieldClientService.GetByProjectAndDigitizedTemplateInstanceId(
                             inputParam.ProjectInstanceId.GetValueOrDefault(),
                             inputParam.DigitizedTemplateInstanceId.GetValueOrDefault(), accessToken);
-                        
+
                         if (docTypeFieldsRs != null && docTypeFieldsRs.Success && docTypeFieldsRs.Data.Any())
                         {
                             var docTypeFields = docTypeFieldsRs.Data;
@@ -2449,61 +2437,73 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
         private string RemoveUnwantedData(string processJobResponseData)
         {
-            if (!string.IsNullOrEmpty(processJobResponseData))
+            var result = processJobResponseData;
+            try
             {
-                var inputParam = JsonConvert.DeserializeObject<InputParam>(processJobResponseData);
-                if (inputParam != null)
+                if (!string.IsNullOrEmpty(processJobResponseData))
                 {
-                    if (!string.IsNullOrEmpty(inputParam.WorkflowStepInfoes))
+                    var inputParam = JsonConvert.DeserializeObject<InputParam>(processJobResponseData);
+                    if (inputParam != null)
                     {
-                        inputParam.WorkflowStepInfoes = null;
-                    }
-
-                    if (!string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
-                    {
-                        inputParam.WorkflowSchemaInfoes = null;
-                    }
-
-                    if (inputParam.InputParams != null && inputParam.InputParams.Any())
-                    {
-                        foreach (var item in inputParam.InputParams)
+                        if (!string.IsNullOrEmpty(inputParam.WorkflowStepInfoes))
                         {
-                            if (!string.IsNullOrEmpty(item.WorkflowStepInfoes))
-                            {
-                                item.WorkflowStepInfoes = null;
-                            }
+                            inputParam.WorkflowStepInfoes = null;
+                        }
 
-                            if (!string.IsNullOrEmpty(item.WorkflowSchemaInfoes))
+                        if (!string.IsNullOrEmpty(inputParam.WorkflowSchemaInfoes))
+                        {
+                            inputParam.WorkflowSchemaInfoes = null;
+                        }
+
+                        if (inputParam.InputParams != null && inputParam.InputParams.Any())
+                        {
+                            foreach (var item in inputParam.InputParams)
                             {
-                                item.WorkflowSchemaInfoes = null;
+                                if (!string.IsNullOrEmpty(item.WorkflowStepInfoes))
+                                {
+                                    item.WorkflowStepInfoes = null;
+                                }
+
+                                if (!string.IsNullOrEmpty(item.WorkflowSchemaInfoes))
+                                {
+                                    item.WorkflowSchemaInfoes = null;
+                                }
                             }
                         }
+
+                        result = JsonConvert.SerializeObject(inputParam);
                     }
 
-                    return JsonConvert.SerializeObject(inputParam);
                 }
-
-                return null;
             }
-
-            return null;
+            catch
+            {
+                //do nothing
+            }
+            return result;
         }
 
         private string RemoveUnwantedInputParamValue(string inputParamValue)
         {
-            if (!string.IsNullOrEmpty(inputParamValue))
+            var result = inputParamValue;
+            try
             {
-                var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParamValue);
-                if (docItems != null && docItems.Any())
+                if (!string.IsNullOrEmpty(inputParamValue))
                 {
-                    var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
-                    return JsonConvert.SerializeObject(storedDocItems);
+                    var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParamValue);
+                    if (docItems != null && docItems.Any())
+                    {
+                        var storedDocItems = _mapper.Map<List<DocItem>, List<StoredDocItem>>(docItems);
+                        result = JsonConvert.SerializeObject(storedDocItems);
+                    }
+
                 }
-
-                return null;
             }
-
-            return null;
+            catch
+            {
+                //do nothing 
+            }
+            return result;
         }
         #endregion
     }

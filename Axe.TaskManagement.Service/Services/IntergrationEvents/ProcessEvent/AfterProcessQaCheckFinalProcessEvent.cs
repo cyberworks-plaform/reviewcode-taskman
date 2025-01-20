@@ -458,12 +458,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                                                     if (isQAPass == false) //rollback step (CheckFinal) cho phiếu hiện tại
                                                     {
-                                                        inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
+                                                        inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case, isConvergenceNextStep);
                                                         inputParamsForQARollback = AsignNote_Round_Value(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
                                                     }
-                                                    else if (isQAPass == true) // forward step (SyntheticData cho phiếu hiện tại
+                                                    else if (isQAPass == true) // forward step (SyntheticData) cho phiếu hiện tại
                                                     {
-                                                        inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case);
+                                                        inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_case, isConvergenceNextStep);
                                                         inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
                                                         inputParamsForQAPass.ForEach(x =>
                                                         {
@@ -509,7 +509,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                             var nextWfsInfo_false = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_false_case.WorkflowStepInstanceId);
 
                                                             //Tạo ra lô phiếu rollback cho vòng mới
-                                                            inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_false);
+                                                            inputParamsForQARollback = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_false, isConvergenceNextStep);
 
                                                             //gắn note = QA_job.note và tăng Round
                                                             inputParamsForQARollback = AsignNote_Round_Value(inputParamsForQARollback, allJobsInBatchAndRound, isQAPass);
@@ -542,7 +542,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                                 nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
                                                                 var nextWfsInfo_pass = nextWfsInfoes.SingleOrDefault(x => x.InstanceId == stepCondition_pass_case.WorkflowStepInstanceId);
 
-                                                                inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass);
+                                                                //loại bỏ đi những Doc đã pass trước đây và không bao gồm doc hiện tại
+                                                                var passedItem = allJobsInBatchAndRound.Where(x => x.DocInstanceId != job.DocInstanceId && x.QaStatus == true).Select(x => x.DocInstanceId).ToList();
+                                                                completePrevJobs = completePrevJobs.Where(x => !passedItem.Contains(x.DocInstanceId)).ToList();
+                                                                
+                                                                inputParamsForQAPass = CreateInputParamForNextJob(completePrevJobs, wfsInfoes, wfSchemaInfoes, nextWfsInfo_pass, isConvergenceNextStep);
+                                                                
                                                                 inputParamsForQAPass = AsignNote_Round_Value(inputParamsForQAPass, allJobsInBatchAndRound, isQAPass);
                                                                 inputParamsForQAPass.ForEach(x =>
                                                                 {
@@ -563,7 +568,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                         {
                                                             isQAPass = true;
                                                             var currentJob = await _repository.GetByIdAsync(ObjectId.Parse(job.Id));
-                                                            inputParamsForQAPass = CreateInputParamForNextJob(new List<Job>() { currentJob }, wfsInfoes, wfSchemaInfoes, nextWfsInfo);
+                                                            inputParamsForQAPass = CreateInputParamForNextJob(new List<Job>() { currentJob }, wfsInfoes, wfSchemaInfoes, nextWfsInfo, isConvergenceNextStep);
                                                             inputParamsForQAPass.ForEach(x =>
                                                             {
                                                                 x.Note = string.Empty;
@@ -609,17 +614,6 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                             WorkflowStepInfo nextWfsInfo = null;
 
-                            //xử lý đặc biệt: trigger đơn lẻ cho file Pass QA
-                            if (job.QaStatus == true && isQAPass == false)
-                            {
-                                stepCondition = configStepConditionDefaults.FirstOrDefault(x => x.Value == true);
-                                nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
-                                nextWfsInfoes = nextWfsInfoes.Where(x => x.InstanceId == stepCondition.WorkflowStepInstanceId).ToList();
-                                nextWfsInfo = nextWfsInfoes.FirstOrDefault();
-
-                                await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, null, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
-                            }
-
                             //xý lý case thông thường trigger theo điều kiện isQAPass
                             stepCondition = configStepConditionDefaults.FirstOrDefault(x => x.Value == isQAPass);
                             nextWfsInfoes = WorkflowHelper.GetNextSteps(wfsInfoes, wfSchemaInfoes, job.WorkflowStepInstanceId.GetValueOrDefault());
@@ -636,17 +630,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 inputParams = inputParamsForQAPass;
                             }
 
-                            await ProcessTriggerNextStep(job, docItems, parallelJobInstanceId, isConvergenceNextStep, inputParams, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
-                            
-                            // Update current wfs status is complete
+                            await ProcessTriggerNextStep(job, parallelJobInstanceId, isConvergenceNextStep, inputParams, nextWfsInfo, wfsInfoes, wfSchemaInfoes, accessToken);
+
                             var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), crrWfsInfo.Id, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
                             if (!resultDocChangeCurrentWfsInfo.Success)
                             {
                                 Log.Logger.Error($"{nameof(AfterProcessQaCheckFinalEvent)}: Error change current work flow step info for DocInstanceId:{job.DocInstanceId.GetValueOrDefault()} !");
                             }
+
+
                         }
                     }
-
                     swTotal.Stop();
                     Log.Debug($"End {methodName} - EventId: {evt.EventBusIntergrationEventId} - Total Elapsed time {swTotal.ElapsedMilliseconds} ms");
                 }
@@ -673,7 +667,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
 
                 return new Tuple<bool, string, string>(true, null, null);
             }
-            
+
         }
 
         private async Task UpdatePrevJobsQaStatus(List<Job> prevJobs, bool qaStatus, short numOfRound)
@@ -692,7 +686,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             await _repository.UpdateMultiAsync(prevJobs);
         }
 
-        private async Task ProcessTriggerNextStep(JobDto job, List<DocItem> docItems, Guid parallelJobInstanceId, bool isConvergenceNextStep, List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string accessToken)
+        private async Task ProcessTriggerNextStep(JobDto job, Guid parallelJobInstanceId, bool isConvergenceNextStep, List<InputParam> inputParams, WorkflowStepInfo nextWfsInfo, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, string accessToken)
         {
             if (nextWfsInfo.ActionCode != ActionCodeConstants.End)
             {
@@ -702,74 +696,44 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 bool isPaid = !nextWfsInfo.IsAuto || (nextWfsInfo.IsAuto && isPaidStepRs && isPaidStep);
 
                 decimal price;
-                string value;
 
-                value = JsonConvert.SerializeObject(docItems);
                 price = isPaid
                     ? MoneyHelper.GetPriceByConfigPriceV2(nextWfsInfo.ConfigPrice,
                         job.DigitizedTemplateInstanceId)
                     : 0;
 
-                var output = new InputParam
+                inputParams.ForEach(x =>
                 {
-                    FileInstanceId = job.FileInstanceId,
-                    ActionCode = nextWfsInfo.ActionCode,
-                    DocInstanceId = job.DocInstanceId,
-                    DocName = job.DocName,
-                    DocCreatedDate = job.DocCreatedDate,
-                    DocPath = job.DocPath,
-                    TaskId = job.TaskId,
-                    TaskInstanceId = job.TaskInstanceId,
-                    ProjectTypeInstanceId = job.ProjectTypeInstanceId,
-                    ProjectInstanceId = job.ProjectInstanceId,
-                    SyncTypeInstanceId = job.SyncTypeInstanceId,
-                    DigitizedTemplateInstanceId = job.DigitizedTemplateInstanceId,
-                    DigitizedTemplateCode = job.DigitizedTemplateCode,
-                    WorkflowInstanceId = job.WorkflowInstanceId,
-                    WorkflowStepInstanceId = nextWfsInfo.InstanceId,
-                    //WorkflowStepInfoes = JsonConvert.SerializeObject(wfsInfoes),        // Không truyền thông tin này để giảm dung lượng msg
-                    //WorkflowSchemaInfoes = JsonConvert.SerializeObject(wfSchemaInfoes), // Không truyền thông tin này để giảm dung lượng msg
-                    Value = value,
-                    OldValue = value,
-                    Price = price,
-                    ClientTollRatio = job.ClientTollRatio,
-                    WorkerTollRatio = job.WorkerTollRatio,
-                    IsDivergenceStep = nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File,
-                    ParallelJobInstanceId =
-                        nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File
-                            ? parallelJobInstanceId
-                            : null,
-                    IsConvergenceNextStep =
-                        nextWfsInfo.Attribute == (short)EnumWorkflowStep.AttributeType.File &&
-                        isConvergenceNextStep,
-                    Note = job.Note,
-                    NumOfRound = job.QaStatus == false ? (short)(job.NumOfRound + 1) : job.NumOfRound,
-                    BatchName = job.BatchName,
-                    BatchJobInstanceId = job.BatchJobInstanceId,
-                    QaStatus = job.QaStatus,
-                    TenantId = job.TenantId,
-                };
-                inputParams.ForEach(x => x.Price = price);
+                    x.Price = price;
+                    x.IsConvergenceNextStep = isConvergenceNextStep;
+                });
 
-                output.InputParams = inputParams;
 
-                var taskEvt = new TaskEvent
+                //publish mỗi job 1 message riêng
+                foreach (var nextJobInputParam in inputParams)
                 {
-                    Input = JsonConvert.SerializeObject(output),     // output của bước trước là input của bước sau
-                    AccessToken = accessToken
-                };
+                    var taskEvt = new TaskEvent
+                    {
+                        Input = JsonConvert.SerializeObject(nextJobInputParam),     // output của bước trước là input của bước sau
+                        AccessToken = accessToken
+                    };
+                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                    Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {nextJobInputParam.DocInstanceId}");
 
-                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                }
 
-                Log.Logger.Information($"Published {nameof(TaskEvent)}: TriggerNextStep {nextWfsInfo.ActionCode}, WorkflowStepInstanceId: {nextWfsInfo.InstanceId} with DocInstanceId: {job.DocInstanceId}, JobCode: {job.Code}");
             }
-            else
+            else // tính tiền cho cho các doc đã hoàn thành
             {
-                await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItems, job.DocInstanceId.GetValueOrDefault(), accessToken);
+                foreach (var nextJobInputParam in inputParams)
+                {
+                    var docItemForMoney = JsonConvert.DeserializeObject<List<DocItem>>(nextJobInputParam.Value);
+                    await _moneyService.ChargeMoneyForCompleteDoc(wfsInfoes, wfSchemaInfoes, docItemForMoney, nextJobInputParam.DocInstanceId.GetValueOrDefault(), accessToken);
+                }
             }
         }
 
-        private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo)
+        private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo, bool isConvergenceNextStep)
         {
             var result = listJob.Select(j => new InputParam
             {
@@ -799,7 +763,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 WorkerTollRatio = j.WorkerTollRatio,
                 IsDivergenceStep = false,
                 ParallelJobInstanceId = j.ParallelJobInstanceId,
-                IsConvergenceNextStep = nextWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File,
+                IsConvergenceNextStep = nextWfsInfo?.Attribute == (short)EnumWorkflowStep.AttributeType.File && isConvergenceNextStep,
                 NumOfRound = (short)(j.NumOfRound),
                 BatchName = j.BatchName,
                 BatchJobInstanceId = j.BatchJobInstanceId,
