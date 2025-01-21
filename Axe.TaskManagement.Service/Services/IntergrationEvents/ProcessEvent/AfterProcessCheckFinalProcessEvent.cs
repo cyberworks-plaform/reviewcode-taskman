@@ -600,12 +600,12 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                                                 job.ActionCode,
                                                                                 job.WorkflowStepInstanceId,
                                                                                 (short)EnumJob.Status.Ignore,
-                                                                                job.DocPath, null, 0);
+                                                                                job.DocPath, null,numOfRound: 0);
 
                                             sw.Stop();
                                             Log.Debug($"{methodName} - allCompleteJobs-GetAllJobByWfs - Elapsed time {sw.ElapsedMilliseconds} ms ");
 
-                                            var total_Job_Round_0_has_batch = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() != Guid.Empty).Count();
+                                            var total_Job_Round_0_has_batch = allCompleteJobs.Count(x => x.BatchJobInstanceId.GetValueOrDefault() != Guid.Empty);
                                             var totalIgnore = allIgnoreJob.Count();
                                             
                                             allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
@@ -623,7 +623,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                                 //chỉ lấy những việc của người đang submit job hiên tại để tạo lô
                                                 allCompleteJobs = allCompleteJobs.Where(x => x.LastModifiedBy == job.LastModifiedBy).ToList();
 
-                                                if (allCompleteJobs.Count == batchQASize)
+                                                if (allCompleteJobs.Count >= batchQASize)
                                                 {
                                                     isCreateNewBatch = true;
                                                 }

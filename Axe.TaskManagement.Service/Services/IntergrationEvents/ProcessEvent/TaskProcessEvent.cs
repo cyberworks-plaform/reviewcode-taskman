@@ -627,7 +627,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                         var jobs = jobsResponse.Item2;
                         if (!@event.IsRetry && jobsResponse.Item1)
                         {
-                            Log.Information($"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}");
+                            Log.Information($"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}- DocName: {inputParam.DocName}");
                             return new Tuple<bool, string, string>(true, $"Job is created before message come. This message will be ignored. DocID: {inputParam.DocInstanceId} - ActionCode: {inputParam.ActionCode}", null);
                         }
                         // Update current wfs status is waiting
