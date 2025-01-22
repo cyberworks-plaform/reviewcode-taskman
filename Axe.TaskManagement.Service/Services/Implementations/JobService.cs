@@ -3803,6 +3803,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             //lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, ActionCodeConstants.QACheckFinal);
                         }
                     }
+                    //MultiDocPath
+                    var pathFilters = request.Filters.Where(_ => _.Field != null && _.Field.Equals("slTreeFolder") && !string.IsNullOrWhiteSpace(_.Value)).ToList();
+                    if (pathFilters.Count > 0)
+                    {
+                        var folderIdFilters = new List<FilterDefinition<Job>>();
+                        foreach (var pathFlter in pathFilters)
+                        {
+                            folderIdFilters.Add(Builders<Job>.Filter.Regex(x => x.DocPath, new MongoDB.Bson.BsonRegularExpression($"^{pathFlter.Value.ToString()}")));
+                        }
+                        if (folderIdFilters.Any())
+                        {
+                            lastFilter &= Builders<Job>.Filter.Or(folderIdFilters);
+                        }
+                    }
                 }
                 else
                 {
