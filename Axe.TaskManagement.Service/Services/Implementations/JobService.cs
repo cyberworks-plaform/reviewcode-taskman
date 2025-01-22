@@ -1588,27 +1588,28 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (resultUpdateJob != null)
                 {
                     // Trigger after jobs submit with data value; not trigger if job ignore
+
+                    var evt = new AfterProcessCheckFinalEvent
+                    {
+                        //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
+                        JobId = resultUpdateJob.Id.ToString(),
+                        AccessToken = accessToken
+                    };
+                    // Outbox
+                    await PublishEvent<AfterProcessCheckFinalEvent>(evt);
+
+                    // Publish message to DistributionJob to sync job status
+                    var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
+                    var logJobEvt = new LogJobEvent
+                    {
+                        LogJobs = new List<LogJobDto> { logJob },
+                        AccessToken = accessToken
+                    };
+                    // Outbox
+                    await PublishEvent<LogJobEvent>(logJobEvt);
+
                     if (!resultUpdateJob.IsIgnore)
                     {
-                        var evt = new AfterProcessCheckFinalEvent
-                        {
-                            //Job = _mapper.Map<Job, JobDto>(resultUpdateJob),
-                            JobId = resultUpdateJob.Id.ToString(),
-                            AccessToken = accessToken
-                        };
-                        // Outbox
-                        await PublishEvent<AfterProcessCheckFinalEvent>(evt);
-
-                        // Publish message to DistributionJob to sync job status
-                        var logJob = _mapper.Map<Job, LogJobDto>(resultUpdateJob);
-                        var logJobEvt = new LogJobEvent
-                        {
-                            LogJobs = new List<LogJobDto> { logJob },
-                            AccessToken = accessToken
-                        };
-                        // Outbox
-                        await PublishEvent<LogJobEvent>(logJobEvt);
-
                         // Update current wfs status is complete
                         var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeCurrentWorkFlowStepInfo(job.DocInstanceId.GetValueOrDefault(), -1, (short)EnumJob.Status.Complete, job.WorkflowStepInstanceId.GetValueOrDefault(), job.QaStatus, string.IsNullOrEmpty(job.Note) ? string.Empty : job.Note, job.NumOfRound, accessToken: accessToken);
                         if (!resultDocChangeCurrentWfsInfo.Success)
@@ -1975,7 +1976,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                         // Update all status DocFieldValues is complete
                         var docItems = JsonConvert.DeserializeObject<List<DocItem>>(inputParam.Value);
-                       
+
                         // Cập nhật giá trị value
                         var filter1 = Builders<Job>.Filter.Eq(x => x.FileInstanceId, inputParam.FileInstanceId);
                         var filter2 = Builders<Job>.Filter.Eq(x => x.ActionCode, inputParam.ActionCode);

@@ -543,8 +543,8 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                 var batchQASampling = 100;  // % lấy mẫu trong lô 
                                 var batchQAFalseThreshold = 100; // ngưỡng sai: nếu >= % ngưỡng thì trả lại cả lô
 
-                                if (isNextStepQa)
-                                {
+                                if (isNextStepQa) //nếu bước tiếp theo là QA 
+                                { 
                                     var configQa = WorkflowHelper.GetConfigQa(nextWfsInfo.ConfigStep);
                                     batchQASize = configQa.Item2; // Số phiếu / lô ; nếu = 0 thì cả thư mục là 1 lô
                                     batchQASampling = configQa.Item3; // % lấy mẫu trong lô 
@@ -557,10 +557,195 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                     {
                                         isProcessQAInBatchMode = false;
                                     }
-                                }
 
-                                //nếu bước tiếp theo là QA theo batch mode hoặc là các bước yêu cầu cùng hoàn thành đồng thời
-                                if ((isNextStepQa && isProcessQAInBatchMode) || isNextStepRequiredAllBeforeStepComplete || job.IsParallelJob)
+                                    if (isProcessQAInBatchMode) // QA theo lô
+                                    {
+                                        /*
+                                         * Rule => Mỗi lô chỉ chứa job CheckFinal của 1 người
+                                         * 1. Trường hợp Chưa có Lô
+                                         * 1.1. Đủ BatchSize thì TriggerNextStep
+                                         * 1.2. Chưa đủ BatchSize (không tròn Lô) => Tổng số jobs Complete = (Tổng số files trong path - Tổng file đã tạo lô QA) =>  thì TriggerNextStep
+                                         * 2. Trường hợp Đã có Lô rồi => phải đợi Tất cả các jobs Complete thì TriggerNextStep
+                                         * 
+                                         */
+                                        var isPathUploading = false;
+                                        var totalDocInPath = 0;
+
+                                        var pathStatusRs = await _docClientService.GetStatusPath(job.ProjectInstanceId.GetValueOrDefault(), job.SyncTypeInstanceId.GetValueOrDefault(), job.DocPath, accessToken);
+
+
+                                        if (pathStatusRs.Success && pathStatusRs.Data != null)
+                                        {
+                                            isPathUploading = pathStatusRs.Data.IsUploading;
+                                            totalDocInPath = pathStatusRs.Data.TotalDoc;
+                                        }
+
+                                        if (batchQASize == 0) // nếu setting BatQASize=0 thì coi cả thư mục là 1 lô
+                                        {
+                                            batchQASize = totalDocInPath;
+                                        }
+
+                                        // 1. Trường hợp chưa có Lô => tính toán tạo lô
+                                        if (job.NumOfRound == 0 && job.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty)
+                                        {
+                                            // Lấy tất cả các jobs CheckFinal Complete tại Round=0 và chưa có lô
+                                            sw.Restart();
+                                            var allCompleteJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                                                                job.ActionCode,
+                                                                                job.WorkflowStepInstanceId,
+                                                                                (short)EnumJob.Status.Complete,
+                                                                                job.DocPath, null, 0);
+
+                                            var allIgnoreJob = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                                                                job.ActionCode,
+                                                                                job.WorkflowStepInstanceId,
+                                                                                (short)EnumJob.Status.Ignore,
+                                                                                job.DocPath, null,numOfRound: 0);
+
+                                            sw.Stop();
+                                            Log.Debug($"{methodName} - allCompleteJobs-GetAllJobByWfs - Elapsed time {sw.ElapsedMilliseconds} ms ");
+
+                                            var total_Job_Round_0_has_batch = allCompleteJobs.Count(x => x.BatchJobInstanceId.GetValueOrDefault() != Guid.Empty);
+                                            var totalIgnore = allIgnoreJob.Count();
+                                            
+                                            allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
+
+                                            var isCreateNewBatch = false;
+
+
+                                            // nếu tất cả các file trong cùng 1 path đã hoàn thành hết thì tạo ra tất cả các lô cho từng user (không gồm các file bị bỏ qua)
+                                            if (allCompleteJobs.Count == totalDocInPath - total_Job_Round_0_has_batch - totalIgnore)
+                                            {
+                                                isCreateNewBatch = true;
+                                            }
+                                            else // nếu 
+                                            {
+                                                //chỉ lấy những việc của người đang submit job hiên tại để tạo lô
+                                                allCompleteJobs = allCompleteJobs.Where(x => x.LastModifiedBy == job.LastModifiedBy).ToList();
+
+                                                if (allCompleteJobs.Count >= batchQASize)
+                                                {
+                                                    isCreateNewBatch = true;
+                                                }
+                                            }
+
+                                            //đủ điề kiện => Tạo lô QA và trigger nextjob
+                                            if (isCreateNewBatch)
+                                            {
+                                                var listUser = allCompleteJobs.GroupBy(x => x.LastModifiedBy).Select(grp => grp.Key.GetValueOrDefault()).ToList();
+
+                                                //Tạo lô cho từng user
+                                                foreach (var lastUserInstanceId in listUser)
+                                                {
+                                                    var allCompleteJobsByUser = allCompleteJobs.Where(x => x.LastModifiedBy == lastUserInstanceId).ToList();
+
+                                                    // Tạo Batch và cập nhật BatchId cho danh sách Docs
+                                                    var batchRs = await _batchClientService.CreateBatch(new BatchDto
+                                                    {
+                                                        Path = job.DocPath,
+                                                        ProjectInstanceId = job.ProjectInstanceId.GetValueOrDefault(),
+                                                        DocInstanceIds = allCompleteJobsByUser.Select(x => x.DocInstanceId.GetValueOrDefault()).ToList(),
+                                                        DocCount = allCompleteJobsByUser.Count
+                                                    }, accessToken);
+
+                                                    //throw excepton if create batch fail
+                                                    if (!batchRs.Success)
+                                                    {
+                                                        throw new Exception($"Error create batch for projectInstanceId: {job.ProjectInstanceId.GetValueOrDefault()}");
+                                                    }
+
+                                                    //đánh dấu các job CF (Round=0; batch=null) = NewBach
+                                                    allCompleteJobsByUser.ForEach(x =>
+                                                    {
+                                                        x.BatchJobInstanceId = batchRs.Data.InstanceId;
+                                                        x.BatchName = batchRs.Data.Name;
+                                                    });
+                                                    await _repository.UpdateMultiAsync(allCompleteJobsByUser);
+
+                                                    //lấy ngẫu nhiên để tạo batch job QA
+                                                    var numJobQa = (int)Math.Round(allCompleteJobsByUser.Count * ((decimal)batchQASampling / 100), MidpointRounding.ToEven);
+                                                    if (numJobQa < 1)
+                                                    {
+                                                        numJobQa = 1;
+                                                    }
+                                                    var listJobQa = allCompleteJobsByUser.OrderBy(x => x.RandomSortOrder).Take(numJobQa).ToList();
+                                                    
+                                                    // mỗi job 1 message riêng
+                                                    var listNextJobInputParam = CreateInputParamForNextJob(listJobQa, wfsInfoes, wfSchemaInfoes, nextWfsInfo, parallelJobInstanceId, isMultipleNextStep, isConvergenceNextStep);
+                                                    foreach (var nextJobInputParam in listNextJobInputParam)
+                                                    {
+                                                        taskEvt.Input = JsonConvert.SerializeObject(nextJobInputParam);
+                                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                    }
+                                                    isTriggerNextStep = true;
+
+                                                }
+                                            }
+                                        }
+
+                                        // 2. Trường hợp Đã có Lô rồi => Hiệu chỉnh Batchsize = số lượng file trong lô
+                                        else
+                                        {
+                                            //=> do việc tạo lô QA đã xong nên khi process 1 file trong lô ở Round =0 thì cần loại bỏ việc tạo lại lô mới
+                                            if (job.NumOfRound > 0)
+                                            {
+                                                // Lấy jobs CheckFinal (có Status=ALL) của Batch + Round hiện tại
+                                                var allJobInBatch = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                                    job.ActionCode,
+                                                    job.WorkflowStepInstanceId, null, job.DocPath,
+                                                    job.BatchJobInstanceId, job.NumOfRound);
+
+                                                var totalJobInBatch = allJobInBatch.Count;
+                                                var completedJobInBatch = allJobInBatch.Count(x => x.Status == (short)EnumJob.Status.Complete);
+
+
+                                                batchQASize = totalJobInBatch;
+
+                                                //Logic:  phải đợi Tất cả các jobs CheckFinal Complete thì TriggerNextStep
+                                                if (completedJobInBatch == totalJobInBatch)
+                                                {
+                                                    // tạo lượt QA mới => gồm các phiếu bị QA fail ở round hiện tại -> ưu tiên lấy các fiel bị QA=False ở Round trước
+                                                    var listQAJobInLastRound = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
+                                                        nextWfsInfo.ActionCode,
+                                                    nextWfsInfo.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
+                                                    job.BatchJobInstanceId, (short)(job.NumOfRound - 1));
+
+                                                    var numJobQa = (int)Math.Round(batchQASize * (decimal)batchQASampling / 100, MidpointRounding.ToEven);
+
+                                                    listQAJobInLastRound = listQAJobInLastRound.Where(x => x.QaStatus == false).ToList();
+
+                                                    //ưu tiên lấy các File bị QA False ở vòng trước => listJobQA
+                                                    var listJobQa = allJobInBatch.Where(x => listQAJobInLastRound.Any(y => y.DocInstanceId == x.DocInstanceId)).ToList();
+
+                                                    //nếu chưa đủ số lượng lô QA -> thì lấy thêm
+                                                    if (listJobQa.Count < numJobQa)
+                                                    {
+                                                        var moreNumber = numJobQa - listJobQa.Count();
+
+                                                        //lấy thêm các file khác mã chưa tồn tại trong listJobQA
+                                                        var listJobQaMore = allJobInBatch.Where(x => listJobQa.Any(y => y.DocInstanceId == x.DocInstanceId) == false).OrderBy(x => x.RandomSortOrder).Take(moreNumber).ToList();
+                                                        listJobQa.AddRange(listJobQaMore);
+                                                    }
+
+                                                    // mỗi job 1 message riêng
+                                                    var listNextJobInputParam = CreateInputParamForNextJob(listJobQa, wfsInfoes, wfSchemaInfoes, nextWfsInfo, parallelJobInstanceId, isMultipleNextStep, isConvergenceNextStep);
+                                                    foreach (var nextJobInputParam in listNextJobInputParam)
+                                                    {
+                                                        taskEvt.Input = JsonConvert.SerializeObject(nextJobInputParam);
+                                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                                    }
+                                                    isTriggerNextStep = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    else //nếu là ( QA nhưng đơn file ) hoặc ( các điều kiện khác ) thì next step luôn
+                                    {
+                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                        isTriggerNextStep = true;
+                                    }
+                                }
+                                else // bước tiếp theo không phải là QA
                                 {
                                     if (job.IsParallelJob)
                                     {
@@ -616,168 +801,11 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                                             }
                                         }
                                     }
-                                    else if (isNextStepQa && isProcessQAInBatchMode)
+                                    else
                                     {
-                                        /*
-                                         * Rule => Mỗi lô chỉ chứa job CheckFinal của 1 người
-                                         * 1. Trường hợp Chưa có Lô
-                                         * 1.1. Đủ BatchSize thì TriggerNextStep
-                                         * 1.2. Chưa đủ BatchSize (không tròn Lô) => Tổng số jobs Complete = (Tổng số files trong path - Tổng file đã tạo lô QA) =>  thì TriggerNextStep
-                                         * 2. Trường hợp Đã có Lô rồi => phải đợi Tất cả các jobs Complete thì TriggerNextStep
-                                         * 
-                                         */
-                                        var isPathUploading = false;
-                                        var totalDocInPath = 0;
-
-                                        var pathStatusRs = await _docClientService.GetStatusPath(job.ProjectInstanceId.GetValueOrDefault(), job.SyncTypeInstanceId.GetValueOrDefault(), job.DocPath, accessToken);
-
-
-                                        if (pathStatusRs.Success && pathStatusRs.Data != null)
-                                        {
-                                            isPathUploading = pathStatusRs.Data.IsUploading;
-                                            totalDocInPath = pathStatusRs.Data.TotalDoc;
-                                        }
-
-                                        if (batchQASize == 0) // nếu setting BatQASize=0 thì coi cả thư mục là 1 lô
-                                        {
-                                            batchQASize = totalDocInPath;
-                                        }
-
-                                        // 1. Trường hợp chưa có Lô => tính toán tạo lô
-                                        if (job.NumOfRound == 0 && job.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty)
-                                        {
-                                            // Lấy tất cả các jobs CheckFinal Complete tại Round=0 và chưa có lô
-                                            sw.Restart();
-                                            var allCompleteJobs = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
-                                                                                job.ActionCode,
-                                                                                job.WorkflowStepInstanceId,
-                                                                                (short)EnumJob.Status.Complete,
-                                                                                job.DocPath, null, 0);
-
-                                            sw.Stop();
-                                            Log.Debug($"{methodName} - allCompleteJobs-GetAllJobByWfs - Elapsed time {sw.ElapsedMilliseconds} ms ");
-
-                                            var total_Job_Round_0_has_batch = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() != Guid.Empty).Count();
-
-                                            allCompleteJobs = allCompleteJobs.Where(x => x.BatchJobInstanceId.GetValueOrDefault() == Guid.Empty).ToList();
-
-                                            var isCreateNewBatch = false;
-
-
-                                            // nếu tất cả các file trong cùng 1 path đã hoàn thành hết thì tạo ra tất cả các lô cho từng user
-                                            if (allCompleteJobs.Count == totalDocInPath - total_Job_Round_0_has_batch)
-                                            {
-                                                isCreateNewBatch = true;
-                                            }
-                                            else // nếu 
-                                            {
-                                                //chỉ lấy những việc của người đang submit job hiên tại để tạo lô
-                                                allCompleteJobs = allCompleteJobs.Where(x => x.LastModifiedBy == job.LastModifiedBy).ToList();
-
-                                                if (allCompleteJobs.Count == batchQASize)
-                                                {
-                                                    isCreateNewBatch = true;
-                                                }
-                                            }
-
-                                            //đủ điề kiện => Tạo lô QA và trigger nextjob
-                                            if (isCreateNewBatch)
-                                            {
-                                                var listUser = allCompleteJobs.GroupBy(x => x.LastModifiedBy).Select(grp => grp.Key.GetValueOrDefault()).ToList();
-
-                                                //Tạo lô cho từng user
-                                                foreach (var lastUserInstanceId in listUser)
-                                                {
-                                                    var allCompleteJobsByUser = allCompleteJobs.Where(x => x.LastModifiedBy == lastUserInstanceId).ToList();
-
-                                                    // Tạo Batch và cập nhật BatchId cho danh sách Docs
-                                                    var batchRs = await _batchClientService.CreateBatch(new BatchDto
-                                                    {
-                                                        Path = job.DocPath,
-                                                        ProjectInstanceId = job.ProjectInstanceId.GetValueOrDefault(),
-                                                        DocInstanceIds = allCompleteJobsByUser.Select(x => x.DocInstanceId.GetValueOrDefault()).ToList(),
-                                                        DocCount = allCompleteJobsByUser.Count
-                                                    }, accessToken);
-
-                                                    //đánh dấu các job CF (Round=0; batch=null) = NewBach
-                                                    allCompleteJobsByUser.ForEach(x =>
-                                                    {
-                                                        x.BatchJobInstanceId = batchRs.Data.InstanceId;
-                                                        x.BatchName = batchRs.Data.Name;
-                                                    });
-                                                    await _repository.UpdateMultiAsync(allCompleteJobsByUser);
-
-                                                    //lấy ngẫu nhiên để tạo batch job QA
-                                                    var numJobQa = (int)Math.Round(allCompleteJobsByUser.Count * ((decimal)batchQASampling / 100), MidpointRounding.ToEven);
-                                                    if (numJobQa < 1)
-                                                    {
-                                                        numJobQa = 1;
-                                                    }
-                                                    var listJobQa = allCompleteJobsByUser.OrderBy(x => x.RandomSortOrder).Take(numJobQa).ToList();
-                                                    // Re-serialize taskEvt
-                                                    output.InputParams = CreateInputParamForNextJob(listJobQa, wfsInfoes, wfSchemaInfoes, nextWfsInfo, parallelJobInstanceId, isMultipleNextStep, isConvergenceNextStep);
-                                                    taskEvt.Input = JsonConvert.SerializeObject(output);
-                                                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                                    isTriggerNextStep = true;
-
-                                                }
-                                            }
-                                        }
-
-                                        // 2. Trường hợp Đã có Lô rồi => Hiệu chỉnh Batchsize = số lượng file trong lô
-                                        else
-                                        {
-                                            // Lấy jobs CheckFinal (có Status=ALL) của Batch + Round hiện tại
-                                            var allJobInBatch = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
-                                                job.ActionCode,
-                                                job.WorkflowStepInstanceId, null, job.DocPath,
-                                                job.BatchJobInstanceId, job.NumOfRound);
-
-                                            var totalJobInBatch = allJobInBatch.Count;
-                                            var completedJobInBatch = allJobInBatch.Count(x => x.Status == (short)EnumJob.Status.Complete);
-
-
-                                            batchQASize = totalJobInBatch;
-
-                                            //Logic:  phải đợi Tất cả các jobs CheckFinal Complete thì TriggerNextStep
-                                            if (completedJobInBatch == totalJobInBatch)
-                                            {
-                                                // tạo lượt QA mới => gồm các phiếu bị QA fail ở round hiện tại -> ưu tiên lấy các fiel bị QA=False ở Round trước
-                                                var listQAJobInLastRound = await _repository.GetAllJobByWfs(job.ProjectInstanceId.GetValueOrDefault(),
-                                                    nextWfsInfo.ActionCode,
-                                                nextWfsInfo.InstanceId, (short)EnumJob.Status.Complete, job.DocPath,
-                                                job.BatchJobInstanceId, (short)(job.NumOfRound - 1));
-
-                                                var numJobQa = (int)Math.Round(batchQASize * (decimal)batchQASampling / 100, MidpointRounding.ToEven);
-
-                                                listQAJobInLastRound = listQAJobInLastRound.Where(x => x.QaStatus == false).ToList();
-
-                                                //ưu tiên lấy các File bị QA False ở vòng trước => listJobQA
-                                                var listJobQa = allJobInBatch.Where(x => listQAJobInLastRound.Any(y => y.DocInstanceId == x.DocInstanceId)).ToList();
-
-                                                //nếu chưa đủ số lượng lô QA -> thì lấy thêm
-                                                if (listJobQa.Count < numJobQa)
-                                                {
-                                                    var moreNumber = numJobQa - listJobQa.Count();
-
-                                                    //lấy thêm các file khác mã chưa tồn tại trong listJobQA
-                                                    var listJobQaMore = allJobInBatch.Where(x => listJobQa.Any(y => y.DocInstanceId == x.DocInstanceId) == false).OrderBy(x => x.RandomSortOrder).Take(moreNumber).ToList();
-                                                    listJobQa.AddRange(listJobQaMore);
-                                                }
-
-                                                // Re-serialize taskEvt
-                                                output.InputParams = CreateInputParamForNextJob(listJobQa, wfsInfoes, wfSchemaInfoes, nextWfsInfo, parallelJobInstanceId, isMultipleNextStep, isConvergenceNextStep);
-                                                taskEvt.Input = JsonConvert.SerializeObject(output);
-                                                await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                                isTriggerNextStep = true;
-                                            }
-                                        }
+                                        await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
+                                        isTriggerNextStep = true;
                                     }
-                                }
-                                else //nếu là ( QA nhưng đơn file ) hoặc ( các điều kiện khác ) thì next step luôn
-                                {
-                                    await TriggerNextStep(taskEvt, nextWfsInfo.ActionCode);
-                                    isTriggerNextStep = true;
                                 }
 
                                 if (isTriggerNextStep)
@@ -922,6 +950,17 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
             }
         }
 
+        /// <summary>
+        /// Tạo ra danh sách InputParam từ các job cần trigger bước tiếp theo
+        /// </summary>
+        /// <param name="listJob"></param>
+        /// <param name="wfsInfoes"></param>
+        /// <param name="wfSchemaInfoes"></param>
+        /// <param name="nextWfsInfo"></param>
+        /// <param name="parallelJobInstanceId"></param>
+        /// <param name="isMultipleNextStep"></param>
+        /// <param name="isConvergenceNextStep"></param>
+        /// <returns></returns>
         private List<InputParam> CreateInputParamForNextJob(List<Model.Entities.Job> listJob, List<WorkflowStepInfo> wfsInfoes, List<WorkflowSchemaConditionInfo> wfSchemaInfoes, WorkflowStepInfo nextWfsInfo, Guid parallelJobInstanceId, bool isMultipleNextStep, bool isConvergenceNextStep)
         {
             var result = listJob.Select(j => new InputParam
@@ -962,6 +1001,7 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.ProcessEvent
                 BatchName = j.BatchName,
                 BatchJobInstanceId = j.BatchJobInstanceId,
                 TenantId = j.TenantId,
+                LastModifiedBy = j.LastModifiedBy,
                 //ItemInputParams = itemInputParams
             }).ToList();
 
