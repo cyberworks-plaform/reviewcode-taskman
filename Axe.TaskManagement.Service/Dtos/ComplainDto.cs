@@ -62,10 +62,6 @@ namespace Axe.TaskManagement.Service.Dtos
         [BsonElement("doc_type_field_instance_id")]
         public Guid? DocTypeFieldInstanceId { get; set; }
 
-        [Description("InstanceId trường giá trị dữ liệu")]
-        [BsonElement("doc_field_value_instance_id")]
-        public Guid? DocFieldValueInstanceId { get; set; }   // Dư thừa dữ liệu, được link 1-1 đến DocFieldValue nào
-
         [BsonElement("created_date")]
         public DateTime? CreatedDate { get; set; } = DateTime.UtcNow;
 

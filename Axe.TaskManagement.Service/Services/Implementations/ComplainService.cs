@@ -18,6 +18,7 @@ using Ce.Constant.Lib.Enums;
 using Ce.EventBus.Lib.Abstractions;
 using Ce.Workflow.Client.Services.Interfaces;
 using Microsoft.Extensions.Configuration;
+using MongoDB.Bson;
 using MongoDB.Driver;
 using Newtonsoft.Json;
 using Serilog;
@@ -160,8 +161,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                             docItems = docItemsRs.Data;
                                             foreach (var docItem in docItems)
                                             {
-                                                var crrDocItemComplain = docItemComplains.FirstOrDefault(x => x.DocFieldValueInstanceId == docItem.DocFieldValueInstanceId);
-                                                if (crrDocItemComplain?.Value != docItem.Value)
+                                                var crrDocItemComplain = docItemComplains.FirstOrDefault(x => x.DocTypeFieldInstanceId == docItem.DocTypeFieldInstanceId);
+                                                if (crrDocItemComplain != null && crrDocItemComplain.Value != docItem.Value)
                                                 {
                                                     docItem.Value = crrDocItemComplain.Value;
                                                     isUpdateValue = true;
@@ -202,7 +203,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                                         }
                                     }
-
                                     // 2. Update FinalValue in Doc: Publish event
                                     if (isUpdateValue && docItems.Any())
                                     {
@@ -237,10 +237,31 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 response = GenericResponse<ComplainDto>.ResultWithError(-1, ex.Message, ex.StackTrace);
                 Log.Error($"Error on CreateOrUpdateComplain => param: {JsonConvert.SerializeObject(model)};mess: {ex.Message} ; trace:{ex.StackTrace}");
-            }
-            return response;
-        }
 
+                //rollback status
+                try
+                {
+                    if (!string.IsNullOrEmpty(model.Id))
+                    {
+                        var complain = await _repository.GetByIdAsync(ObjectId.Parse(model.Id));
+                        if (complain != null)
+                        {
+                            complain.Status = (short)EnumComplain.Status.Unprocessed;
+                            complain.RightStatus = (short)EnumComplain.RightStatus.WaitingConfirm;
+
+                            await _repository.UpdateAsync(complain);
+                        }
+                    }
+                }
+                catch (Exception exRollback)
+                {
+                    Log.Error($"Error on Rollback CreateOrUpdateComplain => param: {JsonConvert.SerializeObject(model)};mess: {exRollback.Message} ; trace:{exRollback.StackTrace}");
+                }
+            }
+            
+            return response;
+
+        }
         public async Task<GenericResponse<HistoryComplainDto>> GetHistoryComplainByUser(PagingRequest request, string actionCode, string accessToken)
         {
             GenericResponse<HistoryComplainDto> response;
