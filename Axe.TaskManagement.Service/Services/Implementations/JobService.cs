@@ -34,6 +34,7 @@ using Newtonsoft.Json.Linq;
 using Serilog;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
@@ -370,6 +371,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         public async Task<GenericResponse<int>> ProcessDataEntry(List<JobResult> result, string accessToken = null)
         {
             // 2. Process
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
             GenericResponse<int> response;
             try
             {
@@ -490,7 +493,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 response = GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
                 Log.Error($"Error on ProcessSendDataEntry => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
-
+            sw.Stop();
+            Log.Debug($"ProcessDataEntry - Save job result in duration: {sw.ElapsedMilliseconds} ms");
             return response;
         }
 
@@ -1410,6 +1414,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         public async Task<GenericResponse<int>> ProcessCheckFinal(JobResult result, string accessToken = null)
         {
             // 2. Process
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
             GenericResponse<int> response;
             try
             {
@@ -1646,6 +1652,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 response = GenericResponse<int>.ResultWithError(-1, ex.StackTrace, ex.Message);
                 Log.Error($"Error on ProcessCheckFinal => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
+            sw.Stop();
+            Log.Debug($"ProcessCheckFinal - Save job result in duration: {sw.ElapsedMilliseconds} ms");
             return response;
         }
 
@@ -1662,6 +1670,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
         public async Task<GenericResponse<int>> ProcessQaCheckFinal(JobResult result, string accessToken = null)
         {
             // 2. Process
+            Stopwatch sw = new Stopwatch();
+            sw.Start();
             GenericResponse<int> response;
             try
             {
@@ -1904,7 +1914,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 response = GenericResponse<int>.ResultWithError(-1, ex.Message, ex.StackTrace);
                 Log.Error($"Error on ProcessQaCheckFinal => param: {JsonConvert.SerializeObject(result)};mess: {ex.Message} ; trace:{ex.StackTrace}");
             }
-
+            sw.Stop();
+            Log.Debug($"ProcessQaCheckFinal - Save job result in duration: {sw.ElapsedMilliseconds} ms");
             return response;
         }
 
@@ -6520,14 +6531,6 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             {
                 if (_userPrincipalService.UserInstanceId != null && _userPrincipalService.UserInstanceId != Guid.Empty)
                 {
-                    // Check xem user hiện có đang tồn đọng công việc
-                    var oldJobs = await _repository.GetJobProcessingByUserAsync(_userPrincipalService.UserInstanceId.GetValueOrDefault(), actionCode, projectInstanceId);
-                    if (oldJobs.Count > 0)
-                    {
-                        var result = _mapper.Map<List<Job>, List<JobDto>>(oldJobs);
-                        return GenericResponse<List<JobDto>>.ResultWithData(result, "Người dùng hiện đang còn tồn đọng công việc!");
-                    }
-
                     var filter1 = Builders<Job>.Filter.Eq(x => x.UserInstanceId, null);
                     var filter2 = Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, projectInstanceId);
                     var filter3 = Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode); // ActionCode
@@ -6682,6 +6685,17 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        /// <summary>
+        /// Update trạng thái của Task, các thống kê liên quan khi phân phối job
+        /// </summary>
+        /// <param name="jobs"></param>
+        /// <param name="projectTypeInstanceId"></param>
+        /// <param name="projectInstanceId"></param>
+        /// <param name="workflowInstanceId"></param>
+        /// <param name="actionCode"></param>
+        /// <param name="InstanceId"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         private async Task UpdateJob(List<Job> jobs, Guid projectTypeInstanceId, Guid projectInstanceId, Guid? workflowInstanceId, string actionCode, Guid InstanceId, string accessToken)
         {
             // TaskStepProgress: Update value
@@ -7807,17 +7821,23 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return updatedJobs;
         }
 
+        /// <summary>
+        /// Get Name of Path and cache it for 30 days
+        /// </summary>
+        /// <param name="docPath"></param>
+        /// <param name="accessToken"></param>
+        /// <returns></returns>
         private async Task<string> GetPathName(string docPath, string accessToken)
         {
             var pathName = string.Empty;
-
+            var cacheTime = (int)TimeSpan.FromDays(30).TotalSeconds;
             var cacheKey = $"Job_PathName_{docPath}";
             pathName = _cachingHelper.TryGetFromCache<string>(cacheKey);
             if (string.IsNullOrEmpty(pathName))
             {
                 var docRes = await _docClientService.GetPathName(docPath, accessToken);
                 pathName = docRes.Data;
-                await _cachingHelper.TrySetCacheAsync(cacheKey, pathName);
+                await _cachingHelper.TrySetCacheAsync(cacheKey, pathName,cacheTime);
             }
             return pathName;
         }
