@@ -6925,7 +6925,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     var lstUserCovert = lstUserFilter.ConvertAll<Guid?>(i => i).ToList();
                     lastFilter = lastFilter & Builders<Job>.Filter.In(x => x.UserInstanceId, lstUserCovert);
-                    var data = await _repository.GetTotalJobProcessingStatistics_V2(lastFilter);
+                    var data = await _repository.GetTotalJobProcessingStatistics_V3(lastFilter);
                     var lstWfStepInstanceId = data.Select(x => x.WorkflowStepInstanceId).Distinct();
                     var lstJobProcessingStatistics = new List<JobProcessingStatistics>();
                     foreach (var wfStep in lstWfStepInstanceId)

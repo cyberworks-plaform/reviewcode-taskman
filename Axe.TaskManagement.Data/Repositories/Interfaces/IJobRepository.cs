@@ -76,6 +76,7 @@ namespace Axe.TaskManagement.Data.Repositories.Interfaces
         Task<List<CountJobEntity>> GetSummaryJobCompleteByAction(Guid projectInstanceId);
         Task<WorkSpeedReportEntity> GetWorkSpeed(Guid? projectInstanceId, Guid? userInstanceId);
         Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V2(FilterDefinition<Job> filter);
+        Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V3(FilterDefinition<Job> filter);
         Task<List<JobByDocDoneEntity>> GetSummaryJobOfDoneFileByStep(Guid? projectInstanceId, string lastAction);
         Task<List<JobOfFileEntity>> GetSummaryJobOfFile(Guid? docInstanceId);
         Task<Job> UpdateAndLockRecordAsync(Job entity);

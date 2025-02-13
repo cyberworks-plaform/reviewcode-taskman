@@ -1697,6 +1697,59 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             return response;
         }
 
+        public async Task<List<JobProcessingStatistics>> GetTotalJobProcessingStatistics_V3(FilterDefinition<Job> filter)
+        {
+            var findOptions = new FindOptions<Job>
+            {
+                Projection = Builders<Job>.Projection
+                    .Include(j => j.UserInstanceId)
+                    .Include(j => j.WorkflowStepInstanceId)
+                    .Include(j => j.ActionCode)
+                    .Include(j => j.HasChange)
+                    .Include(j => j.IsIgnore)
+            };
+
+            using var cursor = await GetCursorListJobAsync(filter, findOptions);
+
+            var statistics = new Dictionary<(Guid userInstanceId, Guid workflowStepInstanceId), JobProcessingStatistics>();
+
+            while (await cursor.MoveNextAsync())
+            {
+                foreach (var job in cursor.Current)
+                {
+                    var userInstanceId = job.UserInstanceId;
+                    var workflowStepInstanceId = job.WorkflowStepInstanceId;
+                    var actionCode = job.ActionCode;
+                    var hasChange = job.HasChange;
+                    var isIgnore = job.IsIgnore;
+
+                    var key = (job.UserInstanceId.GetValueOrDefault(), job.WorkflowStepInstanceId.GetValueOrDefault());
+                    if (!statistics.ContainsKey(key))
+                    {
+                        statistics[key] = new JobProcessingStatistics
+                        {
+                            UserInstanceId = userInstanceId,
+                            WorkflowStepInstanceId = workflowStepInstanceId,
+                            ActionCode = actionCode,
+                            Total = 0,
+                            Total_Correct = 0,
+                            Total_Ignore = 0,
+                            Total_Wrong = 0
+                        };
+                    }
+
+                    var stat = statistics[key];
+                    stat.Total++;
+                    if (isIgnore) stat.Total_Ignore++;
+                    if (hasChange) stat.Total_Wrong++;
+                    else stat.Total_Correct++;
+                }
+            }
+
+            return statistics.Values.ToList();
+        }
+
+
         public async Task<List<TotalJobProcessingStatistics>> GetTotalJobProcessingStatistics(FilterDefinition<Job> filter)
         {
             var aggregate = DbSet.Aggregate();
