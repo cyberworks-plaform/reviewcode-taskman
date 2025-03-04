@@ -101,9 +101,10 @@ namespace Axe.TaskManagement.Service.Services.IntergrationEvents.Inbox
                                 var currentProcessingTaskList = new Dictionary<Guid, Task<ProcessEventResult>>();
                                 try
                                 {
-                                    var listInboxEvent = await inboxIntegrationEventRepository.GetsInboxIntegrationEventAsync(_batchSize, _maxRetry);
+                                    //var listInboxEvent = await inboxIntegrationEventRepository.GetsInboxIntegrationEventAsync(_batchSize, _maxRetry);
+                                    IEnumerable<ExtendedInboxIntegrationEvent> listInboxEvent = new List<ExtendedInboxIntegrationEvent>();
                                     isInboxEmpty = !listInboxEvent.Any();
-                                    if (isInboxEmpty)
+                                    if (listInboxEvent.Any())
                                     {
                                         await Task.Delay(_timeSpanInboxInterval, stoppingToken);
                                     }

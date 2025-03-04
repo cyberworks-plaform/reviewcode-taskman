@@ -6685,6 +6685,101 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             return response;
         }
 
+        public async Task<GenericResponse<List<JobDto>>> GetListJobForUserByIds(ProjectDto project, string actionCode, Guid workflowStepInstanceId, string Ids, string accessToken = null)
+        {
+            var projectInstanceId = project.InstanceId;
+            var projectTypeInstanceId = project.ProjectTypeInstanceId;
+
+            GenericResponse<List<JobDto>> response;
+            try
+            {
+                if (_userPrincipalService.UserInstanceId != null && _userPrincipalService.UserInstanceId != Guid.Empty)
+                {
+                    List<string> jobIdStrings = JsonConvert.DeserializeObject<List<string>>(Ids);
+                    List<ObjectId> jobIdList = jobIdStrings.Select(id => ObjectId.Parse(id)).ToList();
+                    var filter = Builders<Job>.Filter.In(x => x.Id, jobIdList);
+
+                    var jobDtos = new List<JobDto>();
+
+                    var workflowInstanceId = project.WorkflowInstanceId;
+                    var tenantId = project.TenantId;
+
+                    var jobs = new List<Job>();
+
+                    var jobResult = new List<Job>();
+
+                    var turnInstanceId = Guid.NewGuid();
+
+                    var wfsInfo = project.ActionCodes.FirstOrDefault(c => c.ActionCode == actionCode && c.InstanceId == workflowStepInstanceId);
+
+                    if (wfsInfo != null)
+                    {
+                        var maxTimeProcessing = wfsInfo.ConfigStepProperty.MaxTimeProcessing;
+
+                        jobs = await _repository.FindAsync(filter);
+                        //bổ sung các metadata còn thiếu nếu cần thiết cho các actionCode cụ thể
+                        jobs = await AddMissedMetaDataField(jobs, actionCode, accessToken);
+
+                        //bổ sung thêm các cấu hình trường thông tin
+                        jobs = await AddDocTypeFieldExtraSetting(jobs, actionCode, accessToken);
+                        if (jobs.Any())
+                        {
+                            var docInstanceIds = jobs.Where(x => x.DocInstanceId != null).Select(x => x.DocInstanceId.GetValueOrDefault()).Distinct();
+                            // Update current wfs status is processing
+                            var resultDocChangeCurrentWfsInfo = await _docClientService.ChangeMultiCurrentWorkFlowStepInfo(JsonConvert.SerializeObject(docInstanceIds), -1, (short)EnumJob.Status.Processing, accessToken: accessToken);
+                            if (!resultDocChangeCurrentWfsInfo.Success)
+                            {
+                                Log.Logger.Error($"{nameof(TaskProcessEvent)}: Error change multi current work flow step info for DocInstanceIds {JsonConvert.SerializeObject(docInstanceIds)} !");
+                            }
+
+                            var now = DateTime.UtcNow;
+                            foreach (var job in jobs)
+                            {
+                                job.UserInstanceId = _userPrincipalService.UserInstanceId;
+                                job.TurnInstanceId = turnInstanceId;
+                                job.ReceivedDate = now;
+                                job.DueDate = now.AddMinutes(maxTimeProcessing);
+                                job.Status = (short)EnumJob.Status.Processing;
+                                job.LastModificationDate = now;
+
+                                var itemUpdate = await _repository.UpdateAndLockRecordAsync(job);
+                                if (itemUpdate != null)
+                                    jobResult.Add(job);
+                            }
+                        }
+
+                        if (jobResult.Count > 0)
+                        {
+                            if (jobResult.Count > 0)
+                            {
+                                //SetCacheRedis
+                                await SetCacheRecall(_userPrincipalService.UserInstanceId.Value, turnInstanceId, maxTimeProcessing, accessToken);
+
+                                // Update asynchronous
+                                await UpdateJob(jobResult, projectTypeInstanceId, projectInstanceId, workflowInstanceId, actionCode, wfsInfo.InstanceId, accessToken);
+                            }
+
+                            // Mapper
+                            jobDtos = _mapper.Map<List<Job>, List<JobDto>>(jobResult);
+                        }
+                    }
+
+                    response = GenericResponse<List<JobDto>>.ResultWithData(jobDtos);
+                }
+                else
+                {
+                    response = GenericResponse<List<JobDto>>.ResultWithError((int)HttpStatusCode.Unauthorized, HttpStatusCode.Unauthorized.ToString(), "Chưa đăng nhập");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Logger.Error($"Lỗi nhận việc GetListJobForUserByIds: => {ex.Message} => {ex.StackTrace}");
+                response = GenericResponse<List<JobDto>>.ResultWithError((int)HttpStatusCode.BadRequest, ex.StackTrace, ex.Message);
+            }
+
+            return response;
+        }
+
         /// <summary>
         /// Update trạng thái của Task, các thống kê liên quan khi phân phối job
         /// </summary>

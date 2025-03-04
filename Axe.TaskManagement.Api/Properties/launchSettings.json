@@ -5,7 +5,7 @@
     "anonymousAuthentication": true,
     "iisExpress": {
       "applicationUrl": "http://localhost:61258",
-      "sslPort": 44353
+      "sslPort": 44354
     }
   },
   "profiles": {
@@ -91,6 +91,20 @@
       "launchBrowser": true,
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Huynv"
+      }
+    },
+    "VietdvhDemoUat": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "VietdvhDemoUat"
+      }
+    },
+    "VietdvhProduct": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "VietdvhProduct"
       }
     }
   }
