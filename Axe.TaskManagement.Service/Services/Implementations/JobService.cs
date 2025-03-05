@@ -3602,20 +3602,20 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
                     //DocPath
-                    var pathFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocPath)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var pathFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.DocPath)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (pathFilter != null)
                     {
                         pathFilterValue = pathFilter.Value.Trim();
                     }
                     //Status
-                    var statusFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Status)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var statusFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.Status)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
                     {
                         statusFilterValue = statusFilter.Value.Trim();
                     }
 
                     //Code
-                    var codeFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Code)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var codeFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.Code)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (codeFilter != null)
                     {
                         codeFilterValue = codeFilter.Value.Trim();
@@ -3650,7 +3650,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
                     //StartDate
-                    var startDateFilter = request.Filters.Where(_ => _.Field.Equals("StartDate") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var startDateFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("StartDate") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (startDateFilter != null)
                     {
                         var canParse = DateTime.TryParse(startDateFilter.Value, CultureInfo.CreateSpecificCulture("vi-vn"), DateTimeStyles.AssumeLocal, out DateTime startDate);
@@ -3658,7 +3658,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //endDate
-                    var endDateFilter = request.Filters.Where(_ => _.Field.Equals("EndDate") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var endDateFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("EndDate") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (endDateFilter != null)
                     {
                         var canParse = DateTime.TryParse(endDateFilter.Value, CultureInfo.CreateSpecificCulture("vi-vn"), DateTimeStyles.AssumeLocal, out DateTime endDate);
@@ -3666,7 +3666,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //DocInstanceId
-                    var docInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var docInstanceIdFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.DocInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (docInstanceIdFilter != null)
                     {
                         lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.DocInstanceId, Guid.Parse(docInstanceIdFilter.Value));
@@ -3674,7 +3674,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
 
                     //DocName
-                    var docNameFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.DocName)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var docNameFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.DocName)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (docNameFilter != null)
                     {
                         if (docNameFilter.Value.Trim().ToUpper().Contains('J'))
@@ -3690,14 +3690,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //JobCode
-                    var codeFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.Code)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var codeFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.Code)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (codeFilter != null)
                     {
                         lastFilter = lastFilter & Builders<Job>.Filter.Regex(x => x.Code, new MongoDB.Bson.BsonRegularExpression(codeFilter.Value.Trim()));
                     }
 
                     //NormalState
-                    var normalState = request.Filters.Where(_ => _.Field.Equals("NormalState") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var normalState = request.Filters.Where(_ => _.Field != null && _.Field.Equals("NormalState") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (normalState != null)
                     {
                         var canParse = Int32.TryParse(normalState.Value, out int stateValue);
@@ -3743,14 +3743,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //ProjectInstanceId
-                    var projectInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.ProjectInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var projectInstanceIdFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals(nameof(JobDto.ProjectInstanceId)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (projectInstanceIdFilter != null)
                     {
                         lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.ProjectInstanceId, Guid.Parse(projectInstanceIdFilter.Value));
                     }
 
                     //UserInstanceId
-                    var userInstanceIdFilter = request.Filters.Where(_ => _.Field.Equals("UserInstanceId") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var userInstanceIdFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("UserInstanceId") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (userInstanceIdFilter != null)
                     {
                         lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.UserInstanceId, Guid.Parse(userInstanceIdFilter.Value));
@@ -3761,6 +3761,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         {
                             lastFilter = lastFilter & Builders<Job>.Filter.Eq(x => x.UserInstanceId, _userPrincipalService.UserInstanceId.GetValueOrDefault());
                         }
+                        else if (!string.IsNullOrEmpty(statusFilterValue) && short.Parse(statusFilterValue).Equals((short)EnumJob.Status.Ignore)) // Nếu trạng thái là bỏ qua
+                        {
+                            // do nothing
+                        }
                         else
                         {
                             lastFilter = lastFilter & Builders<Job>.Filter.Ne(x => x.UserInstanceId, null);
@@ -3768,7 +3772,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
 
                     //RightStatus =>//EnumJob.RightStatus
-                    var statusFilter = request.Filters.Where(_ => _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var statusFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("RightStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (statusFilter != null)
                     {
                         var canParse = Int16.TryParse(statusFilter.Value, out short statusValue);
@@ -3780,7 +3784,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
 
                     }
                     //IsIgnore
-                    var isIgnoreFilter = request.Filters.Where(_ => _.Field.Equals("IsIgnore") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var isIgnoreFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("IsIgnore") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (isIgnoreFilter != null)
                     {
                         var canParse = Boolean.TryParse(isIgnoreFilter.Value, out bool isIgnore);
@@ -3791,7 +3795,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                     }
                     //NumOfRound
-                    var isNumOfRoundFilter = request.Filters.Where(_ => _.Field.Equals("NumOfRound") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var isNumOfRoundFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("NumOfRound") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (isNumOfRoundFilter != null)
                     {
                         var canParse = Int16.TryParse(isNumOfRoundFilter.Value, out short numOfRound);
@@ -3802,7 +3806,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                         }
                     }
                     //QAStatus
-                    var qAStautsFilter = request.Filters.Where(_ => _.Field.Equals("QAStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    var qAStautsFilter = request.Filters.Where(_ => _.Field != null && _.Field.Equals("QAStatus") && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
                     if (qAStautsFilter != null)
                     {
                         var canParse = Boolean.TryParse(qAStautsFilter.Value, out bool qAStatus);
@@ -3816,6 +3820,14 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     }
                     //MultiDocPath
                     var pathFilters = request.Filters.Where(_ => _.Field != null && _.Field.Equals("slTreeFolder") && !string.IsNullOrWhiteSpace(_.Value)).ToList();
+                    if (!pathFilters.Any())
+                    {
+                        var haveChildFilters = request.Filters.Where(_ => _.Field == null && _.Filters.Any()).ToList();
+                        foreach (var item in haveChildFilters)
+                        {
+                            pathFilters.AddRange(item.Filters.Where(x => x.Field != null && x.Field.Equals("slTreeFolder") && !string.IsNullOrWhiteSpace(x.Value)));
+                        }
+                    }
                     if (pathFilters.Count > 0)
                     {
                         var folderIdFilters = new List<FilterDefinition<Job>>();
