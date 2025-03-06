@@ -21,6 +21,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Content Update="appsettings.VietdvhProduct.json">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
+    <Content Update="appsettings.VietdvhDemoUat.json">
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    </Content>
     <Content Update="appsettings.HuydinhUAT.json">
       <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </Content>

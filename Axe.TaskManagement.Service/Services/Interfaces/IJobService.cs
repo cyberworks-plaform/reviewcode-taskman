@@ -156,6 +156,7 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
         Task<GenericResponse<int>> BackIgnoreJobToCheckFinalProcess(JobResult result, string accessToken = null);
         Task<GenericResponse<int>> BackMultiIgnoreJobToCheckFinalProcess(List<JobResult> result, string accessToken = null);
         Task<GenericResponse<List<JobDto>>> GetListJobForUser(ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, int inputType, Guid docTypeFieldInstanceId, string parallelInstanceIds, string docPath, Guid batchInstanceId, int numOfRound, string accessToken = null);
+        Task<GenericResponse<List<JobDto>>> GetListJobForUserByIds(ProjectDto project, string actionCode, Guid workflowStepInstanceId, string Ids, string accessToken = null);
         Task<GenericResponse> ResyncJobDistribution(Guid projectInstanceId, string actionCode);
     }
 }

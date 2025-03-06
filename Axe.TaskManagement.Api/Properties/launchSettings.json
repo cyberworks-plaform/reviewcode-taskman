@@ -92,6 +92,20 @@
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Huynv"
       }
+    },
+    "VietdvhDemoUat": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "VietdvhDemoUat"
+      }
+    },
+    "VietdvhProduct": {
+      "commandName": "IISExpress",
+      "launchBrowser": true,
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "VietdvhProduct"
+      }
     }
   }
 }

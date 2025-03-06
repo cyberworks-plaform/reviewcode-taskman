@@ -551,6 +551,13 @@ namespace Axe.TaskManagement.Api.Controllers
         {
             return ResponseResult(await _service.GetListJobForUser(project, actionCode, WorkflowStepInstanceId, inputType, docTypeFieldInstanceId, parallelInstanceIds, docPath, batchInstanceId, numOfRound, GetBearerToken()));
         }
+
+        [Route("get-jobs-for-user-by-ids")]
+        [HttpPost]
+        public async Task<IActionResult> GetListJobForUserByIds([FromBody] ProjectDto project, string actionCode, Guid WorkflowStepInstanceId, string Ids)
+        {
+            return ResponseResult(await _service.GetListJobForUserByIds(project, actionCode, WorkflowStepInstanceId, Ids, GetBearerToken()));
+        }
         #endregion
 
         [HttpPut]
