@@ -107,6 +107,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 string statusFilterValue = "";
                 string codeFilterValue = "";
                 string pathFilterValue = "";
+                string actionCodeValue = "";
                 if (request.Filters != null && request.Filters.Count > 0)
                 {
                     //DocPath
@@ -128,6 +129,12 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     {
                         codeFilterValue = codeFilter.Value.Trim();
                     }
+                    //ActionCode
+                    var actionCodeFilter = request.Filters.Where(_ => _.Field.Equals(nameof(JobDto.ActionCode)) && !string.IsNullOrWhiteSpace(_.Value)).FirstOrDefault();
+                    if (actionCodeFilter != null)
+                    {
+                        actionCodeValue = actionCodeFilter.Value.Trim();
+                    }
                 }
                 // Nếu không có Status truyền vào thì mặc định Status là Complete
                 var baseFilter = Builders<Job>.Filter.Eq(x => x.Status, statusFilterValue == "" ? (short)EnumJob.Status.Complete : short.Parse(statusFilterValue));
@@ -143,6 +150,10 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 if (!string.IsNullOrEmpty(actionCode))
                 {
                     baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCode);
+                }
+                else if (!string.IsNullOrEmpty(actionCodeValue))
+                {
+                    baseFilter = baseFilter & Builders<Job>.Filter.Eq(x => x.ActionCode, actionCodeValue);
                 }
 
                 var baseOrder = Builders<Job>.Sort.Descending(nameof(Job.LastModificationDate));
@@ -530,7 +541,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     //data.Clear();
 
                 }
-                if (currentBatchSize < batchSize && data.Count() < batchSize) // Trường hợp dữ liệu không tới 100k bản ghi
+                if (currentBatchSize < batchSize && data.Count() < batchSize) // Trường hợp dữ liệu nhỏ hơn batchSize bản ghi
                 {
                     using (var fileStream = new FileStream(currentFilePath, FileMode.OpenOrCreate, FileAccess.ReadWrite))
                     {
