@@ -2345,5 +2345,19 @@ namespace Axe.TaskManagement.Data.Repositories.Implementations
             var jobs = await DbSet.FindAsync(filter, findOption);
             return jobs;
         }
+        public virtual async Task<long> GetCountAsync(FilterDefinition<Job> filter, SortDefinition<Job> sort = null)
+        {
+            bool isNullFilter = false;
+            if (filter == null)
+            {
+                filter = Builders<Job>.Filter.Empty;
+                isNullFilter = true;
+            }
+
+            long totalfilter = await DbSet.CountDocumentsAsync(filter);
+            long num = ((!isNullFilter) ? (await DbSet.CountDocumentsAsync(Builders<Job>.Filter.Empty)) : totalfilter);
+            long totalCount = num;
+            return totalCount;
+        }
     }
 }

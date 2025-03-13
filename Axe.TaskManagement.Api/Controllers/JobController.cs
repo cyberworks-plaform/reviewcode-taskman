@@ -9,7 +9,9 @@ using Ce.Common.Lib.Caching.Interfaces;
 using Ce.Common.Lib.MongoDbBase.Implementations;
 using Ce.Constant.Lib.Dtos;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -399,10 +401,9 @@ namespace Axe.TaskManagement.Api.Controllers
         }
         [HttpPost]
         [Route("export-excel-history-job-by-user")]
-        public async Task<byte[]> ExportJobs(PagingRequest request, string actionCode)
+        public async Task ExportExcelHistoryJobByUserV2(PagingRequest request, string actionCode, int exportDataId)
         {
-            var zipFile = await _reportService.ExportExcelHistoryJobByUserV2(request, actionCode, GetBearerToken());
-            return zipFile;
+            await _reportService.ExportExcelHistoryJobByUserV2(request, actionCode, exportDataId, GetBearerToken());
         }
 
         [HttpPost]
@@ -438,6 +439,26 @@ namespace Axe.TaskManagement.Api.Controllers
         public async Task<IActionResult> GetPagingProject([FromBody] PagingRequest request)
         {
             return ResponseResult(await _service.GetPagingHistoryUser(request, GetBearerToken()));
+        }
+
+        [HttpPost]
+        [Route("get-streaming-history-job-by-user-for-export")]
+        public async Task GetStreamingHistoryJobByUserForExport([FromBody] PagingRequest request, string actionCode)
+        {
+            Response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+
+            await foreach (var job in _service.GetStreamingHistoryJobByUserForExport(request, actionCode, GetBearerToken()))
+            {
+                await Response.WriteAsync(JsonConvert.SerializeObject(job) + Environment.NewLine);
+                await Response.Body.FlushAsync(); // Đẩy dữ liệu xuống client ngay lập tức
+            }
+        }
+
+        [HttpPost]
+        [Route("get-count-history-job-by-user-for-export-async")]
+        public async Task<IActionResult> GetCountHistoryJobByUserForExportAsync([FromBody] PagingRequest request, string actionCode)
+        {
+            return ResponseResult(await _service.GetCountHistoryJobByUserForExportAsync(request, actionCode, GetBearerToken()));
         }
 
         [HttpGet]
