@@ -33,8 +33,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
 
         Task<GenericResponse<List<JobDto>>> GetListJob(string actionCode = null, string accessToken = null);
 
-        IAsyncEnumerable<JobDto> GetStreamingHistoryJobByUserForExport(PagingRequest request, string actionCode, string accessToken);
-
         Task<GenericResponse<long>> GetCountHistoryJobByUserForExportAsync(PagingRequest request, string actionCode, string accessToken);
 
         Task<byte[]> ExportExcelHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);

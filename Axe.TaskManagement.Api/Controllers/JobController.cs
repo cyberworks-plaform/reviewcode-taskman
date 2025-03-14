@@ -442,19 +442,6 @@ namespace Axe.TaskManagement.Api.Controllers
         }
 
         [HttpPost]
-        [Route("get-streaming-history-job-by-user-for-export")]
-        public async Task GetStreamingHistoryJobByUserForExport([FromBody] PagingRequest request, string actionCode)
-        {
-            Response.Headers.Add("Content-Type", "application/json; charset=utf-8");
-
-            await foreach (var job in _service.GetStreamingHistoryJobByUserForExport(request, actionCode, GetBearerToken()))
-            {
-                await Response.WriteAsync(JsonConvert.SerializeObject(job) + Environment.NewLine);
-                await Response.Body.FlushAsync(); // Đẩy dữ liệu xuống client ngay lập tức
-            }
-        }
-
-        [HttpPost]
         [Route("get-count-history-job-by-user-for-export-async")]
         public async Task<IActionResult> GetCountHistoryJobByUserForExportAsync([FromBody] PagingRequest request, string actionCode)
         {

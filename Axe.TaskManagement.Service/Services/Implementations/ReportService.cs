@@ -438,6 +438,24 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                     #endregion
 
                     var findOptions = new FindOptions<Job> { BatchSize = 1000 };
+                    findOptions.Projection = Builders<Job>.Projection //Chỉ lấy các trường cần thiết
+                        .Include(x => x.Code)
+                        .Include(x => x.DocPath)
+                        .Include(x => x.DocName)
+                        .Include(x => x.DocTypeFieldName)
+                        .Include(x => x.ActionCode)
+                        .Include(x => x.UserInstanceId)
+                        .Include(x => x.ReceivedDate)
+                        .Include(x => x.DueDate)
+                        .Include(x => x.Status)
+                        .Include(x => x.QaStatus)
+                        .Include(x => x.NumOfRound)
+                        .Include(x => x.Price)
+                        .Include(x => x.Note)
+                        .Include(x => x.Value)
+                        .Include(x => x.IsIgnore)
+                        .Include(x => x.RightStatus)
+                        .Include(x => x.HasChange);
                     var cursor = await _jobRepository.GetCursorListJobAsync(lastFilter, findOptions);
                     var resultDocPathName = await _docClientService.GetListPath(project.Data.Id, accessToken);
                     var lstDocPathName = new List<DocPathDto>();
