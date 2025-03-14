@@ -13,6 +13,6 @@ namespace Axe.TaskManagement.Service.Services.Interfaces
     {
         Task<byte[]> ExportExcelHistoryJobByUser(PagingRequest request, string actionCode, string accessToken);
 
-        Task<byte[]> ExportExcelHistoryJobByUserV2(PagingRequest request, string actionCode, string accessToken);
+        Task ExportExcelHistoryJobByUserV2(PagingRequest request, string actionCode, int exportDataId, string accessToken);
     }
 }

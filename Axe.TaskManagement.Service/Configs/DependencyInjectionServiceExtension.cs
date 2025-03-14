@@ -39,6 +39,7 @@ namespace Axe.TaskManagement.Service.Configs
             services.AddSingleton<IProjectStatisticClientService, ProjectStatisticClientService>();
             services.AddSingleton<IExternalProviderServiceConfigClientService, ExternalProviderServiceConfigClientService>();
             services.AddSingleton<IExtendedMessagePriorityConfigClientService, ExtendedMessagePriorityConfigClientService>();
+            services.AddSingleton<IExportDataClientService, ExportDataClientService>();
 
             // Outbox
             services.AddHostedService<OutboxPublisher>();
