@@ -37,7 +37,9 @@ db [ "Job" ].createIndex( {
 	work_flow_step_instance_id: 1,
 	status: 1,
 	doc_path: 1,
-
+	batch_job_instance_id: 1,
+	num_of_round: 1,
+	doc_instance_id: 1
 }, 
 {
 	name: "GetAllJobByWfs"
@@ -106,4 +108,19 @@ db["Job"].createIndex(
 }, 
 {
 	name: "report_job_groupby_project_step_status"
+})
+
+---
+db["Job"].createIndex(
+{
+	file_instance_id: 1,
+	file_part_instance_id: 1,
+	work_flow_step_instance_id: 1,
+	action_code: 1,
+	status: 1,
+	project_instance_id: 1,
+	doc_instance_id: 1,
+}, 
+{
+	name: "Update_Job_Value"
 })
