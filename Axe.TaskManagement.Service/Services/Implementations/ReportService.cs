@@ -103,6 +103,8 @@ namespace Axe.TaskManagement.Service.Services.Implementations
             bool isError = false;
             Guid guidFileName = Guid.NewGuid();
 
+            Log.Information($"ExportExcelHistoryJob: Started!");
+
             var exportDataResponse = await _exportDataClientService.GetById(exportDataId, accessToken);
             if (exportDataResponse != null && exportDataResponse.Data != null)
             {
@@ -663,6 +665,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                             Headers = new HeaderDictionary(),
                             ContentType = "application/octet-stream"
                         };
+                        streamFileZip.Close();
                     }
                     if (result != null && result.Length > 0)
                     {
@@ -696,6 +699,7 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                                 exportData.Status = (short)EnumExportData.Status.Complete;
                             }
                             await _exportDataClientService.UpdateAsync(exportData, accessToken);
+                            Log.Information($"ExportExcelHistoryJob: End!");
                         }
                     }
                 }
@@ -715,9 +719,16 @@ namespace Axe.TaskManagement.Service.Services.Implementations
                 {
                     //Xóa thư mục temp
                     //Directory.Delete(tempDirectory, true);
-                    if (File.Exists(zipFilePath))
+                    try
                     {
-                        File.Delete(zipFilePath);
+                        if (File.Exists(zipFilePath))
+                        {
+                            File.Delete(zipFilePath);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Error("ERR_ExportExcelHistoryJob: Lỗi xóa file temp ex:" + ex.Message);
                     }
                 }
             }
